@@ -99,7 +99,7 @@ public static class FilterValues
         {
             if (++seen > MaxRuntimeArrayItems)
                 return false;
-            if (AreEqual(item, expected))
+            if (!found && AreEqual(item, expected))
                 found = true;
         }
 

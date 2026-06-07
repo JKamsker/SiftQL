@@ -92,6 +92,21 @@ internal static class FilterNumeric
         return true;
     }
 
+    public static bool TryDoubleToUInt64(double value, out ulong integer)
+    {
+        integer = 0;
+        if (!TryDoubleToDecimal(value, out decimal number) ||
+            decimal.Truncate(number) != number ||
+            number < 0 ||
+            number > ulong.MaxValue)
+        {
+            return false;
+        }
+
+        integer = (ulong)number;
+        return true;
+    }
+
     public static bool TryExactDecimal(object? value, out decimal number)
     {
         switch (value)

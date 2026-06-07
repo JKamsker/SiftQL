@@ -8,14 +8,14 @@ public sealed class FilterSchema
 {
     private static readonly ConcurrentDictionary<Type, FilterSchema> s_cache = new();
     private static readonly ConcurrentDictionary<Assembly, GeneratedFilterSchemaProviderDelegate> s_generatedProviders = new();
-    private static readonly HashSet<Type> s_valueObjects = [];
+    private static readonly ConcurrentDictionary<Type, byte> s_valueObjects = new();
 
-    public static void RegisterValueObject<T>() => s_valueObjects.Add(typeof(T));
+    public static void RegisterValueObject<T>() => s_valueObjects.TryAdd(typeof(T), 0);
 
     public static void RegisterValueObject(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
-        s_valueObjects.Add(type);
+        s_valueObjects.TryAdd(type, 0);
     }
 
     private readonly Dictionary<string, FilterField> _fields;
@@ -121,7 +121,7 @@ public sealed class FilterSchema
                 continue;
             }
 
-            if (s_valueObjects.Contains(scalarType))
+            if (s_valueObjects.ContainsKey(scalarType))
             {
                 fields.Add(BuildField(name, scalarType, FilterFieldKind.Object, propertyExpression, parameter));
                 if (Nullable.GetUnderlyingType(propertyType) is null)

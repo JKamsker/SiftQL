@@ -85,8 +85,12 @@ public static class FilterArrayContains
     public static bool ContainsInt32(int[]? items, double expected)
     {
         if (items is null || items.Length > MaxRuntimeArrayItems) return false;
+        if (!Values.FilterNumeric.TryDoubleToInt64(expected, out long intExpected) ||
+            intExpected < int.MinValue || intExpected > int.MaxValue)
+            return false;
+        int target = (int)intExpected;
         for (int i = 0; i < items.Length; i++)
-            if (items[i] == expected) return true;
+            if (items[i] == target) return true;
         return false;
     }
 
@@ -101,8 +105,12 @@ public static class FilterArrayContains
     public static bool ContainsUInt32(uint[]? items, double expected)
     {
         if (items is null || items.Length > MaxRuntimeArrayItems) return false;
+        if (!Values.FilterNumeric.TryDoubleToUInt64(expected, out ulong intExpected) ||
+            intExpected > uint.MaxValue)
+            return false;
+        uint target = (uint)intExpected;
         for (int i = 0; i < items.Length; i++)
-            if (items[i] == expected) return true;
+            if (items[i] == target) return true;
         return false;
     }
 
@@ -117,8 +125,9 @@ public static class FilterArrayContains
     public static bool ContainsInt64(long[]? items, double expected)
     {
         if (items is null || items.Length > MaxRuntimeArrayItems) return false;
+        if (!Values.FilterNumeric.TryDoubleToInt64(expected, out long intExpected)) return false;
         for (int i = 0; i < items.Length; i++)
-            if (items[i] == expected) return true;
+            if (items[i] == intExpected) return true;
         return false;
     }
 
@@ -133,8 +142,9 @@ public static class FilterArrayContains
     public static bool ContainsUInt64(ulong[]? items, double expected)
     {
         if (items is null || items.Length > MaxRuntimeArrayItems) return false;
+        if (!Values.FilterNumeric.TryDoubleToUInt64(expected, out ulong intExpected)) return false;
         for (int i = 0; i < items.Length; i++)
-            if (items[i] == expected) return true;
+            if (items[i] == intExpected) return true;
         return false;
     }
 
@@ -149,8 +159,9 @@ public static class FilterArrayContains
     public static bool ContainsSingle(float[]? items, double expected)
     {
         if (items is null || items.Length > MaxRuntimeArrayItems) return false;
+        float expectedFloat = (float)expected;
         for (int i = 0; i < items.Length; i++)
-            if (items[i] == expected) return true;
+            if (items[i] == expectedFloat) return true;
         return false;
     }
 
@@ -165,8 +176,16 @@ public static class FilterArrayContains
     public static bool ContainsDecimal(decimal[]? items, double expected)
     {
         if (items is null || items.Length > MaxRuntimeArrayItems) return false;
-        for (int i = 0; i < items.Length; i++)
-            if ((double)items[i] == expected) return true;
+        try
+        {
+            decimal expectedDecimal = (decimal)expected;
+            for (int i = 0; i < items.Length; i++)
+                if (items[i] == expectedDecimal) return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
         return false;
     }
 

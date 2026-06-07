@@ -118,13 +118,13 @@ internal static class FilterTypedPredicates
             : subject => getter(subject) != expected;
     }
 
-    private static Func<object, bool> CompileEnumCompare(
+    private static Func<object, bool>? CompileEnumCompare(
         Func<object, long?> getter,
         FilterValue value,
         FilterOperator op)
     {
         if (value.Kind != FilterValueKind.Integer)
-            return null!;
+            return null;
 
         long expected = value.Integer;
         return op == FilterOperator.Equal
@@ -144,10 +144,10 @@ internal static class FilterTypedPredicates
     private static Func<object, bool> CompileGuidIn(Func<object, Guid?> getter, FilterValue[] values)
         => FilterTypedInCompiler.CompileGuid(getter, values);
 
-    private static Func<object, bool> CompileEnumIn(Func<object, long?> getter, FilterValue[] values)
+    private static Func<object, bool>? CompileEnumIn(Func<object, long?> getter, FilterValue[] values)
     {
         if (values.Any(static value => value.Kind == FilterValueKind.String))
-            return null!;
+            return null;
         return FilterTypedInCompiler.CompileEnum(getter, values);
     }
 
