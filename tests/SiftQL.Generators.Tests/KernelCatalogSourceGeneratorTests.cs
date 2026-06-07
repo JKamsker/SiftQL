@@ -27,6 +27,7 @@ internal static class KernelCatalogSourceGeneratorTests
     private static void GeneratorEmitsTypedFacadeAndCompilesPartialExtensions()
     {
         GeneratorRun run = RunGenerator(ParseTree(ValidCatalogSource(includeOtherEvent: false)));
+        AssertEx.Equal(1, run.Result.Results[0].GeneratedSources.Length, "only catalog-specific source emitted");
         string source = GeneratedSource(run, KernelHint);
 
         AssertEx.Contains("ForItemUsed()", source, "alias-based subject factory emitted");

@@ -9,9 +9,6 @@ public sealed class KernelCatalogSourceGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        context.RegisterPostInitializationOutput(static ctx =>
-            ctx.AddSource(KernelCatalogAttributes.HintName, KernelCatalogAttributes.CreateSourceText()));
-
         var catalogs = context.SyntaxProvider.ForAttributeWithMetadataName(
                 KernelCatalogDiscovery.CatalogAttributeName,
                 KernelCatalogDiscovery.IsCandidate,
