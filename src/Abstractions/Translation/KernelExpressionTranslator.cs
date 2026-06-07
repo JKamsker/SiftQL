@@ -176,6 +176,7 @@ internal static class KernelExpressionTranslator
         ParameterExpression parameter,
         out string field)
     {
+        Expression original = expression;
         expression = StripConvert(expression);
         if (expression is MethodCallExpression implicitCall && IsImplicitConversion(implicitCall))
         {
@@ -194,6 +195,9 @@ internal static class KernelExpressionTranslator
         if (current is MethodCallExpression call &&
             TryGetProjectedFieldPath(call, parameter, out field))
         {
+            if (!IsSupportedProjectedValueMember(names))
+                throw Unsupported(original);
+
             return true;
         }
 
@@ -206,6 +210,13 @@ internal static class KernelExpressionTranslator
         field = string.Empty;
         return false;
     }
+
+    private static bool IsSupportedProjectedValueMember(Stack<string> names) =>
+        names.Count == 0 || (names.Count == 1 &&
+            names.Peek() is nameof(ProjectedEventValue.Boolean) or nameof(ProjectedEventValue.Integer) or
+                nameof(ProjectedEventValue.UnsignedInteger) or nameof(ProjectedEventValue.Number) or
+                nameof(ProjectedEventValue.Decimal) or nameof(ProjectedEventValue.String) or
+                nameof(ProjectedEventValue.Guid));
 
     private static bool TryGetProjectedFieldPath(
         MethodCallExpression call,

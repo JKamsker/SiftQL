@@ -18,6 +18,7 @@ public static class ProjectionIncludeArguments
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
             FilterValueKind.Number => value.Number,
+            FilterValueKind.Decimal => (double)value.Decimal,
             _ => throw InvalidArgument(include, name, "number", errorFactory),
         };
     }

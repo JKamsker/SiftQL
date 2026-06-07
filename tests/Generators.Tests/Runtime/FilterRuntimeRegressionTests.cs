@@ -19,6 +19,34 @@ internal static class FilterRuntimeRegressionTests
         ImmediateCompiledMatcherDoesNotTrackKernelVersionForever();
         HotProviderRegistrationScopeDoesNotPublishBeforeCommit();
         OversizedFilterValidatesBeforeHotProviderLookup();
+        PrecompiledFilterProviderCannotBypassValidation();
+        ParameterizedPrecompiledFilterProviderCannotBypassValidation();
+    }
+
+    private static void PrecompiledFilterProviderCannotBypassValidation()
+    {
+        using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using var registration = PrecompiledTieredProviderRegistry.Register(new AlwaysProvider());
+        var invalid = FilterExpression.Compare(
+            "MissingField",
+            FilterOperator.Equal,
+            FilterValue.From(1L));
+
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(typeof(ItemUsedEvent), invalid, FilterCompilerOptions.Tiered));
+    }
+
+    private static void ParameterizedPrecompiledFilterProviderCannotBypassValidation()
+    {
+        using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using var registration = PrecompiledTieredProviderRegistry.Register(new ParameterizedProvider());
+        var invalid = FilterExpression.Compare(
+            "MissingField",
+            FilterOperator.Equal,
+            FilterValue.From(1L) with { ParameterKey = "p0" });
+
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(typeof(ItemUsedEvent), invalid, FilterCompilerOptions.Tiered));
     }
 
     private static void CustomSchemaCompileDoesNotPoisonDefaultSchemaCache()
@@ -154,6 +182,39 @@ internal static class FilterRuntimeRegressionTests
             _ = fingerprint;
             predicate = null;
             throw new InvalidOperationException("Provider lookup happened before validation.");
+        }
+
+        public bool TryGetProjection(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            projectFields = null;
+            return false;
+        }
+    }
+
+    private sealed class ParameterizedProvider : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(Type subjectType, string fingerprint, out Func<object, bool>? predicate)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            predicate = null;
+            return false;
+        }
+
+        public bool TryGetParameterizedFilter(
+            Type subjectType,
+            string fingerprint,
+            out ParameterizedHotFilterPredicate? predicate)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            predicate = static (_, _) => true;
+            return true;
         }
 
         public bool TryGetProjection(

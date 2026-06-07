@@ -117,7 +117,7 @@ public static class FilterValues
             {
                 FilterValueKind.String =>
                     string.Equals(actual.ToString(), expected.String, StringComparison.Ordinal),
-                FilterValueKind.Integer => Convert.ToInt64(actual) == expected.Integer,
+                FilterValueKind.Integer => IsEnumIntegerEqual(actual, expected.Integer),
                 _ => false,
             };
         }
@@ -176,8 +176,9 @@ public static class FilterValues
         {
             FilterValueKind.Integer => expected.Integer,
             FilterValueKind.UnsignedInteger => expected.UnsignedInteger,
+            FilterValueKind.Number => expected.Number,
             FilterValueKind.Decimal => (double)expected.Decimal,
-            _ => expected.Number,
+            _ => double.NaN,
         };
         if (double.IsNaN(expectedNumber))
             return false;
@@ -188,6 +189,28 @@ public static class FilterValues
 
     private static bool IsProjectedDynamic(Type type) =>
         type == typeof(ProjectedEventValue);
+
+    private static bool IsEnumIntegerEqual(object actual, long expected)
+    {
+        Type underlying = Enum.GetUnderlyingType(actual.GetType());
+        object value = Convert.ChangeType(
+            actual,
+            underlying,
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        return Type.GetTypeCode(underlying) switch
+        {
+            TypeCode.Byte => expected >= 0 && (byte)value == (ulong)expected,
+            TypeCode.UInt16 => expected >= 0 && (ushort)value == (ulong)expected,
+            TypeCode.UInt32 => expected >= 0 && (uint)value == (ulong)expected,
+            TypeCode.UInt64 => expected >= 0 && (ulong)value == (ulong)expected,
+            TypeCode.SByte => (sbyte)value == expected,
+            TypeCode.Int16 => (short)value == expected,
+            TypeCode.Int32 => (int)value == expected,
+            TypeCode.Int64 => (long)value == expected,
+            _ => false,
+        };
+    }
 
     private static Exception Error(Func<string, Exception>? errorFactory, string message) =>
         errorFactory?.Invoke(message) ?? new FilterValidationException(message);

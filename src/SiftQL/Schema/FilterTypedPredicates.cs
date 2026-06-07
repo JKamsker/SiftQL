@@ -76,6 +76,7 @@ internal static class FilterTypedPredicates
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
+            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return op switch

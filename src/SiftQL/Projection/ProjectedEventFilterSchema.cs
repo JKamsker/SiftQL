@@ -84,6 +84,7 @@ public static class ProjectedEventFilterSchema
             ProjectedEventValueKind.Integer => value.Integer,
             ProjectedEventValueKind.UnsignedInteger => value.UnsignedInteger,
             ProjectedEventValueKind.Number => value.Number,
+            ProjectedEventValueKind.Decimal => value.Decimal,
             ProjectedEventValueKind.String => value.String,
             ProjectedEventValueKind.Guid => value.Guid,
             ProjectedEventValueKind.Array => value.Values.Select(ToObject).ToArray(),

@@ -14,6 +14,9 @@ internal static class TieredProviderRecoveryTests
     public static void RunAll()
     {
         FailedFilterPromotionRetriesWhenProviderAppears().GetAwaiter().GetResult();
+        ParameterizedFilterPromotionCanUseProviderRegisteredAfterCompile()
+            .GetAwaiter()
+            .GetResult();
     }
 
     private static async Task FailedFilterPromotionRetriesWhenProviderAppears()
@@ -56,6 +59,31 @@ internal static class TieredProviderRecoveryTests
         Assert.False(afterProvider);
     }
 
+    private static async Task ParameterizedFilterPromotionCanUseProviderRegisteredAfterCompile()
+    {
+        var filter = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(100L) with { ParameterKey = "p0" });
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            filter,
+            FilterCompilerOptions.Tiered with
+            {
+                TieredPromotionMinimumAge = TimeSpan.Zero,
+                TieredPromotionMinimumEvaluations = 1,
+            });
+        var subject = new ItemUsedEvent(Guid.NewGuid(), 7, 100, 1);
+
+        using var registration = PrecompiledTieredProviderRegistry.Register(
+            new ParameterizedRejectingProvider(typeof(ItemUsedEvent), FilterExpressionFingerprint.Create(filter)));
+
+        Assert.True(kernel.Matches(subject));
+        bool afterPromotion = await WaitForFalseAsync(kernel, subject);
+
+        Assert.False(afterPromotion);
+    }
+
     private static async Task<TieredKernelSnapshot> WaitForSnapshotAsync(
         CompiledKernel kernel,
         Func<TieredKernelSnapshot, bool> predicate)
@@ -74,7 +102,7 @@ internal static class TieredProviderRecoveryTests
 
     private static async Task<bool> WaitForFalseAsync(
         CompiledKernel kernel,
-        RecoverySubject subject)
+        object subject)
     {
         bool matched = true;
         for (int i = 0; i < 500; i++)
@@ -100,6 +128,45 @@ internal static class TieredProviderRecoveryTests
             predicate = requestedType == subjectType &&
                 string.Equals(requestedFingerprint, fingerprint, StringComparison.Ordinal)
                 ? static _ => false
+                : null;
+            return predicate is not null;
+        }
+
+        public bool TryGetProjection(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            projectFields = null;
+            return false;
+        }
+    }
+
+    private sealed class ParameterizedRejectingProvider(
+        Type subjectType,
+        string fingerprint) : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(
+            Type requestedType,
+            string requestedFingerprint,
+            out Func<object, bool>? predicate)
+        {
+            _ = requestedType;
+            _ = requestedFingerprint;
+            predicate = null;
+            return false;
+        }
+
+        public bool TryGetParameterizedFilter(
+            Type requestedType,
+            string requestedFingerprint,
+            out ParameterizedHotFilterPredicate? predicate)
+        {
+            predicate = requestedType == subjectType &&
+                string.Equals(requestedFingerprint, fingerprint, StringComparison.Ordinal)
+                ? static (_, _) => false
                 : null;
             return predicate is not null;
         }

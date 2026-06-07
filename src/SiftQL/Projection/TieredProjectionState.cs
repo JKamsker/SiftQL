@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SiftQL;
+using SiftQL.Hot;
 using SiftQL.Projected;
 using SiftQL.Tiered;
 
@@ -11,6 +12,7 @@ internal sealed class TieredProjectionState<TContext>
     private const int Queued = 1;
     private const int Compiled = 2;
     private const int Failed = 3;
+    private static readonly TimeSpan s_failedRetryDelay = TimeSpan.FromSeconds(1);
 
     private readonly Func<Func<object, ProjectedEventField[]>?> _compileProjectFields;
     private readonly TieredProjectionPromotionPolicy _promotionPolicy;
@@ -20,6 +22,8 @@ internal sealed class TieredProjectionState<TContext>
     private long _materializations;
     private long _payloadWrites;
     private int _compilationStatus;
+    private int _failedProviderVersion;
+    private long _failedTimestamp;
 
     public TieredProjectionState(
         Func<Func<object, ProjectedEventField[]>?> compileProjectFields,
@@ -38,8 +42,7 @@ internal sealed class TieredProjectionState<TContext>
 
     public void RecordMaterialization()
     {
-        int status = Volatile.Read(ref _compilationStatus);
-        if (status is Compiled or Failed)
+        if (!TryResetFailedPromotion())
             return;
         long operations = Interlocked.Increment(ref _materializations) +
             Interlocked.Read(ref _payloadWrites);
@@ -48,8 +51,7 @@ internal sealed class TieredProjectionState<TContext>
 
     public void RecordPayloadWrite()
     {
-        int status = Volatile.Read(ref _compilationStatus);
-        if (status is Compiled or Failed)
+        if (!TryResetFailedPromotion())
             return;
         long operations = Interlocked.Increment(ref _payloadWrites) +
             Interlocked.Read(ref _materializations);
@@ -82,7 +84,7 @@ internal sealed class TieredProjectionState<TContext>
             Func<object, ProjectedEventField[]>? compiled = _compileProjectFields();
             if (compiled is null)
             {
-                Volatile.Write(ref _compilationStatus, Failed);
+                MarkFailed();
                 return;
             }
 
@@ -91,8 +93,32 @@ internal sealed class TieredProjectionState<TContext>
         }
         catch
         {
-            Volatile.Write(ref _compilationStatus, Failed);
+            MarkFailed();
         }
+    }
+
+    private void MarkFailed()
+    {
+        Volatile.Write(ref _failedProviderVersion, PrecompiledTieredProviderRegistry.GlobalVersion);
+        Volatile.Write(ref _failedTimestamp, Stopwatch.GetTimestamp());
+        Volatile.Write(ref _compilationStatus, Failed);
+    }
+
+    private bool TryResetFailedPromotion()
+    {
+        int status = Volatile.Read(ref _compilationStatus);
+        if (status == Compiled)
+            return false;
+        if (status != Failed)
+            return true;
+
+        int failedProviderVersion = Volatile.Read(ref _failedProviderVersion);
+        bool providerChanged = PrecompiledTieredProviderRegistry.GlobalVersion != failedProviderVersion;
+        bool retryElapsed = Stopwatch.GetElapsedTime(Volatile.Read(ref _failedTimestamp)) >= s_failedRetryDelay;
+        if (!providerChanged && !retryElapsed)
+            return false;
+
+        return Interlocked.CompareExchange(ref _compilationStatus, NotQueued, Failed) is Failed or NotQueued;
     }
 
     public TieredProjectionSnapshot Snapshot =>

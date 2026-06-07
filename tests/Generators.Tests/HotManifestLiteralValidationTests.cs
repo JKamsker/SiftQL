@@ -20,6 +20,7 @@ internal static class HotManifestLiteralValidationTests
     public static void RunAll()
     {
         RejectsNonFiniteHotNumbers();
+        RejectsMalformedBooleanLiteral();
         EscapesUnicodeSeparatorsInStringLiterals();
     }
 
@@ -41,6 +42,30 @@ internal static class HotManifestLiteralValidationTests
 
         AssertDiagnostic(run, "FSFHOT009", "non-finite number diagnostic");
         AssertEx.Equal(0, HotProviderSourceCount(run), "non-finite number emitted no provider");
+    }
+
+    private static void RejectsMalformedBooleanLiteral()
+    {
+        var falseFilter = FilterExpression.Compare(
+            "Enabled",
+            FilterOperator.Equal,
+            FilterValue.From(false));
+        GeneratorRun run = RunGenerator(RawManifest($$"""
+            {
+              "Kind": "filter",
+              "SubjectType": "Plugin.Events.PluginOwnedEvent, Plugin.Hot.Literals",
+              "Fingerprint": "{{Fingerprint(falseFilter)}}",
+              "Definition": {
+                "Kind": 4,
+                "Field": "Enabled",
+                "Operator": 0,
+                "Value": { "Kind": 1, "Boolean": "not-a-bool" }
+              }
+            }
+            """));
+
+        AssertDiagnostic(run, "FSFHOT009", "malformed boolean literal diagnostic");
+        AssertEx.Equal(0, HotProviderSourceCount(run), "malformed boolean emitted no provider");
     }
 
     private static void EscapesUnicodeSeparatorsInStringLiterals()
@@ -134,7 +159,11 @@ internal static class HotManifestLiteralValidationTests
 
             namespace Plugin.Events;
 
-            public sealed record PluginOwnedEvent(Guid EventId, double Amount, string Source) : IFilterSubject;
+            public sealed record PluginOwnedEvent(
+                Guid EventId,
+                double Amount,
+                string Source,
+                bool Enabled) : IFilterSubject;
             """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
     private static void AssertDiagnostic(GeneratorRun run, string id, string label)

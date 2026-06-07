@@ -1,7 +1,9 @@
 using System.Collections.Immutable;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using SiftQL;
+using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Generators;
 using SiftQL.Generators.Schema;
@@ -24,6 +26,25 @@ internal static class HotProviderValidationTests
         RejectsFiltersWithMissingValueKind();
         RejectsFiltersWithInvalidOperator();
         RejectsFiltersWithInvalidGuidValue();
+        RejectsEventMetadataFieldOnNormalSubject();
+    }
+
+    private static void RejectsEventMetadataFieldOnNormalSubject()
+    {
+        var filter = FilterExpression.Compare(
+            "eventType",
+            FilterOperator.Equal,
+            FilterValue.From("Plugin.Events.PluginOwnedEvent"));
+        GeneratorRun run = RunGenerator(
+            Manifest(
+                "filter",
+                "Plugin.Events.PluginOwnedEvent, Plugin.Hot.Validation",
+                Fingerprint(filter),
+                filter),
+            PluginEventTree());
+
+        AssertDiagnostic(run, "FSFHOT009", "normal subject event metadata diagnostic");
+        AssertEx.Equal(0, HotProviderSourceCount(run), "normal subject event metadata emitted no source");
     }
 
     private static void RejectsProjectedFieldsWithEmptyNames()
@@ -237,6 +258,15 @@ internal static class HotProviderValidationTests
         return new InMemoryAdditionalText(
             "validation.siftql-hot.json",
             JsonSerializer.Serialize(manifest));
+    }
+
+    private static string Fingerprint(FilterExpression expression)
+    {
+        Type type = typeof(FilterCompiler).Assembly.GetType(
+            "SiftQL.Compiler.FilterExpressionFingerprint",
+            throwOnError: true)!;
+        return (string)type.GetMethod("Create", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
+            .Invoke(null, [expression])!;
     }
 
     private static SyntaxTree PluginEventTree() =>

@@ -1,6 +1,8 @@
 using SiftQL.Expressions;
+using SiftQL.Hot;
 using SiftQL.Projected;
 using SiftQL.Projection;
+using SiftQL.Schema;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
@@ -13,6 +15,7 @@ internal static class TieredProjectionRegressionTests
         TieredProjectionPayloadMatchesImmediatePayload().GetAwaiter().GetResult();
         HotTieredProjectionPromotesOffThread().GetAwaiter().GetResult();
         HotTieredProjectionWithIncludesPromotesFieldArray().GetAwaiter().GetResult();
+        FailedProjectionPromotionRetriesWhenProviderAppears().GetAwaiter().GetResult();
     }
 
     private static async Task TieredProjectionStartsInterpretedAndCountsOperations()
@@ -127,5 +130,75 @@ internal static class TieredProjectionRegressionTests
         Assert.True(projected.TryGetField(nameof(ItemUsedEvent.ItemId), out _));
         Assert.True(projected.TryGetContext("contextValue", out var context));
         Assert.Equal("included", context.String);
+    }
+
+    private static async Task FailedProjectionPromotionRetriesWhenProviderAppears()
+    {
+        EventProjectionExpression expression = EventProjectionExpression.Select(
+            nameof(ProjectionRecoverySubject.Value));
+        var schema = new FilterSchema(
+            typeof(ProjectionRecoverySubject),
+            [
+                new FilterField(
+                    nameof(ProjectionRecoverySubject.Value),
+                    typeof(int),
+                    FilterFieldKind.Scalar,
+                    static subject => ((ProjectionRecoverySubject)subject).Value,
+                    Access: FilterFieldAccess.ForProperty("Missing")),
+            ]);
+        CompiledProjection<object> projection = ProjectionCompiler.CompileWithSchema<object>(
+            typeof(ProjectionRecoverySubject),
+            expression,
+            ProjectionRuntimeTestSupport.RejectInclude,
+            ProjectionCompilerOptions.Tiered with
+            {
+                TieredPromotionMinimumAge = TimeSpan.Zero,
+                TieredPromotionMinimumOperations = 1,
+            },
+            errorFactory: null,
+            _ => schema);
+        var subject = new ProjectionRecoverySubject(2);
+
+        ProjectedEvent interpreted = await projection.ProjectAsync(subject, new object(), CancellationToken.None);
+        Assert.Equal(2, interpreted.Field(nameof(ProjectionRecoverySubject.Value)).Integer);
+        await ProjectionRuntimeTestSupport.WaitForSnapshotAsync(
+            projection,
+            static item => item.CompilationFailed);
+
+        using var registration = PrecompiledTieredProviderRegistry.Register(new ProjectionRecoveryProvider());
+        await projection.ProjectAsync(subject, new object(), CancellationToken.None);
+
+        await ProjectionRuntimeTestSupport.WaitForSnapshotAsync(
+            projection,
+            static item => item.Tier == TieredProjectionTier.Compiled);
+        ProjectedEvent recovered = await projection.ProjectAsync(subject, new object(), CancellationToken.None);
+
+        Assert.True(recovered.TryGetField("provided", out var provided));
+        Assert.Equal(9, provided.Integer);
+    }
+
+    private sealed record ProjectionRecoverySubject(int Value);
+
+    private sealed class ProjectionRecoveryProvider : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(Type subjectType, string fingerprint, out Func<object, bool>? predicate)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            predicate = null;
+            return false;
+        }
+
+        public bool TryGetProjection(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            projectFields = static _ =>
+                [new ProjectedEventField("provided", ProjectedEventValue.FromScalar(9))];
+            return true;
+        }
     }
 }

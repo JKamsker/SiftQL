@@ -92,6 +92,7 @@ public sealed record QueryKernel<TSubject>
         var translated = KernelParameterKeyRewriter.Rebase(
             EventProjectionSelectorTranslator.Translate(selector),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
+        translated = ProjectedFieldProjection(translated);
         return new QueryKernel<TSubject>(
             Filter,
             Projection
@@ -139,10 +140,26 @@ public sealed record QueryKernel<TSubject>
             return EventProjectionExpression.Default.WithFields(fields);
 
         return EventProjectionExpression.Default.WithFields(
-            fields.Select(static field => new EventProjectionField(
-                ProjectedEventPaths.Field(field.Path),
-                field.Name)).ToArray());
+            fields.Select(static field => ProjectedField(field)).ToArray());
     }
+
+    private EventProjectionExpression ProjectedFieldProjection(EventProjectionExpression projection)
+    {
+        if (!ProjectionWillReadProjectedEvent())
+            return projection;
+
+        return projection with
+        {
+            Fields = projection.Fields
+                .Select(static field => ProjectedField(field))
+                .ToArray(),
+        };
+    }
+
+    private static EventProjectionField ProjectedField(EventProjectionField field) =>
+        ProjectedEventPaths.TrySplit(field.Path, out _, out _)
+            ? field
+            : new EventProjectionField(ProjectedEventPaths.Field(field.Path), field.Name);
 
     private bool ProjectionWillReadProjectedEvent() =>
         ProjectionDomain(Pipeline);

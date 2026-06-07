@@ -1,11 +1,14 @@
 using SiftQL.Generators.Tests;
 
+EventPipelineRegressionTests.RunAll();
 FilterSchemaSourceGeneratorTests.RunAll();
 FilterSchemaGeneratorRegressionTests.RunAll();
 FilterSchemaFallbackRegressionTests.RunAll();
 FilterSchemaParitySourceGeneratorTests.RunAll();
 FilterCompilerCacheRegressionTests.RunAll();
+FilterNumericPrecisionRegressionTests.RunAll();
 FilterRuntimeRegressionTests.RunAll();
+HotCompilationManifestWriterRegressionTests.RunAll();
 HotProviderNullStringLiteralTests.RunAll();
 HotManifestProjectionValidationTests.RunAll();
 HotManifestLiteralValidationTests.RunAll();
@@ -28,6 +31,7 @@ ProjectionCompilerRuntimeTests.RunAll();
 ProjectionDecimalRegressionTests.RunAll();
 ProjectionPayloadWriterRegressionTests.RunAll();
 ProjectedHotProviderSourceGeneratorTests.RunAll();
+QueryKernelProjectionRegressionTests.RunAll();
 RuntimeHotProviderBatchSinkTests.RunAll();
 ServerPluginHostExampleTests.RunAll();
 TieredProjectionRegressionTests.RunAll();

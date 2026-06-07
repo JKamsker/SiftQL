@@ -9,12 +9,15 @@ public sealed class GeneratorHarnessFact
     [Fact]
     public void RunFilterSchemaHarness()
     {
+        EventPipelineRegressionTests.RunAll();
         FilterSchemaSourceGeneratorTests.RunAll();
         FilterSchemaGeneratorRegressionTests.RunAll();
         FilterSchemaFallbackRegressionTests.RunAll();
         FilterSchemaParitySourceGeneratorTests.RunAll();
         FilterCompilerCacheRegressionTests.RunAll();
+        FilterNumericPrecisionRegressionTests.RunAll();
         FilterRuntimeRegressionTests.RunAll();
+        HotCompilationManifestWriterRegressionTests.RunAll();
         HotManifestLiteralValidationTests.RunAll();
         HotProviderNullStringLiteralTests.RunAll();
         HotManifestProjectionValidationTests.RunAll();
@@ -37,6 +40,7 @@ public sealed class GeneratorHarnessFact
         ProjectionDecimalRegressionTests.RunAll();
         ProjectionPayloadWriterRegressionTests.RunAll();
         ProjectedHotProviderSourceGeneratorTests.RunAll();
+        QueryKernelProjectionRegressionTests.RunAll();
         RuntimeHotProviderBatchSinkTests.RunAll();
         ServerPluginHostExampleTests.RunAll();
         TieredProjectionRegressionTests.RunAll();

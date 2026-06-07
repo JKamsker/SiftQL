@@ -18,7 +18,8 @@ internal static class FilterTypedArrayPredicates
             FilterScalarKind.Number when
                 value.Kind is (FilterValueKind.Integer or
                     FilterValueKind.UnsignedInteger or
-                    FilterValueKind.Number) &&
+                    FilterValueKind.Number or
+                    FilterValueKind.Decimal) &&
                 !RequiresExactNumeric(field.ValueType) =>
                 CompileNumberContains(array.NumberContains!, value),
             FilterScalarKind.String when value.Kind == FilterValueKind.String =>
@@ -42,6 +43,7 @@ internal static class FilterTypedArrayPredicates
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
+            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return subject => contains(subject, expected);

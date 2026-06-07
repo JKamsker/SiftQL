@@ -13,7 +13,7 @@ internal static class HotProviderFieldValidator
         string path,
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics)
     {
-        if (IsMetadataField(name))
+        if (IsAllowedMetadataField(projectedEvent, name))
             return scalar != false;
         if (projectedEvent && IsProjectedField(name))
             return true;
@@ -34,6 +34,13 @@ internal static class HotProviderFieldValidator
         name.Equals("eventName", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("subjectType", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("subjectName", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAllowedMetadataField(bool projectedEvent, string name) =>
+        name.Equals("subjectType", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("subjectName", StringComparison.OrdinalIgnoreCase) ||
+        projectedEvent &&
+        (name.Equals("eventType", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("eventName", StringComparison.OrdinalIgnoreCase));
 
     public static bool Unsupported(
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,

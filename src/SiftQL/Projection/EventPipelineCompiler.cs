@@ -15,6 +15,11 @@ public static class EventPipelineCompiler
     private const int MaxCachedPipelines = 2048;
     private static readonly ConcurrentDictionary<EventPipelineCacheKey, object> s_cache = new();
 
+    static EventPipelineCompiler()
+    {
+        PrecompiledTieredProviderRegistry.Changed += ClearCache;
+    }
+
     public static CompiledEventPipeline<TContext> Compile<TContext>(
         Type subjectType,
         EventPipelineExpression? pipeline,
@@ -195,6 +200,8 @@ public static class EventPipelineCompiler
 
         return false;
     }
+
+    private static void ClearCache() => s_cache.Clear();
 
     private readonly record struct EventPipelineCacheKey(
         Type ContextType,

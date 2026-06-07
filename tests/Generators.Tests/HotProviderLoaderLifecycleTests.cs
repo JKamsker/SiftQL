@@ -23,6 +23,7 @@ internal static class HotProviderLoaderLifecycleTests
         LoadedProviderCanBeDisposedAndUnregistered();
         TelemetryOnlyManifestChangesDoNotInvalidateGeneratedProvider();
         MalformedManifestReportsInvalidManifest();
+        MultipleManifestsInOneAssemblyEachValidateOwnHash();
     }
 
     private static void LoadedProviderCanBeDisposedAndUnregistered()
@@ -123,12 +124,60 @@ internal static class HotProviderLoaderLifecycleTests
             "malformed hot provider manifest reports invalid manifest");
     }
 
-    private static GeneratorRun RunGenerator(string assemblyName, AdditionalText hotManifest)
+    private static void MultipleManifestsInOneAssemblyEachValidateOwnHash()
+    {
+        const string assemblyName = "Plugin.Hot.Multiple";
+        FilterExpression firstFilter = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(100L));
+        FilterExpression secondFilter = FilterExpression.Compare(
+            nameof(ItemUsedEvent.Quantity),
+            FilterOperator.Equal,
+            FilterValue.From(2L));
+        string firstManifestJson = HotManifestJson(firstFilter);
+        string secondManifestJson = HotManifestJson(secondFilter);
+        GeneratorRun run = RunGenerator(
+            assemblyName,
+            new InMemoryAdditionalText("first.siftql-hot.json", firstManifestJson),
+            new InMemoryAdditionalText("second.siftql-hot.json", secondManifestJson));
+
+        AssertEx.Equal(0, run.Diagnostics.Length, "multi-manifest generator diagnostics");
+
+        string directory = Path.Combine(Path.GetTempPath(), "SiftQLHotProviderMultiple", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string assemblyPath = Path.Combine(directory, assemblyName + ".dll");
+        string firstManifestPath = Path.Combine(directory, "first.json");
+        string secondManifestPath = Path.Combine(directory, "second.json");
+        EmitResult emit = run.OutputCompilation.Emit(assemblyPath);
+        AssertEx.True(emit.Success, "multi-manifest hot provider assembly emitted: " + string.Join(" | ", emit.Diagnostics));
+        File.WriteAllText(firstManifestPath, firstManifestJson);
+        File.WriteAllText(secondManifestPath, secondManifestJson);
+
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using HotTieredProviderLoadResult first = HotTieredProviderLoader.TryLoad(new()
+        {
+            AssemblyPath = assemblyPath,
+            ManifestPath = firstManifestPath,
+            RequireExactRuntimeVersion = false,
+        });
+        using HotTieredProviderLoadResult second = HotTieredProviderLoader.TryLoad(new()
+        {
+            AssemblyPath = assemblyPath,
+            ManifestPath = secondManifestPath,
+            RequireExactRuntimeVersion = false,
+        });
+
+        AssertEx.True(first.Loaded, "first manifest loaded from shared DLL: " + first.Message);
+        AssertEx.True(second.Loaded, "second manifest loaded from shared DLL: " + second.Message);
+    }
+
+    private static GeneratorRun RunGenerator(string assemblyName, params AdditionalText[] hotManifests)
     {
         CSharpCompilation compilation = CreateCompilation(assemblyName);
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: ImmutableArray.Create<ISourceGenerator>(new FilterSchemaSourceGenerator().AsSourceGenerator()),
-            additionalTexts: ImmutableArray.Create(hotManifest),
+            additionalTexts: hotManifests.ToImmutableArray(),
             parseOptions: CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
         driver = driver.RunGeneratorsAndUpdateCompilation(

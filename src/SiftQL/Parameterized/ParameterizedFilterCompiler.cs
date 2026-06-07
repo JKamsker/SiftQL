@@ -1,6 +1,7 @@
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Hot;
 using SiftQL.Kernel;
 using SiftQL.Schema;
 using SiftQL.Tiered;
@@ -44,7 +45,22 @@ internal static class ParameterizedFilterCompiler
         FilterSchema schema,
         FilterExpression expression,
         ParameterizedFilterPlan plan,
-        Func<string, Exception>? errorFactory) =>
-        FilterExpressionCompiler.TryCompilePredicate(schema, expression, errorFactory) ??
-        plan.Bind(expression);
+        Func<string, Exception>? errorFactory)
+    {
+        string fingerprint = FilterExpressionFingerprint.Create(expression);
+        FilterValue[] parameters = FilterExpressionParameters.BindValues(
+            expression,
+            FilterExpressionParameters.Keys(expression));
+        if (PrecompiledTieredProviderRegistry.TryGetParameterizedFilter(
+            schema.SubjectType,
+            fingerprint,
+            parameters,
+            out Func<object, bool>? hot))
+        {
+            return KernelPredicate.FromObject(hot!);
+        }
+
+        return FilterExpressionCompiler.TryCompilePredicate(schema, expression, errorFactory) ??
+            plan.Bind(expression);
+    }
 }

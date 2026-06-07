@@ -36,7 +36,8 @@ internal static class ProjectedHotProviderSourceGeneratorTests
             FilterValue.From(100L));
         var projection = EventProjectionExpression.Default.WithFields(
             [new EventProjectionField(ProjectedEventPaths.Field(nameof(ItemUsedEvent.ItemId)), "SlimItem")]);
-        GeneratorRun run = RunGenerator(HotManifest("Projected.Hot", filter, projection));
+        string manifestJson = HotManifestJson("Projected.Hot", filter, projection);
+        GeneratorRun run = RunGenerator(HotManifest(manifestJson));
 
         AssertEx.Equal(0, run.Diagnostics.Length, "generator driver diagnostics");
         string source = run.Result.Results[0].GeneratedSources
@@ -46,11 +47,12 @@ internal static class ProjectedHotProviderSourceGeneratorTests
         AssertEx.Contains("ProjectedEventFilterSchema.CreateField", source, "projected field lookup emitted");
         AssertNoCompilationErrors(run, "projected hot provider");
 
-        using var pe = new MemoryStream();
-        EmitResult emit = run.OutputCompilation.Emit(pe);
-        AssertEx.True(emit.Success, "projected hot provider emitted: " + string.Join(" | ", emit.Diagnostics));
         using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        Assembly.Load(pe.ToArray());
+        using var loaded = HotProviderTestLoader.Load(
+            run.OutputCompilation,
+            "Projected.Hot",
+            manifestJson,
+            "projected hot provider");
 
         var pipeline = EventPipelineExpression.Default
             .AppendProjection(EventProjectionExpression.Select(
@@ -80,7 +82,8 @@ internal static class ProjectedHotProviderSourceGeneratorTests
     private static void GeneratorDefaultProjectedEventProjectionMatchesRuntime()
     {
         EventProjectionExpression projection = EventProjectionExpression.Default;
-        GeneratorRun run = RunGenerator(HotManifest("Projected.Hot", FilterExpression.Any, projection));
+        GeneratorRun run = RunGenerator(HotManifest(
+            HotManifestJson("Projected.Hot", FilterExpression.Any, projection)));
 
         AssertEx.Equal(0, run.Diagnostics.Length, "default projected generator diagnostics");
         string source = run.Result.Results[0].GeneratedSources
@@ -154,7 +157,10 @@ internal static class ProjectedHotProviderSourceGeneratorTests
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
-    private static AdditionalText HotManifest(
+    private static AdditionalText HotManifest(string manifestJson) =>
+        new InMemoryAdditionalText("projected.siftql-hot.json", manifestJson);
+
+    private static string HotManifestJson(
         string assemblyName,
         FilterExpression filter,
         EventProjectionExpression projection)
@@ -168,7 +174,7 @@ internal static class ProjectedHotProviderSourceGeneratorTests
                 Entry("projection", assemblyName, ProjectionFingerprint(projection), JsonSerializer.SerializeToElement(projection)),
             ],
         };
-        return new InMemoryAdditionalText("projected.siftql-hot.json", JsonSerializer.Serialize(manifest));
+        return JsonSerializer.Serialize(manifest);
     }
 
     private static HotCompilationManifestEntry Entry(

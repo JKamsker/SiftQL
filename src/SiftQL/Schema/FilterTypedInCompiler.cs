@@ -29,6 +29,7 @@ internal static class FilterTypedInCompiler
             {
                 FilterValueKind.Integer => value.Integer,
                 FilterValueKind.UnsignedInteger => value.UnsignedInteger,
+                FilterValueKind.Decimal => (double)value.Decimal,
                 _ => value.Number,
             })
             .Where(static value => !double.IsNaN(value))
