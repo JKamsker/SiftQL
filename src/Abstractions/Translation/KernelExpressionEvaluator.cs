@@ -58,12 +58,6 @@ internal static class KernelExpressionEvaluator
             return false;
         }
 
-        if (member.Member is PropertyInfo { GetMethod.IsStatic: true })
-        {
-            value = null;
-            return false;
-        }
-
         if (member.Member is FieldInfo field)
         {
             value = field.GetValue(instance);
