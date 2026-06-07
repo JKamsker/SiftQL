@@ -15,6 +15,8 @@ internal static class Program
             new LargeInFilterCase(),
             new ClauseOrderingFilterCase(),
             new OpcodeEvaluatorCase(),
+            new CachedFilterRegistrationCase(),
+            new CachedPluginFilterRegistrationCase(),
             new FilterRegistrationCase(),
             new TieredFilterRegistrationCase(),
             new PluginFilterRegistrationCase(),

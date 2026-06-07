@@ -5,6 +5,9 @@ namespace SiftQL;
 
 public static class ProjectionValueFactory
 {
+    public static ProjectedEventValue FromObject(object? value) =>
+        ProjectedEventValue.FromObject(value);
+
     public static ProjectedEventValue FromBoolean(bool value) =>
         new() { Kind = ProjectedEventValueKind.Boolean, Boolean = value };
 

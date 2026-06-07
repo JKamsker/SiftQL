@@ -101,16 +101,30 @@ internal static class FilterExpressionInBuilder
 
     private static Expression BuildExactNumberIn(Expression actual, FilterValue[] values)
     {
-        decimal[] expected = values
-            .Where(static value => FilterNumeric.TryNumberDecimal(value, out _))
-            .Select(static value =>
-            {
-                FilterNumeric.TryNumberDecimal(value, out decimal number);
-                return number;
-            })
-            .Distinct()
-            .ToArray();
-        return BuildValueIn(actual, expected, HasNull(values), static item => Expression.Convert(item, typeof(decimal)));
+        Type type = Nullable.GetUnderlyingType(actual.Type) ?? actual.Type;
+        bool hasNull = HasNull(values);
+        if (type == typeof(byte))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, byte.MinValue, byte.MaxValue, static value => (byte)value), hasNull, convert: null);
+        if (type == typeof(sbyte))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, sbyte.MinValue, sbyte.MaxValue, static value => (sbyte)value), hasNull, convert: null);
+        if (type == typeof(short))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, short.MinValue, short.MaxValue, static value => (short)value), hasNull, convert: null);
+        if (type == typeof(ushort))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, ushort.MinValue, ushort.MaxValue, static value => (ushort)value), hasNull, convert: null);
+        if (type == typeof(int))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, int.MinValue, int.MaxValue, static value => (int)value), hasNull, convert: null);
+        if (type == typeof(uint))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, uint.MinValue, uint.MaxValue, static value => (uint)value), hasNull, convert: null);
+        if (type == typeof(long))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, long.MinValue, long.MaxValue, static value => (long)value), hasNull, convert: null);
+        if (type == typeof(ulong))
+            return BuildValueIn(actual, FilterNumericInValues.Integral(values, ulong.MinValue, ulong.MaxValue, static value => (ulong)value), hasNull, convert: null);
+
+        return BuildValueIn(
+            actual,
+            FilterNumericInValues.Decimal(values),
+            hasNull,
+            convert: null);
     }
 
     private static Expression BuildGuidIn(Expression actual, FilterValue[] values)

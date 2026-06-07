@@ -4,10 +4,12 @@ internal enum GeneratedFieldKind
 {
     Scalar,
     Array,
+    Object,
 }
 
 internal enum GeneratedScalarKind
 {
+    Object,
     Boolean,
     Number,
     String,

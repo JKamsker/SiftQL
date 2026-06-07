@@ -130,7 +130,7 @@ internal static class HotProviderResolver
             fields,
             projectedEvent,
             field.Path,
-            scalar: true,
+            scalar: null,
             path,
             diagnostics);
     }

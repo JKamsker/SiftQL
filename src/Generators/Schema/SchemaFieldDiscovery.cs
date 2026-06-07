@@ -39,7 +39,16 @@ internal static class SchemaFieldDiscovery
             }
 
             if (!IsNullable(property.Type) && IsValueObject(valueType) && valueType is INamedTypeSymbol nested)
+            {
+                fields.Add(Field(
+                    name,
+                    access,
+                    valueType,
+                    property.Type,
+                    GeneratedFieldKind.Object,
+                    GeneratedScalarKind.Object));
                 AddProperties(fields, name, access, nested, depth + 1);
+            }
         }
     }
 

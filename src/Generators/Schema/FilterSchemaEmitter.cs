@@ -114,7 +114,7 @@ internal static class FilterSchemaEmitter
         source.Append(", typeof(");
         source.Append(field.ValueType);
         source.Append("), FilterFieldKind.");
-        source.Append(field.FieldKind == GeneratedFieldKind.Scalar ? "Scalar" : "Array");
+        source.Append(FieldKindName(field.FieldKind));
         source.Append(", static subject => ((");
         source.Append(schema.TypeName);
         source.Append(")subject).");
@@ -195,10 +195,12 @@ internal static class FilterSchemaEmitter
 
     private static string ProjectionAccessor(GeneratedSchema schema, GeneratedField field)
     {
+        string access = "((" + schema.TypeName + ")subject)." + CSharpIdentifier.EscapePath(field.Access);
+        if (field.FieldKind == GeneratedFieldKind.Object)
+            return "static subject => ProjectionValueFactory.FromObject(" + access + ")";
         if (field.FieldKind != GeneratedFieldKind.Scalar)
             return "null";
 
-        string access = "((" + schema.TypeName + ")subject)." + CSharpIdentifier.EscapePath(field.Access);
         return field.ScalarKind == GeneratedScalarKind.Enum
             ? "static subject => ProjectionValueFactory.FromEnum<" + field.ValueType + ">(" + access + ")"
             : ProjectionFactoryMethod(field) is { } method
@@ -228,6 +230,15 @@ internal static class FilterSchemaEmitter
                 _ => null,
             },
             _ => null,
+        };
+
+    private static string FieldKindName(GeneratedFieldKind kind) =>
+        kind switch
+        {
+            GeneratedFieldKind.Scalar => "Scalar",
+            GeneratedFieldKind.Array => "Array",
+            GeneratedFieldKind.Object => "Object",
+            _ => "Scalar",
         };
 
     private static string NormalizeTypeName(string typeName) =>

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection;
 
 using SiftQL.Translation;
 
@@ -20,6 +21,8 @@ public enum ProjectedEventValueKind
 public sealed record ProjectedEventValue
 {
     private const int MaxArrayItems = 256;
+    private const int MaxObjectDepth = 6;
+    private const int MaxObjectFields = 64;
 
     public ProjectedEventValueKind Kind { get; init; }
     public bool Boolean { get; init; }
@@ -37,6 +40,20 @@ public sealed record ProjectedEventValue
     {
         if (value is null)
             return Null;
+
+        return FromValue(value, depth: 0);
+    }
+
+    public static ProjectedEventValue FromObject(object? value) =>
+        value is null ? Null : FromObjectValue(value, depth: 0);
+
+    private static ProjectedEventValue FromValue(object value, int depth)
+    {
+        if (depth > MaxObjectDepth)
+        {
+            throw new KernelExpressionException(
+                $"Projected objects cannot exceed {MaxObjectDepth} nested levels.");
+        }
 
         Type type = Nullable.GetUnderlyingType(value.GetType()) ?? value.GetType();
         if (type.IsEnum)
@@ -58,13 +75,18 @@ public sealed record ProjectedEventValue
             decimal item => FromDecimal(item),
             string item => FromString(item),
             Guid item => new() { Kind = ProjectedEventValueKind.Guid, Guid = item },
-            IEnumerable items when value is not string => FromArray(items),
-            _ => throw new KernelExpressionException(
-                $"Projected value type '{type.FullName}' is not supported."),
+            IEnumerable items when value is not string => FromArray(items, depth + 1),
+            _ => FromObjectValue(value, depth + 1),
         };
     }
 
     public static ProjectedEventValue FromArray(IEnumerable items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        return FromArray(items, depth: 0);
+    }
+
+    private static ProjectedEventValue FromArray(IEnumerable items, int depth)
     {
         ArgumentNullException.ThrowIfNull(items);
         var values = new List<ProjectedEventValue>();
@@ -76,7 +98,7 @@ public sealed record ProjectedEventValue
                     $"Projected arrays cannot exceed {MaxArrayItems} items.");
             }
 
-            values.Add(FromScalar(item));
+            values.Add(item is null ? Null : FromValue(item, depth));
         }
 
         return new()
@@ -84,6 +106,32 @@ public sealed record ProjectedEventValue
             Kind = ProjectedEventValueKind.Array,
             Values = values.ToArray(),
         };
+    }
+
+    private static ProjectedEventValue FromObjectValue(object value, int depth)
+    {
+        PropertyInfo[] properties = value
+            .GetType()
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public);
+        var fields = new List<ProjectedEventField>(Math.Min(properties.Length, MaxObjectFields));
+        for (int i = 0; i < properties.Length; i++)
+        {
+            PropertyInfo property = properties[i];
+            if (property.GetMethod is null || property.GetMethod.GetParameters().Length != 0)
+                continue;
+            if (fields.Count >= MaxObjectFields)
+            {
+                throw new KernelExpressionException(
+                    $"Projected objects cannot exceed {MaxObjectFields} fields.");
+            }
+
+            object? item = property.GetValue(value);
+            fields.Add(new ProjectedEventField(
+                property.Name,
+                item is null ? Null : FromValue(item, depth + 1)));
+        }
+
+        return new() { Kind = ProjectedEventValueKind.Object, Fields = fields.ToArray() };
     }
 
     public static ProjectedEventValue FromValues(IEnumerable<ProjectedEventValue> values)

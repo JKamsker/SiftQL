@@ -139,7 +139,7 @@ public static class ProjectionCompiler
     {
         EventProjectionField[] requested = projection.Fields.Length == 0
             ? schema.FieldNames
-                .Where(static name => !IsMetadataField(name))
+                .Where(name => IsDefaultProjectionField(schema, name))
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .Select(static name => new EventProjectionField(name))
                 .ToArray()
@@ -249,6 +249,11 @@ public static class ProjectionCompiler
         value is null
             ? "-1:"
             : string.Concat(value.Length.ToString(CultureInfo.InvariantCulture), ":", value);
+
+    private static bool IsDefaultProjectionField(FilterSchema schema, string name) =>
+        !IsMetadataField(name) &&
+        schema.TryGetField(name, out FilterField field) &&
+        field.Kind != FilterFieldKind.Object;
 
     private static bool IsMetadataField(string name) =>
         string.Equals(name, "eventType", StringComparison.OrdinalIgnoreCase) ||

@@ -7,6 +7,7 @@ public enum FilterFieldKind
 {
     Scalar,
     Array,
+    Object,
 }
 
 public enum FilterScalarKind

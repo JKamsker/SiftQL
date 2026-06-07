@@ -70,6 +70,15 @@ internal static class FilterSchemaAccessors
         ParameterExpression parameter) =>
         ProjectionValueExpression.CompileAccessor(valueType, propertyExpression, parameter);
 
+    public static Func<object, ProjectedEventValue> BuildObjectProjection(
+        Expression propertyExpression,
+        ParameterExpression parameter) =>
+        Expression.Lambda<Func<object, ProjectedEventValue>>(
+            Expression.Call(
+                typeof(ProjectedEventValue).GetMethod(nameof(ProjectedEventValue.FromObject))!,
+                Expression.Convert(propertyExpression, typeof(object))),
+            parameter).Compile();
+
     private static FilterScalarAccessor Scalar(
         FilterScalarKind kind,
         Func<object, bool?>? boolean = null,

@@ -44,6 +44,7 @@ internal static class FilterRuntimeStubSource
                 public static ProjectedEventValue FromDecimal(decimal? value) => new();
                 public static ProjectedEventValue FromString(string? value) => new();
                 public static ProjectedEventValue FromGuid(Guid? value) => new();
+                public static ProjectedEventValue FromObject(object? value) => new();
                 public static ProjectedEventValue FromEnum<TEnum>(TEnum? value)
                     where TEnum : struct, Enum => new();
             }
@@ -51,7 +52,7 @@ internal static class FilterRuntimeStubSource
 
         namespace SiftQL.Schema
         {
-            public enum FilterFieldKind { Scalar, Array }
+            public enum FilterFieldKind { Scalar, Array, Object }
             public enum FilterScalarKind { Boolean, Number, String, Guid, Enum }
 
             public sealed record FilterField(
