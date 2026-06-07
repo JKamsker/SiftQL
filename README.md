@@ -58,6 +58,45 @@ index.Add(alertSub, FilterExpression.Compare(
 var matches = index.SnapshotCandidates(reading);
 ```
 
+### Serialization
+
+Filters are plain data -- serialize them to JSON, store them in a database, and rehydrate later:
+
+```csharp
+using System.Text.Json;
+using SiftQL.Expressions;
+
+// Build a filter
+var filter = FilterExpression.And(
+    FilterExpression.Compare("region", FilterOperator.Equal, FilterValue.From("EU")),
+    FilterExpression.Compare("total", FilterOperator.GreaterThan, FilterValue.From(100.0)));
+
+// Serialize to JSON
+string json = JsonSerializer.Serialize(filter);
+// Store in DB, send over HTTP, write to a file...
+
+// Deserialize back
+FilterExpression restored = JsonSerializer.Deserialize<FilterExpression>(json)!;
+
+// Compile and use
+var compiled = FilterCompiler.Compile(typeof(OrderPlacedEvent), restored);
+compiled.Matches(order); // works exactly the same
+```
+
+The full query pipeline (filter + projection) also round-trips as JSON:
+
+```csharp
+var kernel = QueryKernel.For<OrderPlacedEvent>()
+    .Where(e => e.Region == "EU" && e.Total > 100.0)
+    .Select(e => e.OrderId, e => e.Total);
+
+// Serialize the entire pipeline
+string pipelineJson = JsonSerializer.Serialize(kernel.Pipeline);
+
+// Deserialize on the other side
+var pipeline = JsonSerializer.Deserialize<EventPipelineExpression>(pipelineJson)!;
+```
+
 ## How It Works
 
 1. **Define** filters using LINQ expressions or the expression builder API
