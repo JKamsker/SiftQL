@@ -233,6 +233,33 @@ public sealed class FilterNumericPrecisionRegressionTests
         Assert.False(FilterValues.Compare(10, invalid, FilterOperator.LessThan));
     }
 
+    [Fact]
+    public void EnumIntegerEqualityCoversAllBackingTypes()
+    {
+        Assert.True(FilterValues.Compare(ByteKind.Value, FilterValue.From(1L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(ByteKind.Value, FilterValue.From(2L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(ByteKind.Value, FilterValue.From(-1L), FilterOperator.Equal));
+
+        Assert.True(FilterValues.Compare(SByteKind.Value, FilterValue.From(1L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(SByteKind.Value, FilterValue.From(2L), FilterOperator.Equal));
+        Assert.True(FilterValues.Compare(SByteKind.Negative, FilterValue.From(-1L), FilterOperator.Equal));
+
+        Assert.True(FilterValues.Compare(ShortKind.Value, FilterValue.From(1L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(ShortKind.Value, FilterValue.From(2L), FilterOperator.Equal));
+
+        Assert.True(FilterValues.Compare(UShortKind.Value, FilterValue.From(1L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(UShortKind.Value, FilterValue.From(-1L), FilterOperator.Equal));
+
+        Assert.True(FilterValues.Compare(IntKind.Value, FilterValue.From(1L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(IntKind.Value, FilterValue.From(2L), FilterOperator.Equal));
+
+        Assert.True(FilterValues.Compare(UIntKind.Value, FilterValue.From(1L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(UIntKind.Value, FilterValue.From(-1L), FilterOperator.Equal));
+
+        Assert.True(FilterValues.Compare(LongKind.Value, FilterValue.From(1L), FilterOperator.Equal));
+        Assert.False(FilterValues.Compare(LongKind.Value, FilterValue.From(2L), FilterOperator.Equal));
+    }
+
     private static void AssertFilter<TSubject>(
         FilterExpression filter,
         params FilterCase<TSubject>[] cases)
@@ -285,4 +312,12 @@ public sealed class FilterNumericPrecisionRegressionTests
     {
         Huge = ulong.MaxValue,
     }
+
+    private enum ByteKind : byte { Value = 1 }
+    private enum SByteKind : sbyte { Negative = -1, Value = 1 }
+    private enum ShortKind : short { Value = 1 }
+    private enum UShortKind : ushort { Value = 1 }
+    private enum IntKind : int { Value = 1 }
+    private enum UIntKind : uint { Value = 1 }
+    private enum LongKind : long { Value = 1 }
 }

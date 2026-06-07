@@ -101,6 +101,33 @@ public sealed class ProjectionPayloadWriterRegressionTests
     }
 
     [Fact]
+    public void ProjectPayloadAsyncReallocatesWhenBufferTooSmall()
+    {
+        ClearWriterBuffer();
+        var smallProjection = ProjectionCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId)),
+            ProjectionRuntimeTestSupport.RejectInclude);
+        var largeProjection = ProjectionCompiler.Compile<object>(
+            typeof(LargePayloadSubject),
+            EventProjectionExpression.Select(nameof(LargePayloadSubject.Description)),
+            ProjectionRuntimeTestSupport.RejectInclude);
+
+        _ = ProjectPayloadSync(smallProjection, new ItemUsedEvent(Guid.NewGuid(), 10, 100, 2));
+        ArrayBufferWriter<byte> smallBuffer = CurrentWriterBuffer();
+        int smallCapacity = smallBuffer.Capacity;
+
+        _ = ProjectPayloadSync(
+            largeProjection,
+            new LargePayloadSubject(new string('x', smallCapacity + 1024)));
+        ArrayBufferWriter<byte>? afterLarge = CurrentWriterBufferOrNull();
+
+        Assert.NotNull(afterLarge);
+        Assert.NotSame(smallBuffer, afterLarge);
+        Assert.True(afterLarge!.Capacity > smallCapacity);
+    }
+
+    [Fact]
     public void ProjectPayloadAsyncDoesNotRetainOversizedWriterBuffer()
     {
         ClearWriterBuffer();

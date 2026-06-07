@@ -19,6 +19,50 @@ namespace SiftQL.Generators.Tests;
 public sealed class HotProviderValidationTests
 {
     [Fact]
+    public void AcceptsEventTypeFieldOnProjectedSubject()
+    {
+        var filter = FilterExpression.Compare(
+            "eventType",
+            FilterOperator.Equal,
+            FilterValue.From("Plugin.Events.PluginOwnedEvent"));
+        GeneratorRun run = RunGenerator(
+            Manifest(
+                "filter",
+                typeof(ProjectedEvent).FullName + ", " + typeof(ProjectedEvent).Assembly.GetName().Name,
+                Fingerprint(filter),
+                filter),
+            CSharpSyntaxTree.ParseText(
+                "namespace Plugin.Events;",
+                CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)));
+
+        int diagnosticCount = run.Diagnostics.Count(item => item.Id == "FSFHOT009");
+        AssertEx.Equal(0, diagnosticCount, "projected subject event metadata should not emit diagnostic");
+        Assert.True(HotProviderSourceCount(run) > 0, "projected eventType filter should emit hot provider source");
+    }
+
+    [Fact]
+    public void AcceptsEventNameFieldOnProjectedSubject()
+    {
+        var filter = FilterExpression.Compare(
+            "eventName",
+            FilterOperator.Equal,
+            FilterValue.From("PluginOwned"));
+        GeneratorRun run = RunGenerator(
+            Manifest(
+                "filter",
+                typeof(ProjectedEvent).FullName + ", " + typeof(ProjectedEvent).Assembly.GetName().Name,
+                Fingerprint(filter),
+                filter),
+            CSharpSyntaxTree.ParseText(
+                "namespace Plugin.Events;",
+                CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)));
+
+        int diagnosticCount = run.Diagnostics.Count(item => item.Id == "FSFHOT009");
+        AssertEx.Equal(0, diagnosticCount, "projected subject eventName should not emit diagnostic");
+        Assert.True(HotProviderSourceCount(run) > 0, "projected eventName filter should emit hot provider source");
+    }
+
+    [Fact]
     public void RejectsEventMetadataFieldOnNormalSubject()
     {
         var filter = FilterExpression.Compare(

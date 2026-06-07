@@ -12,6 +12,42 @@ namespace SiftQL.Generators.Tests;
 public sealed class QueryKernelProjectionRegressionTests
 {
     [Fact]
+    public void PipelineLazyInitReflectsCurrentFilterAndProjection()
+    {
+        var kernel = new QueryKernel<ItemUsedEvent>
+        {
+            Filter = FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.Equal,
+                FilterValue.From(100L)),
+            Projection = EventProjectionExpression.Select(nameof(ItemUsedEvent.Quantity)),
+        };
+
+        EventPipelineExpression pipeline = kernel.Pipeline;
+
+        Assert.NotNull(pipeline);
+        Assert.True(pipeline.Stages.Length > 0);
+    }
+
+    [Fact]
+    public void SelectOnNonProjectedKernelDoesNotAddFieldPrefix()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.ItemId), nameof(ItemUsedEvent.Quantity));
+
+        EventProjectionExpression projection = kernel.Pipeline.Stages
+            .Last(static stage => stage.Kind == EventPipelineStageKind.Projection)
+            .Projection;
+
+        foreach (EventProjectionField field in projection.Fields)
+        {
+            Assert.False(
+                field.Path.StartsWith(ProjectedEventPaths.FieldPrefix, StringComparison.Ordinal),
+                $"Field '{field.Path}' should not have '{ProjectedEventPaths.FieldPrefix}' prefix on non-projected kernel");
+        }
+    }
+
+    [Fact]
     public void SelectorProjectionAfterProjectedFilterReadsProjectedFields()
     {
         QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
@@ -51,6 +87,42 @@ public sealed class QueryKernelProjectionRegressionTests
         EventProjectionField field = LastProjection(kernel).Fields.Single();
 
         Assert.Equal(ProjectedEventPaths.Context("tag"), field.Path);
+    }
+
+    [Fact]
+    public void ProjectedDecimalMemberAccessIsAccepted()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.Quantity))
+            .WhereProjected(static projected =>
+                projected.Field(nameof(ItemUsedEvent.Quantity)).Decimal > 0m);
+
+        FilterExpression filter = kernel.Pipeline.Stages
+            .Last(static stage => stage.Kind == EventPipelineStageKind.Filter)
+            .Filter;
+
+        Assert.Equal(ProjectedEventPaths.Field(nameof(ItemUsedEvent.Quantity)), filter.Field);
+    }
+
+    [Fact]
+    public void ProjectedBooleanMemberAccessIsAccepted()
+    {
+        var boolKernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.Quantity))
+            .WhereProjected(static projected =>
+                projected.Field(nameof(ItemUsedEvent.Quantity)).Boolean);
+
+        Assert.NotNull(boolKernel.Pipeline);
+    }
+
+    [Fact]
+    public void ChainedProjectedValueMemberAccessIsRejected()
+    {
+        Assert.Throws<KernelExpressionException>(() =>
+            QueryKernel.For<ItemUsedEvent>()
+                .Select(nameof(ItemUsedEvent.ItemId))
+                .WhereProjected(static projected =>
+                    projected.Field(nameof(ItemUsedEvent.ItemId)).String!.Length > 0));
     }
 
     [Fact]

@@ -78,6 +78,36 @@ public sealed class TieredProviderRecoveryTests
         Assert.False(afterPromotion);
     }
 
+    [Fact]
+    public async Task ParameterizedFilterProviderSuccessPathMatchesSubjects()
+    {
+        var filter = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(100L) with { ParameterKey = "p0" });
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            filter,
+            FilterCompilerOptions.Tiered with
+            {
+                TieredPromotionMinimumAge = TimeSpan.Zero,
+                TieredPromotionMinimumEvaluations = 1,
+            });
+        var matching = new ItemUsedEvent(Guid.NewGuid(), 7, 100, 1);
+        var nonMatching = new ItemUsedEvent(Guid.NewGuid(), 7, 99, 1);
+
+        using var registration = PrecompiledTieredProviderRegistry.Register(
+            new ParameterizedMatchingProvider(
+                typeof(ItemUsedEvent),
+                FilterExpressionFingerprint.Create(filter)));
+
+        Assert.True(kernel.Matches(matching));
+        await WaitForSnapshotAsync(kernel, static snapshot => snapshot.Tier == TieredKernelTier.Compiled);
+
+        Assert.True(kernel.Matches(matching));
+        Assert.False(kernel.Matches(nonMatching));
+    }
+
     private static async Task<TieredKernelSnapshot> WaitForSnapshotAsync(
         CompiledKernel kernel,
         Func<TieredKernelSnapshot, bool> predicate)
@@ -122,6 +152,50 @@ public sealed class TieredProviderRecoveryTests
             predicate = requestedType == subjectType &&
                 string.Equals(requestedFingerprint, fingerprint, StringComparison.Ordinal)
                 ? static _ => false
+                : null;
+            return predicate is not null;
+        }
+
+        public bool TryGetProjection(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            projectFields = null;
+            return false;
+        }
+    }
+
+    private sealed class ParameterizedMatchingProvider(
+        Type subjectType,
+        string fingerprint) : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(
+            Type requestedType,
+            string requestedFingerprint,
+            out Func<object, bool>? predicate)
+        {
+            _ = requestedType;
+            _ = requestedFingerprint;
+            predicate = null;
+            return false;
+        }
+
+        public bool TryGetParameterizedFilter(
+            Type requestedType,
+            string requestedFingerprint,
+            out ParameterizedHotFilterPredicate? predicate)
+        {
+            predicate = requestedType == subjectType &&
+                string.Equals(requestedFingerprint, fingerprint, StringComparison.Ordinal)
+                ? static (subject, parameters) =>
+                {
+                    int itemId = ((ItemUsedEvent)subject).ItemId;
+                    long expected = parameters[0].Integer;
+                    return itemId == expected;
+                }
                 : null;
             return predicate is not null;
         }
