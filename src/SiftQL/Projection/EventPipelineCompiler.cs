@@ -14,6 +14,7 @@ public static class EventPipelineCompiler
 {
     private const int MaxCachedPipelines = 2048;
     private static readonly ConcurrentDictionary<EventPipelineCacheKey, object> s_cache = new();
+    private static int s_cacheCount;
 
     static EventPipelineCompiler()
     {
@@ -48,12 +49,19 @@ public static class EventPipelineCompiler
             ProjectionCompilerOptionsCacheKey.From(options.ProjectionOptions));
         if (s_cache.TryGetValue(key, out object? cached))
             return (CompiledEventPipeline<TContext>)cached;
-        if (s_cache.Count >= MaxCachedPipelines)
+        if (Volatile.Read(ref s_cacheCount) >= MaxCachedPipelines)
             return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
 
-        return (CompiledEventPipeline<TContext>)s_cache.GetOrAdd(
-            key,
-            _ => CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory));
+        var compiled = CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
+        if (s_cache.TryAdd(key, compiled))
+        {
+            Interlocked.Increment(ref s_cacheCount);
+            return compiled;
+        }
+
+        return s_cache.TryGetValue(key, out object? raced)
+            ? (CompiledEventPipeline<TContext>)raced
+            : compiled;
     }
 
     public static FilterExpression SourceFilter(EventPipelineExpression? pipeline)
@@ -201,7 +209,11 @@ public static class EventPipelineCompiler
         return false;
     }
 
-    private static void ClearCache() => s_cache.Clear();
+    private static void ClearCache()
+    {
+        s_cache.Clear();
+        Volatile.Write(ref s_cacheCount, 0);
+    }
 
     private readonly record struct EventPipelineCacheKey(
         Type ContextType,

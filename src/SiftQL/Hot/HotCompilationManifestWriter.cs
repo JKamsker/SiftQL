@@ -137,15 +137,15 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
         if (Interlocked.CompareExchange(ref _writeQueued, 1, 0) != 0)
             return;
 
-        ThreadPool.UnsafeQueueUserWorkItem(static state => ((HotCompilationManifestWriter)state!).FlushQueued(), this);
+        ThreadPool.UnsafeQueueUserWorkItem(static state => _ = ((HotCompilationManifestWriter)state!).FlushQueuedAsync(), this);
     }
 
-    private void FlushQueued()
+    private async Task FlushQueuedAsync()
     {
         try
         {
             if (_options.CoalesceDelay > TimeSpan.Zero)
-                Thread.Sleep(_options.CoalesceDelay);
+                await Task.Delay(_options.CoalesceDelay).ConfigureAwait(false);
 
             if (Volatile.Read(ref _disposed) != 0)
             {

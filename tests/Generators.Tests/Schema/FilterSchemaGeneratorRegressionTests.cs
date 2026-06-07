@@ -78,6 +78,30 @@ public sealed class FilterSchemaGeneratorRegressionTests
         AssertNoCompilationErrors(run, "hidden derived property schema provider");
     }
 
+    [Fact]
+    public void NullableReferenceValueObjectDoesNotEmitUnsafeNestedFields()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.NullableReferenceValueObject",
+            Source("""
+                #nullable enable
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record PlayerLocation(long MapId);
+                public sealed record PlayerMovedEvent(
+                    Guid EventId,
+                    PlayerLocation? Location) : IFilterSubject;
+                """));
+        string source = HotSource(run, "GeneratedCurrentFilterSchemaProvider.g.cs");
+
+        AssertEx.Contains("\"Location\"", source, "nullable value object field remains discoverable");
+        AssertEx.DoesNotContain("\"Location.MapId\"", source, "nullable value object nested path is not emitted");
+        AssertNoCompilationErrors(run, "nullable reference value object schema provider");
+    }
+
     private static GeneratorRun RunGenerator(string assemblyName, params SyntaxTree[] trees)
     {
         CSharpCompilation compilation = GeneratorTestCompilation.Create(assemblyName, trees);

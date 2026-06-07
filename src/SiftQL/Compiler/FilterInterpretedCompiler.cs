@@ -142,9 +142,10 @@ internal static class FilterInterpretedCompiler
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
         EnsureScalar(field, errorFactory);
-        ValidateValues(field, expression.Values, errorFactory);
-        var typed = FilterTypedPredicates.TryCompileIn(field, expression.Values);
-        return typed ?? (subject => FilterValues.In(field.Getter(subject), expression.Values));
+        FilterValue[] values = expression.Values.ToArray();
+        ValidateValues(field, values, errorFactory);
+        var typed = FilterTypedPredicates.TryCompileIn(field, values);
+        return typed ?? (subject => FilterValues.In(field.Getter(subject), values));
     }
 
     private static Func<object, bool> CompileExists(

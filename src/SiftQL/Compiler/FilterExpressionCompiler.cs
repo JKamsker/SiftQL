@@ -149,16 +149,17 @@ internal static class FilterExpressionCompiler
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
         EnsureScalar(field, errorFactory);
-        ValidateValues(field, expression.Values, errorFactory);
+        FilterValue[] values = expression.Values.ToArray();
+        ValidateValues(field, values, errorFactory);
 
         Expression? access = BuildAccess(subject, field);
         return access is null
             ? null
-            : FilterExpressionScalarBuilder.BuildIn(access, expression.Values) ??
+            : FilterExpressionScalarBuilder.BuildIn(access, values) ??
                 Expression.Call(
                     s_in,
                     Expression.Convert(access, typeof(object)),
-                    Expression.Constant(expression.Values));
+                    Expression.Constant(values));
     }
 
     private static Expression? BuildExists(

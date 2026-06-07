@@ -1,5 +1,4 @@
 using System.Text;
-using System.Runtime.CompilerServices;
 using SiftQL;
 using SiftQL.Expressions;
 using SiftQL.Values;
@@ -8,12 +7,10 @@ namespace SiftQL.Compiler;
 
 internal static class FilterExpressionFingerprint
 {
-    private static readonly ConditionalWeakTable<FilterExpression, FilterExpressionKey> s_keys = new();
-
     public static FilterExpressionKey CreateKey(FilterExpression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
-        return s_keys.GetValue(expression, static item => FilterExpressionKey.From(item));
+        return FilterExpressionKey.From(expression);
     }
 
     public static string Create(FilterExpression expression) =>
