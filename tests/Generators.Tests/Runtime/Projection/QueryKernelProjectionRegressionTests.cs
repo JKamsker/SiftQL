@@ -48,6 +48,20 @@ public sealed class QueryKernelProjectionRegressionTests
     }
 
     [Fact]
+    public void SelectFieldArrayInProjectedDomainAddsFieldPrefix()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.ItemId), nameof(ItemUsedEvent.Quantity))
+            .WhereProjected(static projected =>
+                projected.Field(nameof(ItemUsedEvent.ItemId)).Integer == 100)
+            .Select(new EventProjectionField(nameof(ItemUsedEvent.Quantity), nameof(ItemUsedEvent.Quantity)));
+
+        EventProjectionField field = LastProjection(kernel).Fields.Single();
+
+        Assert.Equal(ProjectedEventPaths.Field(nameof(ItemUsedEvent.Quantity)), field.Path);
+    }
+
+    [Fact]
     public void SelectorProjectionAfterProjectedFilterReadsProjectedFields()
     {
         QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
@@ -107,12 +121,16 @@ public sealed class QueryKernelProjectionRegressionTests
     [Fact]
     public void ProjectedBooleanMemberAccessIsAccepted()
     {
-        var boolKernel = QueryKernel.For<ItemUsedEvent>()
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
             .Select(nameof(ItemUsedEvent.Quantity))
             .WhereProjected(static projected =>
                 projected.Field(nameof(ItemUsedEvent.Quantity)).Boolean);
 
-        Assert.NotNull(boolKernel.Pipeline);
+        FilterExpression filter = kernel.Pipeline.Stages
+            .Last(static stage => stage.Kind == EventPipelineStageKind.Filter)
+            .Filter;
+
+        Assert.Equal(ProjectedEventPaths.Field(nameof(ItemUsedEvent.Quantity)), filter.Field);
     }
 
     [Fact]

@@ -120,11 +120,10 @@ public sealed class ProjectionPayloadWriterRegressionTests
         _ = ProjectPayloadSync(
             largeProjection,
             new LargePayloadSubject(new string('x', smallCapacity + 1024)));
-        ArrayBufferWriter<byte>? afterLarge = CurrentWriterBufferOrNull();
+        ArrayBufferWriter<byte> afterLarge = CurrentWriterBuffer();
 
-        Assert.NotNull(afterLarge);
         Assert.NotSame(smallBuffer, afterLarge);
-        Assert.True(afterLarge!.Capacity > smallCapacity);
+        Assert.True(afterLarge.Capacity > smallCapacity);
     }
 
     [Fact]
