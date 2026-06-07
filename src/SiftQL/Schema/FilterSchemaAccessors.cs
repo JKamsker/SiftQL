@@ -32,6 +32,10 @@ internal static class FilterSchemaAccessors
                 ? Scalar(FilterScalarKind.Guid, guid: CompileNullable<Guid>(propertyExpression, parameter))
                 : Scalar(FilterScalarKind.Guid, requiredGuid: CompileRequired<Guid>(propertyExpression, parameter));
         if (valueType.IsEnum)
+        {
+            if (Enum.GetUnderlyingType(valueType) == typeof(ulong))
+                return null;
+
             return nullable
                 ? Scalar(FilterScalarKind.Enum, enumeration: CompileEnum(propertyExpression, parameter))
                 : Scalar(
@@ -40,6 +44,7 @@ internal static class FilterSchemaAccessors
                         propertyExpression,
                         parameter,
                         static item => Expression.Convert(item, typeof(long))));
+        }
 
         return null;
     }
@@ -50,6 +55,8 @@ internal static class FilterSchemaAccessors
         ParameterExpression parameter)
     {
         if (!propertyExpression.Type.IsArray)
+            return null;
+        if (Nullable.GetUnderlyingType(propertyExpression.Type.GetElementType()!) is not null)
             return null;
 
         if (elementType == typeof(bool))

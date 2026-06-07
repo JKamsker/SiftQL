@@ -36,7 +36,7 @@ public sealed class CompiledKernelMatcher<TSubject>
     private void Refresh(int version)
     {
         Func<TSubject, bool> matches;
-        bool trackVersion = true;
+        bool trackVersion = _kernel.IsTiered;
         if (_kernel.IsAlwaysTrue)
         {
             matches = static _ => true;

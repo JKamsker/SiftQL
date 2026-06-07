@@ -37,16 +37,40 @@ public static class FilterIndexExtractor
 
         if (expression.Kind == FilterExpressionKind.And)
         {
+            FilterIndexKey? best = null;
+            int bestScore = int.MaxValue;
             for (int i = 0; i < expression.Children.Length; i++)
             {
                 FilterIndexKey? key = FindExactScalar(schema, expression.Children[i], errorFactory);
-                if (key is not null)
-                    return key;
+                if (key is null)
+                    continue;
+
+                int score = SelectivityScore(key.Field);
+                if (score < bestScore)
+                {
+                    best = key;
+                    bestScore = score;
+                }
             }
+
+            return best;
         }
 
         return null;
     }
+
+    private static int SelectivityScore(string field) =>
+        field switch
+        {
+            "subjectType" or "subjectName" => 100,
+            _ when field.EndsWith("Id", StringComparison.Ordinal) ||
+                field.EndsWith(".Id", StringComparison.Ordinal) => 0,
+            _ when field.Contains("Character", StringComparison.Ordinal) ||
+                field.Contains("Session", StringComparison.Ordinal) ||
+                field.Contains("Item", StringComparison.Ordinal) ||
+                field.Contains("Skill", StringComparison.Ordinal) => 5,
+            _ => 50,
+        };
 
     private static FilterIndexKey? BuildCompareKey(
         FilterSchema schema,
@@ -74,6 +98,8 @@ public static class FilterIndexExtractor
     {
         key = default;
         Type type = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        if (type == typeof(decimal) || value.Kind == FilterValueKind.Decimal)
+            return false;
 
         if (type.IsEnum)
             return TryCreateEnumValue(type, value, out key);
@@ -86,10 +112,22 @@ public static class FilterIndexExtractor
             return true;
         }
 
-        if (type == typeof(ulong) && value.Kind == FilterValueKind.UnsignedInteger)
+        if (value.Kind == FilterValueKind.UnsignedInteger &&
+            (FilterNumeric.IsUnsignedIntegral(type) || FilterNumeric.IsSignedIntegral(type)))
         {
-            key = FilterIndexValue.ForUnsignedInteger(value.UnsignedInteger);
-            return true;
+            if (value.UnsignedInteger <= long.MaxValue)
+            {
+                key = FilterIndexValue.ForInteger((long)value.UnsignedInteger);
+                return true;
+            }
+
+            if (type == typeof(ulong))
+            {
+                key = FilterIndexValue.ForUnsignedInteger(value.UnsignedInteger);
+                return true;
+            }
+
+            return false;
         }
 
         if (IsFloating(type) && value.Kind == FilterValueKind.Integer)
@@ -130,6 +168,9 @@ public static class FilterIndexExtractor
         key = default;
         if (value.Kind == FilterValueKind.Integer)
         {
+            if (Enum.GetUnderlyingType(enumType) == typeof(ulong) && value.Integer < 0)
+                return false;
+
             key = FilterIndexValue.ForEnum(value.Integer);
             return true;
         }
@@ -141,8 +182,25 @@ public static class FilterIndexExtractor
             return false;
         }
 
-        key = FilterIndexValue.ForEnum(Convert.ToInt64(parsed));
+        if (!TryConvertEnumToInt64(parsed, out long enumValue))
+            return false;
+
+        key = FilterIndexValue.ForEnum(enumValue);
         return true;
+    }
+
+    private static bool TryConvertEnumToInt64(object value, out long result)
+    {
+        try
+        {
+            result = Convert.ToInt64(value);
+            return true;
+        }
+        catch (OverflowException)
+        {
+            result = 0;
+            return false;
+        }
     }
 
     private static bool IsFloating(Type type) =>

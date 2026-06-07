@@ -124,7 +124,8 @@ public sealed class FilterSchema
             if (s_valueObjects.Contains(scalarType))
             {
                 fields.Add(BuildField(name, scalarType, FilterFieldKind.Object, propertyExpression, parameter));
-                AddProperties(fields, name, scalarType, propertyExpression, parameter, depth + 1);
+                if (Nullable.GetUnderlyingType(propertyType) is null)
+                    AddProperties(fields, name, scalarType, propertyExpression, parameter, depth + 1);
             }
         }
     }

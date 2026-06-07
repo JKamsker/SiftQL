@@ -19,4 +19,17 @@ public static class GeneratedFilterSchemaRegistry
         ArgumentNullException.ThrowIfNull(provider);
         FilterSchema.RegisterGeneratedProvider(assembly, provider);
     }
+
+    public static long? EnumToInt64OrNull<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+    {
+        if (Enum.GetUnderlyingType(typeof(TEnum)) == typeof(ulong))
+            return null;
+
+        return Convert.ToInt64(value);
+    }
+
+    public static long? NullableEnumToInt64OrNull<TEnum>(TEnum? value)
+        where TEnum : struct, Enum =>
+        value.HasValue ? EnumToInt64OrNull(value.GetValueOrDefault()) : null;
 }

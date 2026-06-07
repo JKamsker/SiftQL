@@ -10,23 +10,37 @@ public sealed class GeneratorHarnessFact
     public void RunFilterSchemaHarness()
     {
         FilterSchemaSourceGeneratorTests.RunAll();
+        FilterSchemaGeneratorRegressionTests.RunAll();
+        FilterSchemaFallbackRegressionTests.RunAll();
         FilterSchemaParitySourceGeneratorTests.RunAll();
+        FilterCompilerCacheRegressionTests.RunAll();
+        FilterRuntimeRegressionTests.RunAll();
         HotManifestLiteralValidationTests.RunAll();
         HotProviderNullStringLiteralTests.RunAll();
         HotManifestProjectionValidationTests.RunAll();
         HotManifestPathStabilityTests.RunAll();
+        HotManifestIdentityRegressionTests.RunAll();
         HotManifestShapeValidationTests.RunAll();
         HotProviderFingerprintValidationTests.RunAll();
+        HotProviderDuplicateFingerprintTests.RunAll();
         HotProviderLoaderLifecycleTests.RunAll();
+        HotProviderLoaderManifestIsolationTests.RunAll();
+        HotProviderRegistrationGateTests.RunAll();
         HotProviderSourceGeneratorTests.RunAll();
         HotProviderSemanticValidationTests.RunAll();
         HotProviderValidationTests.RunAll();
+        HotProviderValueCompatibilityTests.RunAll();
         KernelCatalogSourceGeneratorTests.RunAll();
         KeywordFilterSchemaSourceGeneratorTests.RunAll();
         ParameterizedHotProviderSourceGeneratorTests.RunAll();
         ProjectionCompilerRuntimeTests.RunAll();
+        ProjectionDecimalRegressionTests.RunAll();
+        ProjectionPayloadWriterRegressionTests.RunAll();
         ProjectedHotProviderSourceGeneratorTests.RunAll();
+        RuntimeHotProviderBatchSinkTests.RunAll();
         ServerPluginHostExampleTests.RunAll();
+        TieredProjectionRegressionTests.RunAll();
+        TieredProviderRecoveryTests.RunAll();
     }
 
     [Fact]

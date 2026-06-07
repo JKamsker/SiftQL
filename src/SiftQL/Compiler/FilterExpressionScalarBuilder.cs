@@ -28,7 +28,9 @@ internal static class FilterExpressionScalarBuilder
         if (type == typeof(string))
             return BuildStringCompare(actual, value, op);
         if (type.IsEnum)
-            return value.Kind == FilterValueKind.Integer ? BuildEnumCompare(actual, value.Integer, op) : null;
+            return value.Kind == FilterValueKind.Integer && Enum.GetUnderlyingType(type) != typeof(ulong)
+                ? BuildEnumCompare(actual, value.Integer, op)
+                : null;
         if (type == typeof(bool))
             return BuildValueCompare(actual, Expression.Constant(value.Boolean), op);
         if (type == typeof(Guid))
@@ -96,13 +98,23 @@ internal static class FilterExpressionScalarBuilder
                     Expression.Constant(expectedDecimal),
                     op,
                     static item => Expression.Convert(item, typeof(decimal)))
-                : BuildInvalidNumberCompare(op);
+                : BuildOutOfExactRangeNumberCompare(actual, value.Number, op);
+        }
+
+        if (value.Kind == FilterValueKind.Decimal && FilterNumeric.IsExactNumeric(type))
+        {
+            return BuildValueCompare(
+                actual,
+                Expression.Constant(value.Decimal),
+                op,
+                static item => Expression.Convert(item, typeof(decimal)));
         }
 
         double expected = value.Kind switch
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
+            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return BuildValueCompare(
@@ -193,6 +205,24 @@ internal static class FilterExpressionScalarBuilder
 
     private static Expression BuildInvalidNumberCompare(FilterOperator op) =>
         Expression.Constant(op == FilterOperator.NotEqual);
+
+    private static Expression BuildOutOfExactRangeNumberCompare(
+        Expression actual,
+        double expected,
+        FilterOperator op)
+    {
+        if (op is FilterOperator.Equal or FilterOperator.NotEqual ||
+            double.IsNaN(expected))
+        {
+            return BuildInvalidNumberCompare(op);
+        }
+
+        return BuildValueCompare(
+            actual,
+            Expression.Constant(expected),
+            op,
+            static item => Expression.Convert(item, typeof(double)));
+    }
 
     private static Expression BuildNegativeIntegerUnsignedCompare(
         Expression actual,

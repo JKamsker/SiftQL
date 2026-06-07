@@ -11,6 +11,7 @@ public enum FilterValueKind
     String = 4,
     Guid = 5,
     UnsignedInteger = 6,
+    Decimal = 7,
 }
 
 public sealed record FilterValue
@@ -21,6 +22,7 @@ public sealed record FilterValue
     public long Integer { get; init; }
     public ulong UnsignedInteger { get; init; }
     public double Number { get; init; }
+    public decimal Decimal { get; init; }
     public string? String { get; init; }
     public Guid Guid { get; init; }
 
@@ -39,6 +41,11 @@ public sealed record FilterValue
 
     public static FilterValue From(double value) =>
         new() { Kind = FilterValueKind.Number, Number = value };
+
+    public static FilterValue From(decimal value) =>
+        IsIntegralInt64(value)
+            ? From((long)value)
+            : new() { Kind = FilterValueKind.Decimal, Decimal = value };
 
     public static FilterValue From(string value) =>
         new() { Kind = FilterValueKind.String, String = value };
@@ -72,8 +79,7 @@ public sealed record FilterValue
             ulong item => From(item),
             float item => From(item),
             double item => From(item),
-            decimal item when IsIntegralInt64(item) => From((long)item),
-            decimal item => From((double)item),
+            decimal item => From(item),
             string item => From(item),
             Guid item => From(item),
             _ => throw new KernelExpressionException(

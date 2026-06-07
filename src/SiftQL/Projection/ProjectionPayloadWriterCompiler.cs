@@ -224,7 +224,7 @@ internal static class ProjectionPayloadWriterCompiler
             return;
         }
 
-        ProjectedPayloadWriter.WriteNumberField(ref writer, name, (double)value, options);
+        ProjectedPayloadWriter.WriteDecimalField(ref writer, name, value, options);
     }
 
     private static bool IsSignedInteger(Type type) =>

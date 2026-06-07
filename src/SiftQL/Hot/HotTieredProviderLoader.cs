@@ -49,7 +49,9 @@ public static class HotTieredProviderLoader
             try
             {
                 assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
+                using var registrationScope = HotProviderRegistrationContext.AllowManifest(manifestHash);
                 RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+                registrationScope.Commit();
             }
             catch
             {
@@ -107,11 +109,11 @@ public static class HotTieredProviderLoader
     {
         if (!metadata.TryGetValue(HashKey, out string? dllHash))
             return Result(HotTieredProviderLoadStatus.InvalidAssembly, "Hot provider DLL has no manifest hash.");
-        if (!string.Equals(dllHash, manifestHash, StringComparison.OrdinalIgnoreCase))
+        if (!MetadataContains(dllHash, manifestHash, StringComparison.OrdinalIgnoreCase))
             return Result(HotTieredProviderLoadStatus.ManifestHashMismatch, "Hot provider manifest hash is stale.");
-        if (!MetadataEquals(metadata, SchemaKey, Schema) ||
-            !MetadataEquals(metadata, EngineKey, Engine) ||
-            !MetadataEquals(metadata, GeneratorKey, Generator))
+        if (!MetadataContains(metadata, SchemaKey, Schema, StringComparison.Ordinal) ||
+            !MetadataContains(metadata, EngineKey, Engine, StringComparison.Ordinal) ||
+            !MetadataContains(metadata, GeneratorKey, Generator, StringComparison.Ordinal))
         {
             return Result(HotTieredProviderLoadStatus.VersionMismatch, "Hot provider DLL version metadata is stale.");
         }
@@ -119,12 +121,27 @@ public static class HotTieredProviderLoader
         return null;
     }
 
-    private static bool MetadataEquals(
+    private static bool MetadataContains(
         IReadOnlyDictionary<string, string> metadata,
         string key,
-        string expected) =>
+        string expected,
+        StringComparison comparison) =>
         metadata.TryGetValue(key, out string? value) &&
-        string.Equals(value, expected, StringComparison.Ordinal);
+        MetadataContains(value, expected, comparison);
+
+    private static bool MetadataContains(
+        string values,
+        string expected,
+        StringComparison comparison)
+    {
+        foreach (string value in values.Split('\n'))
+        {
+            if (string.Equals(value, expected, comparison))
+                return true;
+        }
+
+        return false;
+    }
 
     private static HotTieredProviderLoadResult VersionMismatch(
         string name,

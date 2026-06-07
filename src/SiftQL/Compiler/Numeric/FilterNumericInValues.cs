@@ -66,6 +66,7 @@ internal static class FilterNumericInValues
             FilterValueKind.Integer => Set(value.Integer, out number),
             FilterValueKind.UnsignedInteger => Set(value.UnsignedInteger, out number),
             FilterValueKind.Number => TryDoubleDecimal(value.Number, out number),
+            FilterValueKind.Decimal => Set(value.Decimal, out number),
             _ => false,
         };
     }

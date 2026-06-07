@@ -21,7 +21,10 @@ internal static class FilterExpressionInBuilder
         if (type == typeof(string))
             return BuildStringIn(actual, values);
         if (type.IsEnum)
-            return values.Any(static value => value.Kind == FilterValueKind.String) ? null : BuildEnumIn(actual, values);
+            return values.Any(static value => value.Kind == FilterValueKind.String) ||
+                Enum.GetUnderlyingType(type) == typeof(ulong)
+                ? null
+                : BuildEnumIn(actual, values);
         if (type == typeof(bool))
             return BuildBooleanIn(actual, values);
         if (type == typeof(Guid))
@@ -91,6 +94,7 @@ internal static class FilterExpressionInBuilder
             {
                 FilterValueKind.Integer => value.Integer,
                 FilterValueKind.UnsignedInteger => value.UnsignedInteger,
+                FilterValueKind.Decimal => (double)value.Decimal,
                 _ => value.Number,
             })
             .Where(static value => !double.IsNaN(value))

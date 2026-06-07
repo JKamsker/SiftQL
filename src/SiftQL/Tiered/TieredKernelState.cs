@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SiftQL.Hot;
 using SiftQL.Kernel;
 
 namespace SiftQL.Tiered;
@@ -9,6 +10,7 @@ internal sealed class TieredKernelState
     private const int Queued = 1;
     private const int Compiled = 2;
     private const int Failed = 3;
+    private static readonly TimeSpan s_failedRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly Func<KernelPredicate?> _compilePromoted;
     private readonly TieredFilterPromotionPolicy _promotionPolicy;
@@ -19,6 +21,8 @@ internal sealed class TieredKernelState
     private long _evaluations;
     private long _matches;
     private int _compilationStatus;
+    private int _failedProviderVersion;
+    private long _failedTimestamp;
 
     public TieredKernelState(
         Func<object, bool> interpreted,
@@ -39,7 +43,9 @@ internal sealed class TieredKernelState
     public bool Matches(object subject)
     {
         int status = Volatile.Read(ref _compilationStatus);
-        if (status is Compiled or Failed)
+        if (status == Compiled)
+            return _interpreted(subject);
+        if (status == Failed && !TryResetFailedPromotion())
             return _interpreted(subject);
 
         bool matches = _interpreted(subject);
@@ -76,7 +82,7 @@ internal sealed class TieredKernelState
             KernelPredicate? compiled = _compilePromoted();
             if (compiled is null)
             {
-                Volatile.Write(ref _compilationStatus, Failed);
+                MarkFailed();
                 return;
             }
 
@@ -85,8 +91,26 @@ internal sealed class TieredKernelState
         }
         catch
         {
-            Volatile.Write(ref _compilationStatus, Failed);
+            MarkFailed();
         }
+    }
+
+    private void MarkFailed()
+    {
+        Volatile.Write(ref _failedProviderVersion, PrecompiledTieredProviderRegistry.GlobalVersion);
+        Volatile.Write(ref _failedTimestamp, Stopwatch.GetTimestamp());
+        Volatile.Write(ref _compilationStatus, Failed);
+    }
+
+    private bool TryResetFailedPromotion()
+    {
+        if (PrecompiledTieredProviderRegistry.GlobalVersion == Volatile.Read(ref _failedProviderVersion) &&
+            Stopwatch.GetElapsedTime(Volatile.Read(ref _failedTimestamp)) < s_failedRetryDelay)
+        {
+            return false;
+        }
+
+        return Interlocked.CompareExchange(ref _compilationStatus, NotQueued, Failed) == Failed;
     }
 
     public TieredKernelSnapshot Snapshot =>

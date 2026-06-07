@@ -31,14 +31,16 @@ internal static class HotProviderSourceGeneratorTests
 
     private static void GeneratorEmitsAndRegistersHotProvider()
     {
+        const string assemblyName = "Plugin.Hot.Loaded";
         var filter = FilterExpression.Compare(
             "CharacterId",
             FilterOperator.Equal,
             FilterValue.From(7L));
         var projection = EventProjectionExpression.Select("CharacterId");
+        string manifestJson = HotManifestJson(assemblyName, filter, projection);
         GeneratorRun run = RunGenerator(
-            "Plugin.Hot.Loaded",
-            HotManifest("Plugin.Hot.Loaded", filter, projection),
+            assemblyName,
+            new InMemoryAdditionalText("filters.siftql-hot.json", manifestJson),
             HotProviderPluginEventSource.Tree());
 
         AssertEx.Equal(0, run.Diagnostics.Length, "generator driver diagnostics");
@@ -48,14 +50,16 @@ internal static class HotProviderSourceGeneratorTests
             .ToString();
         AssertEx.Contains("IPrecompiledTieredProvider", source, "hot provider contract emitted");
         AssertEx.Contains("[ModuleInitializer]", source, "hot provider auto-registration emitted");
+        AssertEx.Contains("switch (fingerprint)", source, "hot provider lookup uses hashed string dispatch");
         AssertNoCompilationErrors(run, "hot provider");
 
-        using var pe = new MemoryStream();
-        EmitResult emit = run.OutputCompilation.Emit(pe);
-        AssertEx.True(emit.Success, "hot provider assembly emitted: " + string.Join(" | ", emit.Diagnostics));
-
         using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        Assembly assembly = Assembly.Load(pe.ToArray());
+        using LoadedHotProvider loaded = HotProviderTestLoader.Load(
+            run.OutputCompilation,
+            assemblyName,
+            manifestJson,
+            "hot provider assembly");
+        Assembly assembly = loaded.Assembly;
         Type eventType = assembly.GetType("Plugin.Events.PluginOwnedEvent", throwOnError: true)!;
         object matching = Event(eventType, characterId: 7);
         object nonmatching = Event(eventType, characterId: 8);
@@ -121,7 +125,7 @@ internal static class HotProviderSourceGeneratorTests
         File.WriteAllText(manifestPath, manifestJson);
 
         using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        HotTieredProviderLoadResult result = HotTieredProviderLoader.TryLoad(new()
+        using HotTieredProviderLoadResult result = HotTieredProviderLoader.TryLoad(new()
         {
             AssemblyPath = assemblyPath,
             ManifestPath = manifestPath,
@@ -135,7 +139,7 @@ internal static class HotProviderSourceGeneratorTests
         AssertEx.True(kernel.Matches(Event(eventType, characterId: 9)), "startup-loaded provider matched");
 
         File.WriteAllText(manifestPath, manifestJson.Replace("10.0.0", "10.0.1"));
-        HotTieredProviderLoadResult stale = HotTieredProviderLoader.TryLoad(new()
+        using HotTieredProviderLoadResult stale = HotTieredProviderLoader.TryLoad(new()
         {
             AssemblyPath = assemblyPath,
             ManifestPath = manifestPath,

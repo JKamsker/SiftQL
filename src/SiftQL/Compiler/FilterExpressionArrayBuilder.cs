@@ -47,7 +47,8 @@ internal static class FilterExpressionArrayBuilder
                 out expected),
             FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
-                FilterValueKind.Number => NumberContainsMethod(elementType, value, out expected),
+                FilterValueKind.Number or
+                FilterValueKind.Decimal => NumberContainsMethod(elementType, value, out expected),
             _ => null,
         };
         if (name is null)
@@ -73,6 +74,7 @@ internal static class FilterExpressionArrayBuilder
         {
             FilterValueKind.Integer => (double)value.Integer,
             FilterValueKind.UnsignedInteger => (double)value.UnsignedInteger,
+            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return type == typeof(float) ? nameof(FilterArrayContains.ContainsSingle) :

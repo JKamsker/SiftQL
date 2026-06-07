@@ -18,8 +18,11 @@ internal static class TieredFilterKernelFactory
         Func<string, Exception>? errorFactory)
     {
         Func<object, bool> interpreted = FilterInterpretedCompiler.Compile(schema, expression, errorFactory);
+        string fingerprint = FilterExpressionFingerprint.Create(expression);
         Func<KernelPredicate?> compilePromoted = () =>
-            FilterExpressionCompiler.TryCompilePredicate(schema, expression, errorFactory);
+            PrecompiledTieredProviderRegistry.TryGetFilter(schema.SubjectType, fingerprint, out var hot)
+                ? KernelPredicate.FromObject(hot!)
+                : FilterExpressionCompiler.TryCompilePredicate(schema, expression, errorFactory);
         Action<TieredKernelSnapshot>? recordHot = hotManifestSink is null
             ? null
             : snapshot => hotManifestSink.RecordHotFilter(

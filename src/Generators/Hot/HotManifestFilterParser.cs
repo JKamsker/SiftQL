@@ -122,48 +122,6 @@ internal static partial class HotManifestParser
         return new(builder.ToImmutable());
     }
 
-    private static HotFilterValue? ParseValue(
-        JsonElement element,
-        string path,
-        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics)
-    {
-        if (!TryReadEnum(element, "Kind", out HotFilterValueKind kind))
-        {
-            Add(diagnostics, "FSFHOT009", path, "Hot filter value kind is missing or invalid.");
-            return null;
-        }
-
-        string guid = ReadNullableString(element, "Guid") ?? "00000000-0000-0000-0000-000000000000";
-        if (kind == HotFilterValueKind.Guid)
-        {
-            if (!Guid.TryParse(guid, out Guid parsed))
-            {
-                Add(diagnostics, "FSFHOT009", path, "Hot filter GUID value is missing or invalid.");
-                return null;
-            }
-
-            guid = parsed.ToString("D");
-        }
-
-        double number = ReadDouble(element, "Number");
-        if (kind == HotFilterValueKind.Number &&
-            (double.IsNaN(number) || double.IsInfinity(number)))
-        {
-            Add(diagnostics, "FSFHOT009", path, "Hot filter numeric value must be finite.");
-            return null;
-        }
-
-        return new(
-            kind,
-            ReadNullableString(element, "ParameterKey"),
-            ReadBoolean(element, "Boolean"),
-            ReadLong(element, "Integer"),
-            ReadUInt64(element, "UnsignedInteger"),
-            number,
-            ReadNullableString(element, "String"),
-            guid);
-    }
-
     private static bool TryReadEnum<TEnum>(
         JsonElement element,
         string name,

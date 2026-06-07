@@ -24,7 +24,8 @@ public static class FilterValues
         if (IsProjectedDynamic(field.ValueType) &&
             value.Kind is (FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
-                FilterValueKind.Number))
+                FilterValueKind.Number or
+                FilterValueKind.Decimal))
         {
             return;
         }
@@ -53,7 +54,8 @@ public static class FilterValues
             type == typeof(bool) && value.Kind == FilterValueKind.Boolean ||
             FilterNumeric.IsNumeric(type) && value.Kind is (FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
-                FilterValueKind.Number) ||
+                FilterValueKind.Number or
+                FilterValueKind.Decimal) ||
             type == typeof(string) && value.Kind == FilterValueKind.String ||
             type == typeof(Guid) && value.Kind == FilterValueKind.Guid;
 
@@ -88,17 +90,20 @@ public static class FilterValues
     {
         if (actual is not IEnumerable enumerable || actual is string)
             return false;
+        if (actual is ICollection collection && collection.Count > MaxRuntimeArrayItems)
+            return false;
 
         int seen = 0;
+        bool found = false;
         foreach (object? item in enumerable)
         {
             if (++seen > MaxRuntimeArrayItems)
                 return false;
             if (AreEqual(item, expected))
-                return true;
+                found = true;
         }
 
-        return false;
+        return found;
     }
 
     private static bool AreEqual(object? actual, FilterValue expected)
@@ -124,6 +129,7 @@ public static class FilterValues
             FilterValueKind.UnsignedInteger =>
                 FilterNumericComparison.AreUnsignedIntegerEqual(actual, expected.UnsignedInteger),
             FilterValueKind.Number => FilterNumericComparison.AreNumberEqual(actual, expected.Number),
+            FilterValueKind.Decimal => FilterNumericComparison.AreDecimalEqual(actual, expected.Decimal),
             FilterValueKind.String => actual is string item &&
                 string.Equals(item, expected.String, StringComparison.Ordinal),
             FilterValueKind.Guid => actual is Guid item && item == expected.Guid,
@@ -155,6 +161,12 @@ public static class FilterValues
             return true;
         }
 
+        if (expected.Kind == FilterValueKind.Decimal &&
+            FilterNumericComparison.TryCompareDecimal(actual, expected.Decimal, out comparison))
+        {
+            return true;
+        }
+
         if (!FilterNumericComparison.TryNumber(actual, out double actualNumber))
             return false;
         if (double.IsNaN(actualNumber))
@@ -164,6 +176,7 @@ public static class FilterValues
         {
             FilterValueKind.Integer => expected.Integer,
             FilterValueKind.UnsignedInteger => expected.UnsignedInteger,
+            FilterValueKind.Decimal => (double)expected.Decimal,
             _ => expected.Number,
         };
         if (double.IsNaN(expectedNumber))

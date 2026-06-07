@@ -73,18 +73,15 @@ internal static class SchemaFieldDiscovery
             fieldKind,
             scalarKind,
             IsNullable(propertyType),
+            EmitsScalarAccessor(valueType, scalarKind),
             ArrayContainsMethod(propertyType, scalarKind));
 
     private static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
     {
-        var hierarchy = new Stack<INamedTypeSymbol>();
-        for (INamedTypeSymbol? current = owner; current is not null; current = current.BaseType)
-            hierarchy.Push(current);
-
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        while (hierarchy.Count > 0)
+        for (INamedTypeSymbol? current = owner; current is not null; current = current.BaseType)
         {
-            foreach (IPropertySymbol property in hierarchy.Pop().GetMembers().OfType<IPropertySymbol>())
+            foreach (IPropertySymbol property in current.GetMembers().OfType<IPropertySymbol>())
             {
                 if (seen.Add(property.Name))
                     yield return property;
@@ -142,6 +139,11 @@ internal static class SchemaFieldDiscovery
         };
         return kind != default || type.SpecialType == SpecialType.System_Boolean;
     }
+
+    private static bool EmitsScalarAccessor(ITypeSymbol valueType, GeneratedScalarKind scalarKind) =>
+        scalarKind != GeneratedScalarKind.Enum ||
+        valueType is not INamedTypeSymbol enumType ||
+        enumType.EnumUnderlyingType?.SpecialType != SpecialType.System_UInt64;
 
     private static bool IsValueObject(ITypeSymbol type) =>
         type is INamedTypeSymbol { IsRecord: true, TypeKind: TypeKind.Class or TypeKind.Struct };

@@ -19,12 +19,14 @@ internal static class FilterRuntimeStubSource
                 Array,
                 Object,
                 UnsignedInteger,
+                Decimal,
             }
 
             public sealed record ProjectedEventValue
             {
                 public ProjectedEventValueKind Kind { get; init; }
                 public ulong UnsignedInteger { get; init; }
+                public decimal Decimal { get; init; }
                 public string? String { get; init; }
             }
 
@@ -107,6 +109,10 @@ internal static class FilterRuntimeStubSource
             {
                 public static FilterSchema Create(Type subjectType, IReadOnlyList<FilterField> fields) => new(subjectType, fields);
                 public static void Register(System.Reflection.Assembly assembly, GeneratedFilterSchemaProviderDelegate provider) {}
+                public static long? EnumToInt64OrNull<TEnum>(TEnum value)
+                    where TEnum : struct, Enum => 0;
+                public static long? NullableEnumToInt64OrNull<TEnum>(TEnum? value)
+                    where TEnum : struct, Enum => value.HasValue ? 0 : null;
             }
 
             internal static class FilterArrayContains

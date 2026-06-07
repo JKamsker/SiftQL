@@ -9,7 +9,7 @@ internal static class ProjectedPayloadWriter
 {
     private const int ProjectedEventPropertyCount = 4;
     private const int ProjectedEventFieldPropertyCount = 2;
-    private const int ProjectedEventValuePropertyCount = 9;
+    private const int ProjectedEventValuePropertyCount = 10;
 
     public static ReadOnlyMemory<byte> Write<TContext>(
         string eventType,
@@ -28,6 +28,28 @@ internal static class ProjectedPayloadWriter
         writer.Write(eventName);
         writer.Write(nameof(ProjectedEvent.Fields));
         WriteFields(ref writer, fields, subject, options);
+        writer.Write(nameof(ProjectedEvent.Context));
+        WriteContext(ref writer, context, options);
+        writer.Flush();
+        return buffer.WrittenMemory;
+    }
+
+    public static ReadOnlyMemory<byte> Write(
+        string eventType,
+        string eventName,
+        IReadOnlyList<ProjectedEventField> fields,
+        IReadOnlyList<ProjectedEventField>? context,
+        MessagePackSerializerOptions options)
+    {
+        var buffer = new ArrayBufferWriter<byte>(EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0));
+        var writer = new MessagePackWriter(buffer);
+        writer.WriteMapHeader(ProjectedEventPropertyCount);
+        writer.Write(nameof(ProjectedEvent.EventType));
+        writer.Write(eventType);
+        writer.Write(nameof(ProjectedEvent.EventName));
+        writer.Write(eventName);
+        writer.Write(nameof(ProjectedEvent.Fields));
+        WriteFields(ref writer, fields, options);
         writer.Write(nameof(ProjectedEvent.Context));
         WriteContext(ref writer, context, options);
         writer.Flush();
@@ -67,6 +89,16 @@ internal static class ProjectedPayloadWriter
             WriteField(ref writer, context[i].Name, context[i].Value, options);
     }
 
+    private static void WriteFields(
+        ref MessagePackWriter writer,
+        IReadOnlyList<ProjectedEventField> fields,
+        MessagePackSerializerOptions options)
+    {
+        writer.WriteArrayHeader(fields.Count);
+        for (int i = 0; i < fields.Count; i++)
+            WriteField(ref writer, fields[i].Name, fields[i].Value, options);
+    }
+
     private static void WriteField(
         ref MessagePackWriter writer,
         string name,
@@ -83,132 +115,82 @@ internal static class ProjectedPayloadWriter
     internal static void WriteNullField(
         ref MessagePackWriter writer,
         string name,
-        MessagePackSerializerOptions options)
-    {
-        WriteFieldHeader(ref writer, name);
-        WriteScalarValue(
-            ref writer,
-            ProjectedEventValueKind.Null,
-            boolean: false,
-            integer: 0,
-            unsignedInteger: 0,
-            number: 0,
-            text: null,
-            guid: Guid.Empty,
-            options);
-    }
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.Null, options);
 
     internal static void WriteBooleanField(
         ref MessagePackWriter writer,
         string name,
         bool value,
-        MessagePackSerializerOptions options)
-    {
-        WriteFieldHeader(ref writer, name);
-        WriteScalarValue(
-            ref writer,
-            ProjectedEventValueKind.Boolean,
-            value,
-            integer: 0,
-            unsignedInteger: 0,
-            number: 0,
-            text: null,
-            guid: Guid.Empty,
-            options);
-    }
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.Boolean, options, boolean: value);
 
     internal static void WriteIntegerField(
         ref MessagePackWriter writer,
         string name,
         long value,
-        MessagePackSerializerOptions options)
-    {
-        WriteFieldHeader(ref writer, name);
-        WriteScalarValue(
-            ref writer,
-            ProjectedEventValueKind.Integer,
-            boolean: false,
-            value,
-            unsignedInteger: 0,
-            number: 0,
-            text: null,
-            guid: Guid.Empty,
-            options);
-    }
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.Integer, options, integer: value);
 
     internal static void WriteUnsignedIntegerField(
         ref MessagePackWriter writer,
         string name,
         ulong value,
-        MessagePackSerializerOptions options)
-    {
-        WriteFieldHeader(ref writer, name);
-        WriteScalarValue(
-            ref writer,
-            ProjectedEventValueKind.UnsignedInteger,
-            boolean: false,
-            integer: 0,
-            value,
-            number: 0,
-            text: null,
-            guid: Guid.Empty,
-            options);
-    }
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.UnsignedInteger, options, unsignedInteger: value);
 
     internal static void WriteNumberField(
         ref MessagePackWriter writer,
         string name,
         double value,
-        MessagePackSerializerOptions options)
-    {
-        WriteFieldHeader(ref writer, name);
-        WriteScalarValue(
-            ref writer,
-            ProjectedEventValueKind.Number,
-            boolean: false,
-            integer: 0,
-            unsignedInteger: 0,
-            value,
-            text: null,
-            guid: Guid.Empty,
-            options);
-    }
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.Number, options, number: value);
+
+    internal static void WriteDecimalField(
+        ref MessagePackWriter writer,
+        string name,
+        decimal value,
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.Decimal, options, exactDecimal: value);
 
     internal static void WriteStringField(
         ref MessagePackWriter writer,
         string name,
         string value,
-        MessagePackSerializerOptions options)
-    {
-        WriteFieldHeader(ref writer, name);
-        WriteScalarValue(
-            ref writer,
-            ProjectedEventValueKind.String,
-            boolean: false,
-            integer: 0,
-            unsignedInteger: 0,
-            number: 0,
-            value,
-            guid: Guid.Empty,
-            options);
-    }
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.String, options, text: value);
 
     internal static void WriteGuidField(
         ref MessagePackWriter writer,
         string name,
         Guid value,
-        MessagePackSerializerOptions options)
+        MessagePackSerializerOptions options) =>
+        WriteScalarField(ref writer, name, ProjectedEventValueKind.Guid, options, guid: value);
+
+    private static void WriteScalarField(
+        ref MessagePackWriter writer,
+        string name,
+        ProjectedEventValueKind kind,
+        MessagePackSerializerOptions options,
+        bool boolean = false,
+        long integer = 0,
+        ulong unsignedInteger = 0,
+        double number = 0,
+        decimal exactDecimal = 0,
+        string? text = null,
+        Guid guid = default)
     {
         WriteFieldHeader(ref writer, name);
         WriteScalarValue(
             ref writer,
-            ProjectedEventValueKind.Guid,
-            boolean: false,
-            integer: 0,
-            unsignedInteger: 0,
-            number: 0,
-            text: null,
-            value,
+            kind,
+            boolean,
+            integer,
+            unsignedInteger,
+            number,
+            exactDecimal,
+            text,
+            guid,
             options);
     }
 
@@ -227,6 +209,7 @@ internal static class ProjectedPayloadWriter
         long integer,
         ulong unsignedInteger,
         double number,
+        decimal exactDecimal,
         string? text,
         Guid guid,
         MessagePackSerializerOptions options)
@@ -242,6 +225,8 @@ internal static class ProjectedPayloadWriter
         writer.Write(unsignedInteger);
         writer.Write(nameof(ProjectedEventValue.Number));
         writer.Write(number);
+        writer.Write(nameof(ProjectedEventValue.Decimal));
+        MessagePackSerializer.Serialize(ref writer, exactDecimal, options);
         writer.Write(nameof(ProjectedEventValue.String));
         if (text is null)
             writer.WriteNil();

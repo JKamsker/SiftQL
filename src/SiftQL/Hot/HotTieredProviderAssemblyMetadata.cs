@@ -26,8 +26,12 @@ internal static class HotTieredProviderAssemblyMetadata
 
             string? key = blob.ReadSerializedString();
             string? value = blob.ReadSerializedString();
-            if (!string.IsNullOrWhiteSpace(key) && value is not null)
-                values[key] = value;
+            if (string.IsNullOrWhiteSpace(key) || value is null)
+                continue;
+
+            values[key] = values.TryGetValue(key, out string? existing)
+                ? string.Concat(existing, "\n", value)
+                : value;
         }
 
         return values;

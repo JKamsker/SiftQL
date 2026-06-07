@@ -133,7 +133,7 @@ internal static class FilterSchemaEmitter
 
     private static string ScalarAccessor(GeneratedSchema schema, GeneratedField field)
     {
-        if (field.FieldKind != GeneratedFieldKind.Scalar)
+        if (field.FieldKind != GeneratedFieldKind.Scalar || !field.EmitsScalarAccessor)
             return "null";
 
         string access = "((" + schema.TypeName + ")subject)." + CSharpIdentifier.EscapePath(field.Access);
@@ -161,10 +161,10 @@ internal static class FilterSchemaEmitter
                         access + ")",
             GeneratedScalarKind.Enum =>
                 field.IsNullable
-                    ? "new FilterScalarAccessor(FilterScalarKind.Enum, enumeration: static subject => " +
-                        EnumValue(field, access) + ")"
-                    : "new FilterScalarAccessor(FilterScalarKind.Enum, requiredEnumeration: static subject => (long)" +
-                        access + ")",
+                    ? "new FilterScalarAccessor(FilterScalarKind.Enum, enumeration: static subject => GeneratedFilterSchemaRegistry.NullableEnumToInt64OrNull(" +
+                        access + "))"
+                    : "new FilterScalarAccessor(FilterScalarKind.Enum, enumeration: static subject => GeneratedFilterSchemaRegistry.EnumToInt64OrNull(" +
+                        access + "))",
             _ => "null",
         };
     }
@@ -268,14 +268,6 @@ internal static class FilterSchemaEmitter
             ? access + ".GetValueOrDefault()"
             : cast + access + ".GetValueOrDefault())";
         return access + ".HasValue ? (" + nullableType + "?)" + nullableValue + " : null";
-    }
-
-    private static string EnumValue(GeneratedField field, string access)
-    {
-        if (!field.IsNullable)
-            return "(long?)(long)" + access;
-
-        return access + ".HasValue ? (long?)(long)" + access + ".GetValueOrDefault() : null";
     }
 
     private static string NumberCast(string valueType) =>

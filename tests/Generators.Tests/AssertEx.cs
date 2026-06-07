@@ -14,6 +14,12 @@ internal static class AssertEx
             throw new InvalidOperationException($"{message}. Expected: {expected}. Actual: {actual}.");
     }
 
+    public static void NotEqual<T>(T unexpected, T actual, string message)
+    {
+        if (EqualityComparer<T>.Default.Equals(unexpected, actual))
+            throw new InvalidOperationException($"{message}. Unexpected: {unexpected}.");
+    }
+
     public static void Contains(string expected, string actual, string message)
     {
         if (!actual.Contains(expected, StringComparison.Ordinal))

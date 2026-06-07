@@ -9,9 +9,9 @@ namespace SiftQL.Generators.Tests;
 
 internal static class HotManifestPathStabilityTests
 {
-    public static void RunAll() => ProviderNameIgnoresDirectoryPrefix();
+    public static void RunAll() => ProviderNameIncludesDirectoryIdentity();
 
-    private static void ProviderNameIgnoresDirectoryPrefix()
+    private static void ProviderNameIncludesDirectoryIdentity()
     {
         string manifest = """
             {
@@ -26,8 +26,8 @@ internal static class HotManifestPathStabilityTests
         object first = Parse(@"C:\agent-a\filters.siftql-hot.json", manifest);
         object second = Parse(@"D:\agent-b\filters.siftql-hot.json", manifest);
 
-        AssertEx.Equal(Property(first, "ProviderName"), Property(second, "ProviderName"), "provider name should be path-stable");
-        AssertEx.Equal(Property(first, "HintName"), Property(second, "HintName"), "hint name should be path-stable");
+        AssertEx.NotEqual(Property(first, "ProviderName"), Property(second, "ProviderName"), "provider name should include path identity");
+        AssertEx.NotEqual(Property(first, "HintName"), Property(second, "HintName"), "hint name should include path identity");
     }
 
     private static object Parse(string path, string manifest)

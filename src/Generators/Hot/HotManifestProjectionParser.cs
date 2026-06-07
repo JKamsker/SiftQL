@@ -194,6 +194,7 @@ internal static partial class HotManifestParser
             Integer: 0,
             UnsignedInteger: 0,
             Number: 0,
+            Decimal: 0,
             String: null,
             Guid: "00000000-0000-0000-0000-000000000000");
 }

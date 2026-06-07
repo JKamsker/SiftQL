@@ -17,6 +17,7 @@ public enum ProjectedEventValueKind
     Array = 6,
     Object = 7,
     UnsignedInteger = 8,
+    Decimal = 9,
 }
 
 public sealed record ProjectedEventValue
@@ -31,6 +32,7 @@ public sealed record ProjectedEventValue
     public long Integer { get; init; }
     public ulong UnsignedInteger { get; init; }
     public double Number { get; init; }
+    public decimal Decimal { get; init; }
     public string? String { get; init; }
     public Guid Guid { get; init; }
     public ProjectedEventValue[] Values { get; init; } = [];
@@ -198,7 +200,7 @@ public sealed record ProjectedEventValue
     }
 
     public static ProjectedEventValue FromDecimal(decimal value) =>
-        IsIntegralInt64(value) ? FromInteger((long)value) : FromNumber((double)value);
+        IsIntegralInt64(value) ? FromInteger((long)value) : FromExactDecimal(value);
 
     public static ProjectedEventValue FromUInt64(ulong value) =>
         value <= long.MaxValue ? FromInteger((long)value) : FromUnsignedInteger(value);
@@ -211,6 +213,9 @@ public sealed record ProjectedEventValue
 
     private static ProjectedEventValue FromNumber(double value) =>
         new() { Kind = ProjectedEventValueKind.Number, Number = value };
+
+    private static ProjectedEventValue FromExactDecimal(decimal value) =>
+        new() { Kind = ProjectedEventValueKind.Decimal, Decimal = value };
 
     private static ProjectedEventValue FromString(string value) =>
         new() { Kind = ProjectedEventValueKind.String, String = value };

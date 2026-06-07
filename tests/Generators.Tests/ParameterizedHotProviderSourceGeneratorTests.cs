@@ -33,9 +33,10 @@ internal static class ParameterizedHotProviderSourceGeneratorTests
         FilterExpression runtimeFilter = ItemIdFilter(9);
         EventProjectionExpression manifestProjection = Projection(limit: 3);
         EventProjectionExpression runtimeProjection = Projection(limit: 5);
+        string manifestJson = HotManifestJson(assemblyName, manifestFilter, manifestProjection);
         GeneratorRun run = RunGenerator(
             assemblyName,
-            HotManifest(assemblyName, manifestFilter, manifestProjection),
+            new InMemoryAdditionalText("parameterized.siftql-hot.json", manifestJson),
             PluginEventTree());
 
         AssertEx.Equal(0, run.Diagnostics.Length, "parameterized generator diagnostics");
@@ -47,12 +48,13 @@ internal static class ParameterizedHotProviderSourceGeneratorTests
         AssertEx.Contains("TryGetParameterizedProjection", source, "parameterized projection lookup emitted");
         AssertNoCompilationErrors(run, "parameterized hot provider");
 
-        using var pe = new MemoryStream();
-        EmitResult emit = run.OutputCompilation.Emit(pe);
-        AssertEx.True(emit.Success, "parameterized hot provider assembly emitted: " + string.Join(" | ", emit.Diagnostics));
-
         using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        Assembly assembly = Assembly.Load(pe.ToArray());
+        using LoadedHotProvider loaded = HotProviderTestLoader.Load(
+            run.OutputCompilation,
+            assemblyName,
+            manifestJson,
+            "parameterized hot provider assembly");
+        Assembly assembly = loaded.Assembly;
         Type eventType = assembly.GetType("Plugin.Events.PluginOwnedEvent", throwOnError: true)!;
         object matching = Event(eventType, itemId: 9);
         object nonmatching = Event(eventType, itemId: 7);

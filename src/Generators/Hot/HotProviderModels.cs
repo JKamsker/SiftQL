@@ -27,6 +27,7 @@ internal enum HotFilterValueKind
     String = 4,
     Guid = 5,
     UnsignedInteger = 6,
+    Decimal = 7,
 }
 
 internal sealed record HotManifestParseResult(
@@ -59,6 +60,7 @@ internal sealed record HotFilterValue(
     long Integer,
     ulong UnsignedInteger,
     double Number,
+    decimal Decimal,
     string? String,
     string Guid);
 

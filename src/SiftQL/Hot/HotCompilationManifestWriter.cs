@@ -6,7 +6,7 @@ using SiftQL.Projection;
 
 namespace SiftQL.Hot;
 
-public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
+public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisposable
 {
     private static readonly JsonSerializerOptions s_json = new()
     {
@@ -19,6 +19,7 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
     private readonly string _path;
     private readonly HotCompilationManifestWriterOptions _options;
     private int _writeQueued;
+    private int _disposed;
     private long _version;
 
     public HotCompilationManifestWriter(
@@ -28,7 +29,7 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         _path = path;
         _options = options ?? new HotCompilationManifestWriterOptions();
-        ValidateOptions(_options);
+        HotCompilationManifestFileOps.ValidateOptions(_options);
         LoadExisting();
     }
 
@@ -70,7 +71,15 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
             manifest = CreateManifestLocked(DateTimeOffset.UtcNow);
         }
 
-        WriteManifest(manifest);
+        WriteManifest(manifest, skipIfDisposed: false);
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        Flush();
     }
 
     private void Record(
@@ -80,10 +89,12 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
         JsonElement definition,
         HotCompilationObserved observed)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         DateTimeOffset now = DateTimeOffset.UtcNow;
         string key = string.Concat(kind, "|", subjectType.AssemblyQualifiedName, "|", fingerprint);
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             _entries.TryGetValue(key, out HotCompilationManifestEntry? existing);
             _entries[key] = new HotCompilationManifestEntry
             {
@@ -120,6 +131,9 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
 
     private void QueueWrite()
     {
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+
         if (Interlocked.CompareExchange(ref _writeQueued, 1, 0) != 0)
             return;
 
@@ -133,6 +147,12 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
             if (_options.CoalesceDelay > TimeSpan.Zero)
                 Thread.Sleep(_options.CoalesceDelay);
 
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                Volatile.Write(ref _writeQueued, 0);
+                return;
+            }
+
             long version;
             HotCompilationManifest manifest;
             lock (_gate)
@@ -141,8 +161,11 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
                 manifest = CreateManifestLocked(DateTimeOffset.UtcNow);
             }
 
-            WriteManifest(manifest);
+            WriteManifest(manifest, skipIfDisposed: true);
             Volatile.Write(ref _writeQueued, 0);
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
             lock (_gate)
             {
                 if (_version == version)
@@ -227,47 +250,27 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink
         }
     }
 
-    private void WriteManifest(HotCompilationManifest manifest)
+    private void WriteManifest(HotCompilationManifest manifest, bool skipIfDisposed)
     {
         lock (_writeGate)
         {
+            if (skipIfDisposed && Volatile.Read(ref _disposed) != 0)
+                return;
+
             string? directory = Path.GetDirectoryName(_path);
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
 
             string temp = string.Concat(_path, ".", Guid.NewGuid().ToString("N"), ".tmp");
-            File.WriteAllText(temp, JsonSerializer.Serialize(manifest, s_json));
-            MoveTempIntoPlace(temp);
-        }
-    }
-
-    private void MoveTempIntoPlace(string temp)
-    {
-        for (int attempt = 0; attempt < 10; attempt++)
-        {
             try
             {
-                File.Move(temp, _path, overwrite: true);
-                return;
+                File.WriteAllText(temp, JsonSerializer.Serialize(manifest, s_json));
+                HotCompilationManifestFileOps.MoveTempIntoPlace(temp, _path);
             }
-            catch (Exception ex) when (
-                attempt < 9 &&
-                (ex is IOException || ex is UnauthorizedAccessException))
+            finally
             {
-                Thread.Sleep(10);
+                HotCompilationManifestFileOps.TryDeleteTemp(temp);
             }
         }
-
-        File.Move(temp, _path, overwrite: true);
-    }
-
-    private static void ValidateOptions(HotCompilationManifestWriterOptions options)
-    {
-        if (options.MaxEntries < 1)
-            throw new ArgumentOutOfRangeException(nameof(options.MaxEntries));
-        if (options.Retention <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options.Retention));
-        if (options.CoalesceDelay < TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options.CoalesceDelay));
     }
 }

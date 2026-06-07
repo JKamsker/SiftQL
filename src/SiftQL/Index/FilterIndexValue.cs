@@ -34,6 +34,9 @@ public readonly record struct FilterIndexValue(
     internal static FilterIndexValue ForUnsignedInteger(ulong value) =>
         ToUnsignedInteger(value);
 
+    internal static FilterIndexValue? ForUnsignedInteger(ulong? value) =>
+        value.HasValue ? ToUnsignedInteger(value.Value) : null;
+
     internal static FilterIndexValue? ForString(string? value) =>
         value is null ? null : new(FilterValueKind.String, false, 0, 0, 0, value, default);
 
@@ -82,8 +85,15 @@ public readonly record struct FilterIndexValue(
         key = default;
         if (value?.GetType().IsEnum == true)
         {
-            key = ToInteger(Convert.ToInt64(value));
-            return true;
+            try
+            {
+                key = ToInteger(Convert.ToInt64(value));
+                return true;
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
         }
 
         switch (value)

@@ -79,6 +79,7 @@ internal static class FilterIndexValueAccessor<TSubject>
             FilterScalarKind.Boolean => Expression.Call(
                 nullable ? s_nullableBoolean : s_boolean,
                 nullable ? value : Expression.Convert(value, typeof(bool))),
+            FilterScalarKind.Number when IsULong(value.Type) => null,
             FilterScalarKind.Number => Expression.Call(
                 NumberMethod(value.Type, nullable),
                 ConvertNumber(value, nullable)),
@@ -86,6 +87,7 @@ internal static class FilterIndexValueAccessor<TSubject>
             FilterScalarKind.Guid => Expression.Call(
                 nullable ? s_nullableGuid : s_guid,
                 nullable ? value : Expression.Convert(value, typeof(Guid))),
+            FilterScalarKind.Enum when IsULongBackedEnum(value.Type) => null,
             FilterScalarKind.Enum => Expression.Call(
                 nullable ? s_nullableEnum : s_enum,
                 ConvertEnum(value, nullable)),
@@ -108,6 +110,15 @@ internal static class FilterIndexValueAccessor<TSubject>
         return nullable
             ? ConvertNullableValue(value, target)
             : Expression.Convert(value, target);
+    }
+
+    private static bool IsULong(Type type) =>
+        (Nullable.GetUnderlyingType(type) ?? type) == typeof(ulong);
+
+    private static bool IsULongBackedEnum(Type type)
+    {
+        Type valueType = Nullable.GetUnderlyingType(type) ?? type;
+        return valueType.IsEnum && Enum.GetUnderlyingType(valueType) == typeof(ulong);
     }
 
     private static bool IsIntegral(Type type) =>

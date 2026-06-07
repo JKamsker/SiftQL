@@ -12,6 +12,8 @@ public static class PrecompiledTieredProviderRegistry
     private static IPrecompiledTieredProvider[] s_providers = [];
     private static int s_globalVersion;
 
+    internal static event Action? Changed;
+
     public static IDisposable CreateIsolatedScope()
     {
         var scope = new ProviderScope(s_scope.Value);
@@ -26,13 +28,14 @@ public static class PrecompiledTieredProviderRegistry
         if (scope is not null)
         {
             scope.Add(provider);
+            IncrementGlobalVersion();
             return new ScopedRegistration(scope, provider);
         }
 
         lock (s_gate)
         {
             s_providers = [.. s_providers, provider];
-            s_globalVersion++;
+            IncrementGlobalVersion();
         }
 
         return new Registration(provider);
@@ -55,7 +58,7 @@ public static class PrecompiledTieredProviderRegistry
                 return;
 
             s_providers = updated;
-            s_globalVersion++;
+            IncrementGlobalVersion();
         }
     }
 
@@ -140,6 +143,12 @@ public static class PrecompiledTieredProviderRegistry
     private static IPrecompiledTieredProvider[] Providers() =>
         s_scope.Value?.Providers ?? Volatile.Read(ref s_providers);
 
+    private static void IncrementGlobalVersion()
+    {
+        Interlocked.Increment(ref s_globalVersion);
+        Changed?.Invoke();
+    }
+
     private sealed class ProviderScope(ProviderScope? parent) : IDisposable
     {
         private readonly object _gate = new();
@@ -164,14 +173,23 @@ public static class PrecompiledTieredProviderRegistry
         {
             lock (_gate)
                 _providers = _providers.Where(item => !ReferenceEquals(item, provider)).ToArray();
+            IncrementGlobalVersion();
         }
 
         public void RemoveAssembly(Assembly assembly)
         {
+            bool changed;
             lock (_gate)
+            {
+                int before = _providers.Length;
                 _providers = _providers
                     .Where(item => !ReferenceEquals(item.GetType().Assembly, assembly))
                     .ToArray();
+                changed = _providers.Length != before;
+            }
+
+            if (changed)
+                IncrementGlobalVersion();
         }
 
         public void Dispose()
@@ -179,7 +197,12 @@ public static class PrecompiledTieredProviderRegistry
             if (!ReferenceEquals(s_scope.Value, this))
                 return;
 
+            bool hadProviders;
+            lock (_gate)
+                hadProviders = _providers.Length > 0;
             s_scope.Value = parent;
+            if (hadProviders)
+                IncrementGlobalVersion();
         }
     }
 
@@ -190,7 +213,7 @@ public static class PrecompiledTieredProviderRegistry
             lock (s_gate)
             {
                 s_providers = s_providers.Where(item => !ReferenceEquals(item, provider)).ToArray();
-                s_globalVersion++;
+                IncrementGlobalVersion();
             }
         }
     }

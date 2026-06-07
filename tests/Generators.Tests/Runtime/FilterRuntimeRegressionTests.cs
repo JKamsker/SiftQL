@@ -1,0 +1,170 @@
+using System.Reflection;
+using SiftQL.Compiler;
+using SiftQL.Expressions;
+using SiftQL.Hot;
+using SiftQL.Kernel;
+using SiftQL.Projected;
+using SiftQL.Schema;
+using SiftQL.Values;
+using Xunit;
+
+namespace SiftQL.Generators.Tests;
+
+internal static class FilterRuntimeRegressionTests
+{
+    public static void RunAll()
+    {
+        CustomSchemaCompileDoesNotPoisonDefaultSchemaCache();
+        RuntimeContainsRejectsOversizedEnumerableEvenWhenFirstItemMatches();
+        ImmediateCompiledMatcherDoesNotTrackKernelVersionForever();
+        HotProviderRegistrationScopeDoesNotPublishBeforeCommit();
+        OversizedFilterValidatesBeforeHotProviderLookup();
+    }
+
+    private static void CustomSchemaCompileDoesNotPoisonDefaultSchemaCache()
+    {
+        string fieldName = "Synthetic" + Guid.NewGuid().ToString("N");
+        var filter = FilterExpression.Compare(
+            fieldName,
+            FilterOperator.Equal,
+            FilterValue.From(true));
+
+        CompiledKernel synthetic = FilterCompiler.CompileWithSchema(
+            typeof(ProjectedEvent),
+            filter,
+            FilterCompilerOptions.Immediate,
+            errorFactory: null,
+            _ => SyntheticSchema(fieldName));
+
+        Assert.True(synthetic.Matches(new ProjectedEvent()));
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(typeof(ProjectedEvent), filter, FilterCompilerOptions.Immediate));
+    }
+
+    private static void RuntimeContainsRejectsOversizedEnumerableEvenWhenFirstItemMatches()
+    {
+        Assert.False(FilterValues.Contains(
+            OversizedEnumerable(first: 42, count: 257),
+            FilterValue.From(42L)));
+    }
+
+    private static void ImmediateCompiledMatcherDoesNotTrackKernelVersionForever()
+    {
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.Equal,
+                FilterValue.From(100L)),
+            FilterCompilerOptions.Immediate);
+
+        var matcher = kernel.CreateMatcher<ItemUsedEvent>();
+        FieldInfo trackVersion = typeof(CompiledKernelMatcher<ItemUsedEvent>).GetField(
+            "_trackVersion",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        Assert.False((bool)trackVersion.GetValue(matcher)!);
+    }
+
+    private static void HotProviderRegistrationScopeDoesNotPublishBeforeCommit()
+    {
+        using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using var manifestScope = HotProviderRegistrationContext.AllowManifest("manifest-hash");
+
+        HotProviderRegistrationContext.Register(new AlwaysProvider(), "manifest-hash");
+
+        Assert.False(PrecompiledTieredProviderRegistry.TryGetFilter(
+            typeof(ItemUsedEvent),
+            "fingerprint",
+            out _));
+
+        manifestScope.Commit();
+
+        Assert.True(PrecompiledTieredProviderRegistry.TryGetFilter(
+            typeof(ItemUsedEvent),
+            "fingerprint",
+            out _));
+    }
+
+    private static void OversizedFilterValidatesBeforeHotProviderLookup()
+    {
+        using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using var registration = PrecompiledTieredProviderRegistry.Register(new ThrowingProvider());
+
+        var oversized = new FilterExpression(FilterExpressionKind.And)
+        {
+            Children = Enumerable.Range(0, 129)
+                .Select(static item => FilterExpression.Compare(
+                    nameof(ItemUsedEvent.ItemId),
+                    FilterOperator.Equal,
+                    FilterValue.From(item)))
+                .ToArray(),
+        };
+
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(typeof(ItemUsedEvent), oversized, FilterCompilerOptions.Tiered));
+    }
+
+    private static FilterSchema SyntheticSchema(string fieldName) =>
+        new(
+            typeof(ProjectedEvent),
+            [
+                new FilterField(
+                    fieldName,
+                    typeof(bool),
+                    FilterFieldKind.Scalar,
+                    static _ => true,
+                    ProjectionAccessor: static _ => ProjectedEventValue.FromScalar(true)),
+            ]);
+
+    private static IEnumerable<int> OversizedEnumerable(int first, int count)
+    {
+        yield return first;
+        for (int i = 1; i < count; i++)
+            yield return i;
+    }
+
+    private sealed class AlwaysProvider : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(Type subjectType, string fingerprint, out Func<object, bool>? predicate)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            predicate = static _ => true;
+            return true;
+        }
+
+        public bool TryGetProjection(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            projectFields = null;
+            return false;
+        }
+    }
+
+    private sealed class ThrowingProvider : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(Type subjectType, string fingerprint, out Func<object, bool>? predicate)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            predicate = null;
+            throw new InvalidOperationException("Provider lookup happened before validation.");
+        }
+
+        public bool TryGetProjection(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            _ = subjectType;
+            _ = fingerprint;
+            projectFields = null;
+            return false;
+        }
+    }
+}

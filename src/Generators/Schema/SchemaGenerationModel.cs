@@ -35,4 +35,5 @@ internal sealed record GeneratedField(
     GeneratedFieldKind FieldKind,
     GeneratedScalarKind ScalarKind,
     bool IsNullable,
+    bool EmitsScalarAccessor,
     string? ArrayContainsMethod);

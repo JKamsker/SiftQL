@@ -35,6 +35,16 @@ internal static class FilterNumericComparison
         return TryNumber(actual, out double number) && number == expected;
     }
 
+    public static bool AreDecimalEqual(object actual, decimal expected)
+    {
+        if (FilterNumeric.TryExactDecimal(actual, out decimal actualDecimal))
+            return actualDecimal == expected;
+
+        return TryNumber(actual, out double number) &&
+            FilterNumeric.TryDoubleToDecimal(number, out decimal actualNumber) &&
+            actualNumber == expected;
+    }
+
     public static bool TryCompareInteger(object? actual, long expected, out int comparison)
     {
         if (TryInteger(actual, out long signed, out ulong unsigned, out bool isUnsigned))
@@ -85,6 +95,25 @@ internal static class FilterNumericComparison
         }
 
         comparison = actualDecimal.CompareTo(expectedDecimal);
+        return true;
+    }
+
+    public static bool TryCompareDecimal(object? actual, decimal expected, out int comparison)
+    {
+        comparison = 0;
+        if (FilterNumeric.TryExactDecimal(actual, out decimal actualDecimal))
+        {
+            comparison = actualDecimal.CompareTo(expected);
+            return true;
+        }
+
+        if (!TryNumber(actual, out double actualNumber) ||
+            !FilterNumeric.TryDoubleToDecimal(actualNumber, out decimal converted))
+        {
+            return false;
+        }
+
+        comparison = converted.CompareTo(expected);
         return true;
     }
 

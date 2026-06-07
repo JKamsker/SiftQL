@@ -33,7 +33,7 @@ internal static class HotProviderEmitter
         EmitHelpers(source);
         source.AppendLine("}");
         source.AppendLine();
-        EmitRegistration(source, provider.ProviderName);
+        EmitRegistration(source, provider.ProviderName, provider.ManifestHash);
         return source.ToString();
     }
 
@@ -244,6 +244,8 @@ internal static class HotProviderEmitter
             source.Append(", UnsignedInteger = ").Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture)).Append("UL");
         if (value.Kind == HotFilterValueKind.Number)
             source.Append(", Number = ").Append(value.Number.ToString("R", CultureInfo.InvariantCulture)).Append("D");
+        if (value.Kind == HotFilterValueKind.Decimal)
+            source.Append(", Decimal = ").Append(value.Decimal.ToString(CultureInfo.InvariantCulture)).Append("M");
         if (value.Kind == HotFilterValueKind.String)
         {
             source.Append(", String = ");
@@ -280,13 +282,15 @@ internal static class HotProviderEmitter
         source.AppendLine();
     }
 
-    private static void EmitRegistration(StringBuilder source, string providerName)
+    private static void EmitRegistration(StringBuilder source, string providerName, string manifestHash)
     {
         source.AppendLine("internal static class " + providerName + "Registration");
         source.AppendLine("{");
         source.AppendLine("    [ModuleInitializer]");
-        source.Append("    internal static void Register() => PrecompiledTieredProviderRegistry.Register(new ");
-        source.Append(providerName).AppendLine("());");
+        source.Append("    internal static void Register() => HotProviderRegistrationContext.RegisterFactory(static () => new ");
+        source.Append(providerName).Append("(), ");
+        AppendLiteral(source, manifestHash);
+        source.AppendLine(");");
         source.AppendLine("}");
     }
 

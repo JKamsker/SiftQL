@@ -234,11 +234,12 @@ public sealed class CompiledProjection<TContext>
                 options);
         }
 
-        var projected = _metadata.Create(
-            subject,
+        return ProjectedPayloadWriter.Write(
+            _metadata.EventType(subject),
+            _metadata.EventName(subject),
             projectFields(subject),
-            context is null ? [] : context.ToArray());
-        return MessagePackSerializer.Serialize(projected, options);
+            context,
+            options);
     }
 
     internal void PromoteProjectFields(Func<object, ProjectedEventField[]> projectFields)

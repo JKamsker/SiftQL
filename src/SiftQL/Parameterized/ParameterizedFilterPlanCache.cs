@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -21,6 +22,7 @@ internal static class ParameterizedFilterPlanCache
     {
         var key = new ParameterizedFilterPlanCacheKey(
             schema.SubjectType,
+            RuntimeHelpers.GetHashCode(schema),
             FilterExpressionFingerprint.CreateKey(expression));
         Interlocked.Increment(ref s_requests);
         if (s_plans.TryGetValue(key, out var cached))
@@ -65,4 +67,5 @@ internal sealed record ParameterizedFilterPlanCacheSnapshot(
 
 internal readonly record struct ParameterizedFilterPlanCacheKey(
     Type SubjectType,
+    int SchemaIdentity,
     FilterExpressionKey ExpressionKey);

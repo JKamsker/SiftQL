@@ -14,6 +14,11 @@ public static class FilterCompiler
     private const int MaxCachedKernels = 4096;
     private static readonly ConcurrentDictionary<FilterCompilationCacheKey, CompiledKernel> s_kernelCache = new();
 
+    static FilterCompiler()
+    {
+        PrecompiledTieredProviderRegistry.Changed += ClearCache;
+    }
+
     public static CompiledKernel Compile(
         Type subjectType,
         FilterExpression? expression,
@@ -84,12 +89,13 @@ public static class FilterCompiler
         if (expression.Kind == FilterExpressionKind.Any)
             return CompiledKernel.Any;
 
+        FilterSchema schema = schemaFactory(subjectType);
+        _ = FilterInterpretedCompiler.Compile(schema, expression, errorFactory);
         bool hasParameters = FilterExpressionParameters.HasParameters(expression);
         FilterExpressionKey expressionKey = FilterExpressionFingerprint.CreateKey(expression);
-        string? fingerprint = null;
+        string fingerprint = expressionKey.ToString();
         if (!hasParameters &&
-            PrecompiledTieredProviderRegistry.HasProviders &&
-            PrecompiledTieredProviderRegistry.TryGetFilter(subjectType, Fingerprint(), out var precompiled))
+            PrecompiledTieredProviderRegistry.TryGetFilter(subjectType, fingerprint, out var precompiled))
         {
             bool isBroad = !FilterExpressionInspector.HasSelectiveNode(expression);
             return new CompiledKernel(precompiled!, isBroad);
@@ -98,15 +104,13 @@ public static class FilterCompiler
         TieredFilterPromotionPolicy promotionPolicy = options.CreateFilterPromotionPolicy(expression);
         if (hasParameters)
         {
-            var schema = schemaFactory(subjectType);
             bool isBroad = !FilterExpressionInspector.HasSelectiveNode(expression);
             FilterValue[] parameters = FilterExpressionParameters.BindValues(
                 expression,
                 FilterExpressionParameters.Keys(expression));
-            if (PrecompiledTieredProviderRegistry.HasProviders &&
-                PrecompiledTieredProviderRegistry.TryGetParameterizedFilter(
+            if (PrecompiledTieredProviderRegistry.TryGetParameterizedFilter(
                 subjectType,
-                Fingerprint(),
+                fingerprint,
                 parameters,
                 out precompiled))
             {
@@ -122,11 +126,24 @@ public static class FilterCompiler
                 errorFactory);
         }
 
+        if (PrecompiledTieredProviderRegistry.IsolatedScopeActive)
+        {
+            return CompileUncached(
+                subjectType,
+                expression,
+                options,
+                promotionPolicy,
+                errorFactory,
+                schemaFactory);
+        }
+
         FilterCompilationCacheKey key = FilterCompilationCacheKey.Create(
             subjectType,
+            schemaFactory,
             expressionKey,
             options.Mode,
             promotionPolicy,
+            PrecompiledTieredProviderRegistry.GlobalVersion,
             HotManifestSinkIdentity.From(options.HotManifestSink));
         if (s_kernelCache.TryGetValue(key, out CompiledKernel? cached))
             return cached;
@@ -148,8 +165,6 @@ public static class FilterCompiler
                 PromotionPolicy: promotionPolicy,
                 ErrorFactory: errorFactory,
                 SchemaFactory: schemaFactory));
-
-        string Fingerprint() => fingerprint ??= expressionKey.ToString();
     }
 
     private static CompiledKernel CompileUncached(
@@ -179,4 +194,6 @@ public static class FilterCompiler
             ? new CompiledKernel(FilterInterpretedCompiler.Compile(schema, expression, errorFactory), isBroad)
             : new CompiledKernel(expressionPredicate, isBroad);
     }
+
+    private static void ClearCache() => s_kernelCache.Clear();
 }

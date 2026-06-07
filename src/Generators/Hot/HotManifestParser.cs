@@ -186,9 +186,10 @@ internal static partial class HotManifestParser
     {
         string name = Path.GetFileNameWithoutExtension(path);
         var chars = name.Select(static ch => char.IsLetterOrDigit(ch) ? ch : '_');
+        string fullPath = Path.GetFullPath(path);
         string identity = string.IsNullOrEmpty(manifestHash)
-            ? Path.GetFileName(path)
-            : string.Concat(Path.GetFileName(path), "|", manifestHash);
+            ? fullPath
+            : string.Concat(fullPath, "|", manifestHash);
         return "GeneratedHotTieredProvider_" + string.Concat(chars) + "_" + StableHash(identity);
     }
 

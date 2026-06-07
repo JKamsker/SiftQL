@@ -69,9 +69,18 @@ internal static class HotProviderResolver
             manifest.ProviderName,
             manifest.HintName,
             manifest.ManifestHash,
-            new(entries.ToImmutable()),
+            new(NormalizeEntries(entries.ToImmutable())),
             new(diagnostics.ToImmutable()));
     }
+
+    private static ImmutableArray<HotProviderEntry> NormalizeEntries(ImmutableArray<HotProviderEntry> entries) =>
+        entries
+            .GroupBy(static entry => new { entry.Kind, entry.SubjectTypeName, entry.Fingerprint })
+            .Select(static group => group.First())
+            .OrderBy(static entry => entry.Kind)
+            .ThenBy(static entry => entry.Fingerprint, StringComparer.Ordinal)
+            .ThenBy(static entry => entry.SubjectTypeName, StringComparer.Ordinal)
+            .ToImmutableArray();
 
     private static INamedTypeSymbol? ResolveSubject(Compilation compilation, string subjectType)
     {
@@ -137,7 +146,7 @@ internal static class HotProviderResolver
 
     private static EquatableArray<HotProjectionField> DefaultProjectionFields(EquatableArray<GeneratedField> fields) =>
         new(fields.Items
-            .Where(static field => field.FieldKind == GeneratedFieldKind.Scalar &&
+            .Where(static field => field.FieldKind is GeneratedFieldKind.Scalar or GeneratedFieldKind.Array &&
                 !HotProviderFieldValidator.IsMetadataField(field.Name))
             .OrderBy(static field => field.Name, StringComparer.OrdinalIgnoreCase)
             .Select(static field => new HotProjectionField(field.Name, field.Name))

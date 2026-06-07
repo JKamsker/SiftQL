@@ -1,12 +1,11 @@
 using System.Text.Json;
-using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Projection;
 
 namespace SiftQL.Hot;
 
-public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink
+public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDisposable
 {
     private static readonly JsonSerializerOptions s_json = new() { WriteIndented = true };
 
@@ -15,7 +14,10 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink
     private readonly ITieredHotManifestSink? _inner;
     private readonly IRuntimeHotProviderBatchQueue _queue;
     private readonly RuntimeHotProviderBatchOptions _options;
+    private Timer? _delayedDrain;
     private DateTimeOffset _nextEligibleUtc;
+    private bool _drainScheduled;
+    private int _disposed;
 
     public RuntimeHotProviderBatchSink(
         IRuntimeHotProviderBatchQueue queue,
@@ -34,13 +36,20 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink
         long evaluations,
         long matches)
     {
-        _inner?.RecordHotFilter(subjectType, expression, evaluations, matches);
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
         Record(
             "filter",
             subjectType,
             fingerprint,
             JsonSerializer.SerializeToElement(expression, s_json));
+        try { _inner?.RecordHotFilter(subjectType, expression, evaluations, matches); }
+        catch
+        {
+            // Mirroring to another sink is advisory; local hot-provider batching must continue.
+        }
     }
 
     public void RecordHotProjection(
@@ -49,13 +58,20 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink
         long materializations,
         long payloadWrites)
     {
-        _inner?.RecordHotProjection(subjectType, projection, materializations, payloadWrites);
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+
         string fingerprint = ProjectionExpressionFingerprint.CreateKey(projection).ToString();
         Record(
             "projection",
             subjectType,
             fingerprint,
             JsonSerializer.SerializeToElement(projection, s_json));
+        try { _inner?.RecordHotProjection(subjectType, projection, materializations, payloadWrites); }
+        catch
+        {
+            // Mirroring to another sink is advisory; local hot-provider batching must continue.
+        }
     }
 
     private void Record(
@@ -69,6 +85,9 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink
         string key = string.Concat(kind, "|", subjectType.AssemblyQualifiedName, "|", fingerprint);
         lock (_gate)
         {
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
             _entries[key] = new RuntimeHotProviderBatchEntry
             {
                 Key = key,
@@ -79,6 +98,8 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink
             };
             if (_entries.Count >= _options.MinimumEntries && now >= _nextEligibleUtc)
                 batch = DrainBatchLocked(now);
+            else if (_entries.Count >= _options.MinimumEntries)
+                ScheduleDelayedDrainLocked(now);
         }
 
         if (batch is not null)
@@ -99,23 +120,112 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink
         return new RuntimeHotProviderBatch(Guid.NewGuid(), now, entries);
     }
 
+    private void ScheduleDelayedDrainLocked(DateTimeOffset now)
+    {
+        if (_drainScheduled)
+            return;
+
+        TimeSpan delay = _nextEligibleUtc - now;
+        if (delay < TimeSpan.Zero)
+            delay = TimeSpan.Zero;
+
+        _drainScheduled = true;
+        _delayedDrain?.Dispose();
+        _delayedDrain = new Timer(
+            static state => ((RuntimeHotProviderBatchSink)state!).DrainDelayed(),
+            this,
+            delay,
+            Timeout.InfiniteTimeSpan);
+    }
+
+    private void DrainDelayed()
+    {
+        RuntimeHotProviderBatch? batch = null;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        lock (_gate)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
+            _drainScheduled = false;
+            if (_entries.Count < _options.MinimumEntries)
+                return;
+
+            if (now >= _nextEligibleUtc)
+                batch = DrainBatchLocked(now);
+            else
+                ScheduleDelayedDrainLocked(now);
+        }
+
+        if (batch is not null)
+            QueueOffThread(batch);
+    }
+
     private void QueueOffThread(RuntimeHotProviderBatch batch)
     {
         ThreadPool.UnsafeQueueUserWorkItem(static state =>
         {
             var work = (QueueWork)state!;
-            try { work.Queue.Queue(work.Batch); }
-            catch { work.Sink.Requeue(work.Batch); }
+            try
+            {
+                work.Queue.Queue(work.Batch);
+                work.Sink.DrainReadyBacklog();
+            }
+            catch
+            {
+                work.Sink.Requeue(work.Batch);
+            }
         }, new QueueWork(this, _queue, batch));
+    }
+
+    private void DrainReadyBacklog()
+    {
+        RuntimeHotProviderBatch? batch = null;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        lock (_gate)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
+            if (_entries.Count < _options.MinimumEntries)
+                return;
+
+            if (now >= _nextEligibleUtc)
+                batch = DrainBatchLocked(now);
+            else
+                ScheduleDelayedDrainLocked(now);
+        }
+
+        if (batch is not null)
+            QueueOffThread(batch);
     }
 
     private void Requeue(RuntimeHotProviderBatch batch)
     {
         lock (_gate)
         {
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
             for (int i = 0; i < batch.Entries.Length; i++)
                 _entries.TryAdd(batch.Entries[i].Key, batch.Entries[i]);
             _nextEligibleUtc = DateTimeOffset.MinValue;
+            if (_entries.Count >= _options.MinimumEntries)
+                ScheduleDelayedDrainLocked(DateTimeOffset.UtcNow);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        lock (_gate)
+        {
+            _delayedDrain?.Dispose();
+            _delayedDrain = null;
+            _drainScheduled = false;
+            _entries.Clear();
         }
     }
 

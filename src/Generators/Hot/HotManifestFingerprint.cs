@@ -130,6 +130,9 @@ internal static class HotManifestFingerprint
             case HotFilterValueKind.Number:
                 builder.Append(value.Number.ToString("R", CultureInfo.InvariantCulture));
                 break;
+            case HotFilterValueKind.Decimal:
+                builder.Append(value.Decimal.ToString(CultureInfo.InvariantCulture));
+                break;
             case HotFilterValueKind.String:
                 AppendText(builder, value.String);
                 break;

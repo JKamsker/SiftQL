@@ -31,7 +31,9 @@ internal static class HotProviderFieldValidator
 
     public static bool IsMetadataField(string name) =>
         name.Equals("eventType", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("eventName", StringComparison.OrdinalIgnoreCase);
+        name.Equals("eventName", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("subjectType", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("subjectName", StringComparison.OrdinalIgnoreCase);
 
     public static bool Unsupported(
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,

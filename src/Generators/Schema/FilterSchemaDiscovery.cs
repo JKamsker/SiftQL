@@ -168,6 +168,22 @@ internal static class FilterSchemaDiscovery
         contract is not null &&
         type.AllInterfaces.Any(item => SymbolEqualityComparer.Default.Equals(item, contract));
 
-    private static string HelperName(INamedTypeSymbol type) =>
-        string.Concat(type.ToDisplayString().Select(static ch => char.IsLetterOrDigit(ch) ? ch : '_'));
+    private static string HelperName(INamedTypeSymbol type)
+    {
+        string display = type.ToDisplayString(s_format);
+        string sanitized = string.Concat(display.Select(static ch => char.IsLetterOrDigit(ch) ? ch : '_'));
+        return sanitized + "_" + StableHash(display);
+    }
+
+    private static string StableHash(string text)
+    {
+        uint hash = 2166136261;
+        foreach (char ch in text)
+        {
+            hash ^= ch;
+            hash *= 16777619;
+        }
+
+        return hash.ToString("X8");
+    }
 }

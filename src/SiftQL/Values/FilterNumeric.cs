@@ -67,6 +67,12 @@ internal static class FilterNumeric
             return true;
         }
 
+        if (value.Kind == FilterValueKind.Decimal)
+        {
+            number = value.Decimal;
+            return true;
+        }
+
         return value.Kind == FilterValueKind.Number &&
             TryDoubleToDecimal(value.Number, out number);
     }

@@ -18,6 +18,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
         Integer = value.Integer;
         UnsignedInteger = value.UnsignedInteger;
         Number = value.Number;
+        Decimal = value.Decimal;
         Text = value.String;
         Guid = value.Guid;
     }
@@ -28,6 +29,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
     public long Integer { get; }
     public ulong UnsignedInteger { get; }
     public double Number { get; }
+    public decimal Decimal { get; }
     public string? Text { get; }
     public Guid Guid { get; }
 
@@ -55,6 +57,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
             Integer,
             UnsignedInteger,
             Number,
+            Decimal,
             Text,
             Guid);
     }
@@ -71,6 +74,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
             Integer == other.Integer &&
             UnsignedInteger == other.UnsignedInteger &&
             Number.Equals(other.Number) &&
+            Decimal == other.Decimal &&
             string.Equals(Text, other.Text, StringComparison.Ordinal) &&
             Guid == other.Guid;
     }
@@ -118,6 +122,9 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
                 break;
             case FilterValueKind.Number:
                 builder.Append(Number.ToString("R", CultureInfo.InvariantCulture));
+                break;
+            case FilterValueKind.Decimal:
+                builder.Append(Decimal.ToString(CultureInfo.InvariantCulture));
                 break;
             case FilterValueKind.String:
                 FilterKeyText.AppendText(builder, Text);
