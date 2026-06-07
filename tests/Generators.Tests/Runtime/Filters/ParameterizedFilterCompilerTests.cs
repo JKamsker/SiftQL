@@ -3,6 +3,7 @@ using SiftQL.Expressions;
 using SiftQL.Kernel;
 using SiftQL.Parameterized;
 using SiftQL.Projected;
+using SiftQL.Projection;
 using SiftQL.Schema;
 using SiftQL.Tiered;
 using Xunit;
@@ -80,6 +81,42 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
         Assert.False(kernel.Matches(Event(itemId: 301)));
     }
 
+    [Fact]
+    public async Task QueryKernelCapturedVariableAndPropertyRebindsAndKeepsSingleSourceFilter()
+    {
+        var criteria = new MutableCriteria { CharacterId = 7 };
+        int minimumQuantity = 2;
+        ItemUsedEvent[] events =
+        [
+            Event(characterId: 7, itemId: 100, quantity: 1),
+            Event(characterId: 7, itemId: 101, quantity: 2),
+            Event(characterId: 8, itemId: 102, quantity: 2),
+            Event(characterId: 8, itemId: 103, quantity: 3),
+            Event(characterId: 7, itemId: 104, quantity: 5),
+        ];
+
+        QueryKernel<ItemUsedEvent> firstQuery = BuildParameterizedQuery(criteria, minimumQuantity);
+        CompiledEventPipeline<object> firstPipeline = CompilePipeline(firstQuery);
+        AssertSingleSourceFilter(firstQuery, firstPipeline.IndexFilter);
+        long[] firstItemIds = await ProjectItemIdsAsync(firstPipeline, events);
+
+        criteria.CharacterId = 8;
+        QueryKernel<ItemUsedEvent> secondQuery = BuildParameterizedQuery(criteria, minimumQuantity);
+        CompiledEventPipeline<object> secondPipeline = CompilePipeline(secondQuery);
+        AssertSingleSourceFilter(secondQuery, secondPipeline.IndexFilter);
+        long[] secondItemIds = await ProjectItemIdsAsync(secondPipeline, events);
+
+        Assert.Equal([101L, 104L], firstItemIds);
+        Assert.Equal([102L, 103L], secondItemIds);
+        Assert.NotEqual(firstItemIds, secondItemIds);
+
+        ParameterizedFilterPlanCacheSnapshot snapshot = ParameterizedFilterPlanCache.Snapshot;
+        Assert.Equal(1, snapshot.Count);
+        Assert.Equal(2, snapshot.Requests);
+        Assert.Equal(1, snapshot.Hits);
+        Assert.Equal(1, snapshot.Misses);
+    }
+
     public void Dispose() =>
         ParameterizedFilterPlanCache.ClearForTests();
 
@@ -88,6 +125,62 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
             nameof(ItemUsedEvent.ItemId),
             FilterOperator.Equal,
             FilterValue.From(itemId) with { ParameterKey = "p0" });
+
+    private static QueryKernel<ItemUsedEvent> BuildParameterizedQuery(
+        MutableCriteria criteria,
+        int minimumQuantity) =>
+        QueryKernel
+            .For<ItemUsedEvent>()
+            .Select(static item => item.ItemId)
+            .Where(item =>
+                item.CharacterId == criteria.CharacterId &&
+                item.Quantity >= minimumQuantity);
+
+    private static CompiledEventPipeline<object> CompilePipeline(QueryKernel<ItemUsedEvent> query) =>
+        EventPipelineCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            query.Pipeline,
+            ProjectionRuntimeTestSupport.RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+    private static async Task<long[]> ProjectItemIdsAsync(
+        CompiledEventPipeline<object> pipeline,
+        IReadOnlyList<ItemUsedEvent> events)
+    {
+        var itemIds = new List<long>();
+        for (int i = 0; i < events.Count; i++)
+        {
+            ProjectedEvent? projected = await pipeline.ProjectAsync(
+                events[i],
+                new object(),
+                CancellationToken.None);
+            if (projected is not null)
+                itemIds.Add(projected.Field(nameof(ItemUsedEvent.ItemId)).Integer);
+        }
+
+        return itemIds.ToArray();
+    }
+
+    private static void AssertSingleSourceFilter(
+        QueryKernel<ItemUsedEvent> query,
+        FilterExpression compiledIndexFilter)
+    {
+        Assert.Equal(2, query.Pipeline.Stages.Length);
+        Assert.Equal(EventPipelineStageKind.Filter, query.Pipeline.Stages[0].Kind);
+        Assert.Equal(EventPipelineStageKind.Projection, query.Pipeline.Stages[1].Kind);
+        Assert.Single(query.Pipeline.Stages, static stage => stage.Kind == EventPipelineStageKind.Filter);
+        Assert.Equal(2, CountCompareNodes(EventPipelineCompiler.SourceFilter(query.Pipeline)));
+        Assert.Equal(2, CountCompareNodes(compiledIndexFilter));
+        Assert.Equal(2, KernelParameterKeyRewriter.ParameterCount(query.Pipeline));
+    }
+
+    private static int CountCompareNodes(FilterExpression expression)
+    {
+        int count = expression.Kind == FilterExpressionKind.Compare ? 1 : 0;
+        for (int i = 0; i < expression.Children.Length; i++)
+            count += CountCompareNodes(expression.Children[i]);
+        return count;
+    }
 
     private static CompiledKernel CompileProjectedFlag(
         FilterExpression expression,
@@ -110,6 +203,14 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
 
     private static ItemUsedEvent Event(int itemId) =>
         new(Guid.NewGuid(), CharacterId: 7, ItemId: itemId, Quantity: 2);
+
+    private static ItemUsedEvent Event(int characterId, int itemId, int quantity) =>
+        new(Guid.NewGuid(), characterId, itemId, quantity);
+
+    private sealed class MutableCriteria
+    {
+        public long CharacterId { get; set; }
+    }
 
     private static async Task<TieredKernelSnapshot> WaitForSnapshotAsync(
         CompiledKernel kernel,
