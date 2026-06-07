@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
-// removed: game-specific events
+// removed: source-specific events
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -35,11 +35,11 @@ internal static class HotProviderLoaderLifecycleTests
         string manifestJson = HotManifestJson(filter);
         GeneratorRun run = RunGenerator(
             assemblyName,
-            new InMemoryAdditionalText("lifecycle.fourstory-hot.json", manifestJson));
+            new InMemoryAdditionalText("lifecycle.siftql-hot.json", manifestJson));
 
         AssertEx.Equal(0, run.Diagnostics.Length, "lifecycle generator diagnostics");
 
-        string directory = Path.Combine(Path.GetTempPath(), "FourStoryHotProviderLifecycle", Guid.NewGuid().ToString("N"));
+        string directory = Path.Combine(Path.GetTempPath(), "SiftQLHotProviderLifecycle", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string assemblyPath = Path.Combine(directory, assemblyName + ".dll");
         string manifestPath = Path.Combine(directory, "hot.json");
@@ -77,9 +77,9 @@ internal static class HotProviderLoaderLifecycleTests
         string manifestJson = HotManifestJson(filter);
         GeneratorRun run = RunGenerator(
             assemblyName,
-            new InMemoryAdditionalText("telemetry.fourstory-hot.json", manifestJson));
+            new InMemoryAdditionalText("telemetry.siftql-hot.json", manifestJson));
 
-        string directory = Path.Combine(Path.GetTempPath(), "FourStoryHotProviderTelemetry", Guid.NewGuid().ToString("N"));
+        string directory = Path.Combine(Path.GetTempPath(), "SiftQLHotProviderTelemetry", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string assemblyPath = Path.Combine(directory, assemblyName + ".dll");
         string manifestPath = Path.Combine(directory, "hot.json");
@@ -102,7 +102,7 @@ internal static class HotProviderLoaderLifecycleTests
     {
         string directory = Path.Combine(
             Path.GetTempPath(),
-            "FourStoryHotProviderMalformed",
+            "SiftQLHotProviderMalformed",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string manifestPath = Path.Combine(directory, "hot.json");
@@ -196,7 +196,7 @@ internal static class HotProviderLoaderLifecycleTests
     private static string Fingerprint(FilterExpression expression)
     {
         Type type = typeof(FilterCompiler).Assembly.GetType(
-            "SiftQL.FilterExpressionFingerprint",
+            "SiftQL.Compiler.FilterExpressionFingerprint",
             throwOnError: true)!;
         return (string)type.GetMethod("Create", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
             .Invoke(null, [expression])!;

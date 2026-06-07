@@ -14,13 +14,16 @@ internal static class HotProviderEmitter
         source.AppendLine("using System.Collections.Generic;");
         source.AppendLine("using System.Runtime.CompilerServices;");
         source.AppendLine("using SiftQL;");
-        source.AppendLine("using SiftQL;");
+        source.AppendLine("using SiftQL.Expressions;");
         source.AppendLine("using SiftQL.Hot;");
+        source.AppendLine("using SiftQL.Projected;");
         source.AppendLine("using SiftQL.Projection;");
+        source.AppendLine("using SiftQL.Schema;");
+        source.AppendLine("using SiftQL.Values;");
         source.AppendLine();
         EmitAssemblyMetadata(source, provider);
         source.AppendLine();
-        source.AppendLine("namespace FourStory.Plugin.Filters.Hot.Generated;");
+        source.AppendLine("namespace SiftQL.Hot.Generated;");
         source.AppendLine();
         source.Append("internal sealed class ").Append(provider.ProviderName).AppendLine(" : IPrecompiledTieredProvider");
         source.AppendLine("{");
@@ -36,12 +39,12 @@ internal static class HotProviderEmitter
 
     private static void EmitAssemblyMetadata(StringBuilder source, HotProviderSource provider)
     {
-        source.Append("[assembly: System.Reflection.AssemblyMetadata(\"FourStoryHotManifestHash\", ");
+        source.Append("[assembly: System.Reflection.AssemblyMetadata(\"SiftQLHotManifestHash\", ");
         AppendLiteral(source, provider.ManifestHash);
         source.AppendLine(")]");
-        source.AppendLine("[assembly: System.Reflection.AssemblyMetadata(\"FourStoryHotManifestSchema\", \"fourstory.filters.hot.v1\")]");
-        source.AppendLine("[assembly: System.Reflection.AssemblyMetadata(\"FourStoryHotFilterEngine\", \"tiered-v1\")]");
-        source.AppendLine("[assembly: System.Reflection.AssemblyMetadata(\"FourStoryHotGenerator\", \"hot-sourcegen-v1\")]");
+        source.AppendLine("[assembly: System.Reflection.AssemblyMetadata(\"SiftQLHotManifestSchema\", \"siftql.hot.v1\")]");
+        source.AppendLine("[assembly: System.Reflection.AssemblyMetadata(\"SiftQLHotFilterEngine\", \"tiered-v1\")]");
+        source.AppendLine("[assembly: System.Reflection.AssemblyMetadata(\"SiftQLHotGenerator\", \"hot-sourcegen-v1\")]");
     }
 
     private static void EmitEntry(StringBuilder source, HotProviderEntry entry, int index)

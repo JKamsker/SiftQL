@@ -32,7 +32,7 @@ internal static class HotProviderNullStringLiteralTests
         string manifestJson = HotManifestJson(assemblyName, filter);
         GeneratorRun run = RunGenerator(
             assemblyName,
-            new InMemoryAdditionalText("null-string.fourstory-hot.json", manifestJson),
+            new InMemoryAdditionalText("null-string.siftql-hot.json", manifestJson),
             StringEventTree());
 
         AssertEx.Equal(0, run.Diagnostics.Length, "null-string generator diagnostics");
@@ -121,7 +121,7 @@ internal static class HotProviderNullStringLiteralTests
     private static string Fingerprint(FilterExpression expression)
     {
         Type type = typeof(FilterCompiler).Assembly.GetType(
-            "SiftQL.FilterExpressionFingerprint",
+            "SiftQL.Compiler.FilterExpressionFingerprint",
             throwOnError: true)!;
         return (string)type.GetMethod("Create", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
             .Invoke(null, [expression])!;

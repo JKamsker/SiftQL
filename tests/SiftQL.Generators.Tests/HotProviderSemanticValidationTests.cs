@@ -165,7 +165,7 @@ internal static class HotProviderSemanticValidationTests
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: ImmutableArray.Create<ISourceGenerator>(new FilterSchemaSourceGenerator().AsSourceGenerator()),
             additionalTexts: ImmutableArray.Create<AdditionalText>(
-                new InMemoryAdditionalText("semantic.fourstory-hot.json", manifestJson)),
+                new InMemoryAdditionalText("semantic.siftql-hot.json", manifestJson)),
             parseOptions: CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
         driver = driver.RunGeneratorsAndUpdateCompilation(
@@ -206,7 +206,7 @@ internal static class HotProviderSemanticValidationTests
             """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
     private static string Fingerprint(FilterExpression expression) =>
-        InvokeFingerprint("SiftQL.FilterExpressionFingerprint", expression);
+        InvokeFingerprint("SiftQL.Compiler.FilterExpressionFingerprint", expression);
 
     private static string ProjectionFingerprint(EventProjectionExpression projection) =>
         InvokeFingerprint("SiftQL.Projection.ProjectionExpressionFingerprint", projection);

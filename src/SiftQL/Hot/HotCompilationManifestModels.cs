@@ -4,7 +4,7 @@ namespace SiftQL.Hot;
 
 public sealed record HotCompilationManifest
 {
-    public string Schema { get; init; } = "fourstory.filters.hot.v1";
+    public string Schema { get; init; } = "siftql.hot.v1";
     public string RuntimeVersion { get; init; } = Environment.Version.ToString();
     public string FilterEngineVersion { get; init; } = "tiered-v1";
     public string GeneratorVersion { get; init; } = "hot-sourcegen-v1";

@@ -7,15 +7,15 @@ namespace SiftQL.Generators.Hot;
 
 internal static partial class HotManifestParser
 {
-    private const string ExpectedSchema = "fourstory.filters.hot.v1";
+    private const string ExpectedSchema = "siftql.hot.v1";
     private const string ExpectedEngine = "tiered-v1";
     private const string ExpectedGenerator = "hot-sourcegen-v1";
 
     public static bool IsCandidate(string path)
     {
         string file = Path.GetFileName(path);
-        return file.Equals("fourstory-filter-hot-manifest.json", StringComparison.OrdinalIgnoreCase) ||
-            file.EndsWith(".fourstory-hot.json", StringComparison.OrdinalIgnoreCase);
+        return file.Equals("siftql-filter-hot-manifest.json", StringComparison.OrdinalIgnoreCase) ||
+            file.EndsWith(".siftql-hot.json", StringComparison.OrdinalIgnoreCase);
     }
 
     public static HotManifestParseResult Parse(AdditionalText text, CancellationToken cancellationToken)

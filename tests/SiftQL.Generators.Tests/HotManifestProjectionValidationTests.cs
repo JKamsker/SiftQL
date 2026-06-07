@@ -146,7 +146,7 @@ internal static class HotManifestProjectionValidationTests
     private static string ManifestWithIncludes(string includesJson, string fingerprint) =>
         $$"""
         {
-          "Schema": "fourstory.filters.hot.v1",
+          "Schema": "siftql.hot.v1",
           "FilterEngineVersion": "tiered-v1",
           "GeneratorVersion": "hot-sourcegen-v1",
           "Entries": [
@@ -188,7 +188,7 @@ internal static class HotManifestProjectionValidationTests
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: ImmutableArray.Create<ISourceGenerator>(new FilterSchemaSourceGenerator().AsSourceGenerator()),
             additionalTexts: ImmutableArray.Create<AdditionalText>(
-                new InMemoryAdditionalText("projection-validation.fourstory-hot.json", manifestJson)),
+                new InMemoryAdditionalText("projection-validation.siftql-hot.json", manifestJson)),
             parseOptions: CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
         driver = driver.RunGeneratorsAndUpdateCompilation(

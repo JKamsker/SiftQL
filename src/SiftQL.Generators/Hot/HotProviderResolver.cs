@@ -145,7 +145,7 @@ internal static class HotProviderResolver
 
     private static bool IsProjectedEvent(INamedTypeSymbol subject) =>
         subject.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ==
-        "FourStory.Plugin.Abstractions.Server.Filters.ProjectedEvent";
+        "SiftQL.Projected.ProjectedEvent";
 
     private static bool ValidateFingerprint(
         string actual,

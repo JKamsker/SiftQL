@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
-// removed: game-specific events
+// removed: source-specific events
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -168,7 +168,7 @@ internal static class ProjectedHotProviderSourceGeneratorTests
                 Entry("projection", assemblyName, ProjectionFingerprint(projection), JsonSerializer.SerializeToElement(projection)),
             ],
         };
-        return new InMemoryAdditionalText("projected.fourstory-hot.json", JsonSerializer.Serialize(manifest));
+        return new InMemoryAdditionalText("projected.siftql-hot.json", JsonSerializer.Serialize(manifest));
     }
 
     private static HotCompilationManifestEntry Entry(
@@ -194,7 +194,7 @@ internal static class ProjectedHotProviderSourceGeneratorTests
     }
 
     private static string Fingerprint(FilterExpression expression) =>
-        InvokeFingerprint("SiftQL.FilterExpressionFingerprint", expression);
+        InvokeFingerprint("SiftQL.Compiler.FilterExpressionFingerprint", expression);
 
     private static string ProjectionFingerprint(EventProjectionExpression projection) =>
         InvokeFingerprint("SiftQL.Projection.ProjectionExpressionFingerprint", projection);

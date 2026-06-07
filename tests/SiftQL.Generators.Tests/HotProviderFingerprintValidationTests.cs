@@ -64,7 +64,7 @@ internal static class HotProviderFingerprintValidationTests
     private static string Fingerprint(FilterExpression expression)
     {
         Type type = typeof(FilterCompiler).Assembly.GetType(
-            "SiftQL.FilterExpressionFingerprint",
+            "SiftQL.Compiler.FilterExpressionFingerprint",
             throwOnError: true)!;
         return (string)type.GetMethod("Create", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
             .Invoke(null, [expression])!;
@@ -142,7 +142,7 @@ internal static class HotProviderFingerprintValidationTests
             ],
         };
         return new InMemoryAdditionalText(
-            "fingerprint.fourstory-hot.json",
+            "fingerprint.siftql-hot.json",
             JsonSerializer.Serialize(manifest));
     }
 

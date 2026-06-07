@@ -59,7 +59,7 @@ internal static class HotManifestLiteralValidationTests
     private static string RawManifest(string entryJson) =>
         $$"""
         {
-          "Schema": "fourstory.filters.hot.v1",
+          "Schema": "siftql.hot.v1",
           "FilterEngineVersion": "tiered-v1",
           "GeneratorVersion": "hot-sourcegen-v1",
           "Entries": [{{entryJson}}]
@@ -90,7 +90,7 @@ internal static class HotManifestLiteralValidationTests
     private static string Fingerprint(FilterExpression expression)
     {
         Type type = typeof(FilterCompiler).Assembly.GetType(
-            "SiftQL.FilterExpressionFingerprint",
+            "SiftQL.Compiler.FilterExpressionFingerprint",
             throwOnError: true)!;
         return (string)type.GetMethod("Create", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
             .Invoke(null, [expression])!;
@@ -102,7 +102,7 @@ internal static class HotManifestLiteralValidationTests
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: ImmutableArray.Create<ISourceGenerator>(new FilterSchemaSourceGenerator().AsSourceGenerator()),
             additionalTexts: ImmutableArray.Create<AdditionalText>(
-                new InMemoryAdditionalText("literal.fourstory-hot.json", manifestJson)),
+                new InMemoryAdditionalText("literal.siftql-hot.json", manifestJson)),
             parseOptions: CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
         driver = driver.RunGeneratorsAndUpdateCompilation(
             compilation,

@@ -208,7 +208,7 @@ internal static class HotProviderValidationTests
             ],
         };
         return new InMemoryAdditionalText(
-            "validation.fourstory-hot.json",
+            "validation.siftql-hot.json",
             JsonSerializer.Serialize(manifest));
     }
 
@@ -235,7 +235,7 @@ internal static class HotProviderValidationTests
             ],
         };
         return new InMemoryAdditionalText(
-            "validation.fourstory-hot.json",
+            "validation.siftql-hot.json",
             JsonSerializer.Serialize(manifest));
     }
 

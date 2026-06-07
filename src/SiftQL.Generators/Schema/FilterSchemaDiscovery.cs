@@ -8,8 +8,9 @@ namespace SiftQL.Generators.Schema;
 internal static class FilterSchemaDiscovery
 {
     private const string AbstractionsAssembly = "SiftQL.Abstractions";
-    private const string GameEventName = "SiftQL.IFilterSubject";
-    private const string RegistryName = "SiftQL.GeneratedFilterSchemaRegistry";
+    private const string RuntimeAssembly = "SiftQL";
+    private const string FilterSubjectName = "SiftQL.IFilterSubject";
+    private const string RegistryName = "SiftQL.Schema.GeneratedFilterSchemaRegistry";
     private static readonly SymbolDisplayFormat s_format = SymbolDisplayFormat.FullyQualifiedFormat;
 
     public static EquatableArray<GeneratedSchema> DiscoverBuiltIn(
@@ -20,13 +21,10 @@ internal static class FilterSchemaDiscovery
         if (abstractions is null)
             return EquatableArray<GeneratedSchema>.Empty;
 
-        INamedTypeSymbol? gameEvent = compilation.GetTypeByMetadataName(GameEventName);
+        INamedTypeSymbol? filterSubject = compilation.GetTypeByMetadataName(FilterSubjectName);
         var schemas = ImmutableArray.CreateBuilder<GeneratedSchema>();
-        foreach (INamedTypeSymbol type in EnumerateTypes(abstractions.GlobalNamespace, cancellationToken))
-        {
-            if (IsBuiltInEligible(type, gameEvent))
-                schemas.Add(CreateSchema(type));
-        }
+        AddEligibleBuiltInTypes(schemas, abstractions.GlobalNamespace, filterSubject, cancellationToken);
+        AddEligibleBuiltInTypes(schemas, compilation.Assembly.GlobalNamespace, filterSubject, cancellationToken);
 
         return Sort(schemas.ToImmutable());
     }
@@ -46,9 +44,9 @@ internal static class FilterSchemaDiscovery
             return null;
         }
 
-        INamedTypeSymbol? gameEvent = context.SemanticModel.Compilation.GetTypeByMetadataName(GameEventName);
+        INamedTypeSymbol? filterSubject = context.SemanticModel.Compilation.GetTypeByMetadataName(FilterSubjectName);
         if (context.SemanticModel.GetDeclaredSymbol(declaration, cancellationToken) is not INamedTypeSymbol type ||
-            !IsCurrentEligible(type, gameEvent))
+            !IsCurrentEligible(type, filterSubject))
         {
             return null;
         }
@@ -90,6 +88,19 @@ internal static class FilterSchemaDiscovery
             : compilation.SourceModule.ReferencedAssemblySymbols
                 .FirstOrDefault(static assembly => assembly.Name == AbstractionsAssembly);
 
+    private static void AddEligibleBuiltInTypes(
+        ImmutableArray<GeneratedSchema>.Builder schemas,
+        INamespaceSymbol scope,
+        INamedTypeSymbol? filterSubject,
+        CancellationToken cancellationToken)
+    {
+        foreach (INamedTypeSymbol type in EnumerateTypes(scope, cancellationToken))
+        {
+            if (IsBuiltInEligible(type, filterSubject))
+                schemas.Add(CreateSchema(type));
+        }
+    }
+
     private static IEnumerable<INamedTypeSymbol> EnumerateTypes(
         INamespaceSymbol scope,
         CancellationToken cancellationToken)
@@ -124,13 +135,13 @@ internal static class FilterSchemaDiscovery
         }
     }
 
-    private static bool IsBuiltInEligible(INamedTypeSymbol type, INamedTypeSymbol? gameEvent) =>
-        IsEligibleShape(type) && Implements(type, gameEvent);
+    private static bool IsBuiltInEligible(INamedTypeSymbol type, INamedTypeSymbol? filterSubject) =>
+        IsEligibleShape(type) && Implements(type, filterSubject);
 
-    private static bool IsCurrentEligible(INamedTypeSymbol type, INamedTypeSymbol? gameEvent) =>
+    private static bool IsCurrentEligible(INamedTypeSymbol type, INamedTypeSymbol? filterSubject) =>
         IsEligibleShape(type) &&
         IsExternallyVisible(type) &&
-        Implements(type, gameEvent);
+        Implements(type, filterSubject);
 
     private static bool IsEligibleShape(INamedTypeSymbol type) =>
         type.DeclaredAccessibility == Accessibility.Public &&
@@ -150,6 +161,7 @@ internal static class FilterSchemaDiscovery
     }
 
     private static bool CanEmitCurrentProvider(Compilation compilation) =>
+        compilation.Assembly.Name != RuntimeAssembly &&
         compilation.GetTypeByMetadataName(RegistryName) is not null;
 
     private static bool Implements(INamedTypeSymbol type, INamedTypeSymbol? contract) =>

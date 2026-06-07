@@ -4,7 +4,7 @@ namespace SiftQL.Generators.Hot;
 
 internal static class HotProviderDiagnostics
 {
-    private const string Category = "FourStory.Plugin.Filters.Hot";
+    private const string Category = "SiftQL.Hot";
 
     public static Diagnostic Create(HotProviderDiagnostic diagnostic) =>
         Diagnostic.Create(

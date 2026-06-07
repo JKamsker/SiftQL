@@ -135,7 +135,7 @@ internal static class ParameterizedHotProviderSourceGeneratorTests
         FilterExpression filter,
         EventProjectionExpression projection) =>
         new InMemoryAdditionalText(
-            "parameterized.fourstory-hot.json",
+            "parameterized.siftql-hot.json",
             HotManifestJson(assemblyName, filter, projection));
 
     private static string HotManifestJson(
@@ -170,7 +170,7 @@ internal static class ParameterizedHotProviderSourceGeneratorTests
         };
 
     private static string Fingerprint(FilterExpression expression) =>
-        InvokeFingerprint("SiftQL.FilterExpressionFingerprint", expression);
+        InvokeFingerprint("SiftQL.Compiler.FilterExpressionFingerprint", expression);
 
     private static string ProjectionFingerprint(EventProjectionExpression projection) =>
         InvokeFingerprint("SiftQL.Projection.ProjectionExpressionFingerprint", projection);

@@ -7,13 +7,13 @@ namespace SiftQL.Hot;
 
 public static class HotTieredProviderLoader
 {
-    private const string Schema = "fourstory.filters.hot.v1";
+    private const string Schema = "siftql.hot.v1";
     private const string Engine = "tiered-v1";
     private const string Generator = "hot-sourcegen-v1";
-    private const string HashKey = "FourStoryHotManifestHash";
-    private const string SchemaKey = "FourStoryHotManifestSchema";
-    private const string EngineKey = "FourStoryHotFilterEngine";
-    private const string GeneratorKey = "FourStoryHotGenerator";
+    private const string HashKey = "SiftQLHotManifestHash";
+    private const string SchemaKey = "SiftQLHotManifestSchema";
+    private const string EngineKey = "SiftQLHotFilterEngine";
+    private const string GeneratorKey = "SiftQLHotGenerator";
 
     public static HotTieredProviderLoadResult TryLoad(HotTieredProviderLoadOptions options)
     {
@@ -141,7 +141,7 @@ public static class HotTieredProviderLoader
 
     private sealed class HotTieredProviderLoadContext(string assemblyPath)
         : AssemblyLoadContext(
-            name: "FourStoryHotProvider:" + Path.GetFileNameWithoutExtension(assemblyPath),
+            name: "SiftQLHotProvider:" + Path.GetFileNameWithoutExtension(assemblyPath),
             isCollectible: true)
     {
         private readonly AssemblyDependencyResolver _resolver = new(assemblyPath);

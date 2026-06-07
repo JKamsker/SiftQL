@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
-// removed: game-specific value types
+// removed: source-specific value types
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -39,7 +39,7 @@ internal static class HotProviderSourceGeneratorTests
         GeneratorRun run = RunGenerator(
             "Plugin.Hot.Loaded",
             HotManifest("Plugin.Hot.Loaded", filter, projection),
-            PluginEventTree());
+            HotProviderPluginEventSource.Tree());
 
         AssertEx.Equal(0, run.Diagnostics.Length, "generator driver diagnostics");
         string source = run.Result.Results[0].GeneratedSources
@@ -82,14 +82,14 @@ internal static class HotProviderSourceGeneratorTests
     {
         string json = """
             {
-              "Schema": "fourstory.filters.hot.v1",
+              "Schema": "siftql.hot.v1",
               "RuntimeVersion": "10.0.0",
               "FilterEngineVersion": "tiered-v1",
               "GeneratorVersion": "old",
               "Entries": []
             }
             """;
-        GeneratorRun run = RunGenerator("Plugin.Hot.Stale", new InMemoryAdditionalText("stale.fourstory-hot.json", json));
+        GeneratorRun run = RunGenerator("Plugin.Hot.Stale", new InMemoryAdditionalText("stale.siftql-hot.json", json));
 
         Diagnostic[] diagnostics = run.Diagnostics
             .Where(static item => item.Id == "FSFHOT004")
@@ -109,10 +109,10 @@ internal static class HotProviderSourceGeneratorTests
         string manifestJson = HotManifestJson(assemblyName, filter, projection);
         GeneratorRun run = RunGenerator(
             assemblyName,
-            new InMemoryAdditionalText("loader.fourstory-hot.json", manifestJson),
-            PluginEventTree());
+            new InMemoryAdditionalText("loader.siftql-hot.json", manifestJson),
+            HotProviderPluginEventSource.Tree());
 
-        string directory = Path.Combine(Path.GetTempPath(), "FourStoryHotProviderLoader", Guid.NewGuid().ToString("N"));
+        string directory = Path.Combine(Path.GetTempPath(), "SiftQLHotProviderLoader", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string assemblyPath = Path.Combine(directory, "Plugin.Hot.Loader.dll");
         string manifestPath = Path.Combine(directory, "hot.json");
@@ -187,7 +187,7 @@ internal static class HotProviderSourceGeneratorTests
         EventProjectionExpression projection)
     {
         return new InMemoryAdditionalText(
-            "filters.fourstory-hot.json",
+            "filters.siftql-hot.json",
             HotManifestJson(assemblyName, filter, projection));
     }
 
@@ -225,7 +225,7 @@ internal static class HotProviderSourceGeneratorTests
     private static string Fingerprint(FilterExpression expression)
     {
         Type type = typeof(FilterCompiler).Assembly.GetType(
-            "SiftQL.FilterExpressionFingerprint",
+            "SiftQL.Compiler.FilterExpressionFingerprint",
             throwOnError: true)!;
         return (string)type.GetMethod("Create", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
             .Invoke(null, [expression])!;
@@ -253,34 +253,16 @@ internal static class HotProviderSourceGeneratorTests
 
     private static object Event(Type eventType, long characterId)
     {
+        Type skillRef = eventType.Assembly.GetType("Plugin.Events.SkillRef", throwOnError: true)!;
         Type eventKind = eventType.Assembly.GetType("Plugin.Events.PluginEventKind", throwOnError: true)!;
         return Activator.CreateInstance(
             eventType,
             Guid.NewGuid(),
             characterId,
-            new SkillRef(10, 1),
+            Activator.CreateInstance(skillRef, 10, 1),
             Enum.ToObject(eventKind, 1),
             new[] { 1, 2 })!;
     }
-
-    private static SyntaxTree PluginEventTree() =>
-        CSharpSyntaxTree.ParseText("""
-            using System;
-            using SiftQL;
-
-            namespace Plugin.Events;
-
-            public sealed record SkillRef(int Id, int Level);
-
-            public enum PluginEventKind { Unknown, Hit }
-
-            public sealed record PluginOwnedEvent(
-                Guid EventId,
-                long CharacterId,
-                SkillRef Skill,
-                PluginEventKind Kind,
-                int[] Tokens) : IFilterSubject;
-            """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
     private static void AddReference(List<MetadataReference> references, string path)
     {

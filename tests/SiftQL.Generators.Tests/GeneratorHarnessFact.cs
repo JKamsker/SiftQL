@@ -21,9 +21,11 @@ public sealed class GeneratorHarnessFact
         HotProviderSourceGeneratorTests.RunAll();
         HotProviderSemanticValidationTests.RunAll();
         HotProviderValidationTests.RunAll();
+        KernelCatalogSourceGeneratorTests.RunAll();
         KeywordFilterSchemaSourceGeneratorTests.RunAll();
         ParameterizedHotProviderSourceGeneratorTests.RunAll();
         ProjectedHotProviderSourceGeneratorTests.RunAll();
+        ServerPluginHostExampleTests.RunAll();
     }
 
     [Fact]

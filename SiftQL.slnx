@@ -15,5 +15,6 @@
     <Project Path="examples/SiftQL.Examples.Subscriptions/SiftQL.Examples.Subscriptions.csproj" />
     <Project Path="examples/SiftQL.Examples.Projection/SiftQL.Examples.Projection.csproj" />
     <Project Path="examples/SiftQL.Examples.RpcQuery/SiftQL.Examples.RpcQuery.csproj" />
+    <Project Path="examples/SiftQL.Examples.ServerPluginHost/SiftQL.Examples.ServerPluginHost.csproj" />
   </Folder>
 </Solution>

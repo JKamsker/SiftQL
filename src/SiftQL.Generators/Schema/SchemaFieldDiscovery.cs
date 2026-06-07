@@ -135,16 +135,7 @@ internal static class SchemaFieldDiscovery
     }
 
     private static bool IsValueObject(ITypeSymbol type) =>
-        type.ToDisplayString() is
-            "FourStory.Plugin.Abstractions.Common.ChannelMap" or
-            "FourStory.Plugin.Abstractions.Common.ItemStack" or
-            "FourStory.Plugin.Abstractions.Common.ManaPool" or
-            "FourStory.Plugin.Abstractions.Common.MapInstanceRef" or
-            "FourStory.Plugin.Abstractions.Common.MapLocation" or
-            "FourStory.Plugin.Abstractions.Common.ObjectRef" or
-            "FourStory.Plugin.Abstractions.Common.SkillRef" or
-            "FourStory.Plugin.Abstractions.Common.SpawnKey" or
-            "FourStory.Plugin.Abstractions.Common.Vitals";
+        type is INamedTypeSymbol { IsRecord: true, TypeKind: TypeKind.Class or TypeKind.Struct };
 
     private static string? ArrayContainsMethod(ITypeSymbol propertyType, GeneratedScalarKind scalarKind) =>
         propertyType is IArrayTypeSymbol array && !IsNullable(array.ElementType)

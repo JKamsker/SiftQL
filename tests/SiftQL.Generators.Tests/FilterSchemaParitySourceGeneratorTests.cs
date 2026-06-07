@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using SiftQL;
 using SiftQL.Generators;
 using SiftQL.Generators.Schema;
@@ -25,14 +26,15 @@ internal static class FilterSchemaParitySourceGeneratorTests
         AssertEx.True(emit.Success, "nested schema assembly emitted: " + string.Join(" | ", emit.Diagnostics));
 
         Assembly assembly = Assembly.Load(pe.ToArray());
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
         Type eventType = assembly.GetType("Plugin.Events.Container+NestedEvent", throwOnError: true)!;
         object ev = Activator.CreateInstance(eventType, Guid.NewGuid(), 42L)!;
         FilterSchema schema = FilterSchema.For(eventType);
 
-        AssertEx.True(schema.TryGetField("eventType", out var eventTypeField), "eventType field registered");
-        AssertEx.True(schema.TryGetField("eventName", out var eventNameField), "eventName field registered");
-        AssertEx.Equal(eventType.FullName, eventTypeField.Getter(ev), "eventType uses CLR FullName");
-        AssertEx.Equal(eventType.Name, eventNameField.Getter(ev), "eventName uses CLR Name");
+        AssertEx.True(schema.TryGetField("subjectType", out var eventTypeField), "subjectType field registered");
+        AssertEx.True(schema.TryGetField("subjectName", out var eventNameField), "subjectName field registered");
+        AssertEx.Equal(eventType.FullName, eventTypeField.Getter(ev), "subjectType uses CLR FullName");
+        AssertEx.Equal(eventType.Name, eventNameField.Getter(ev), "subjectName uses CLR Name");
     }
 
     private static GeneratorRun RunGenerator(params SyntaxTree[] trees)

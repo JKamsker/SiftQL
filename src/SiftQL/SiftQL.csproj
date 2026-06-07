@@ -17,4 +17,15 @@
                       PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\SiftQL.Generators\bin\$(Configuration)\netstandard2.0\SiftQL.Generators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+    <None Include="..\SiftQL.Generators\bin\$(Configuration)\netstandard2.0\System.Text.Json.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+  </ItemGroup>
+
 </Project>

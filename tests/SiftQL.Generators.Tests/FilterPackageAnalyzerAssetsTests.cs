@@ -13,7 +13,7 @@ public sealed class FilterPackageAnalyzerAssetsTests
         string root = FindRepoRoot();
         string output = Path.Combine(
             Path.GetTempPath(),
-            "FourStoryFiltersPack",
+            "SiftQLPack",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
         try
@@ -21,10 +21,9 @@ public sealed class FilterPackageAnalyzerAssetsTests
             RunDotnet(
                 root,
                 "pack",
-                "src/Plugins/Runtime/SiftQL/SiftQL.csproj",
+                "src/SiftQL/SiftQL.csproj",
                 "-c",
                 "Release",
-                "--no-build",
                 "-o",
                 output);
 
@@ -78,8 +77,11 @@ public sealed class FilterPackageAnalyzerAssetsTests
         var directory = new DirectoryInfo(Path.GetDirectoryName(sourceFile) ?? AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, "src", "Plugins")))
+            if (File.Exists(Path.Combine(directory.FullName, "SiftQL.slnx")) &&
+                File.Exists(Path.Combine(directory.FullName, "src", "SiftQL", "SiftQL.csproj")))
+            {
                 return directory.FullName;
+            }
 
             directory = directory.Parent;
         }

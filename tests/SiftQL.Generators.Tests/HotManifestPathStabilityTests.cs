@@ -15,7 +15,7 @@ internal static class HotManifestPathStabilityTests
     {
         string manifest = """
             {
-              "Schema": "fourstory.filters.hot.v1",
+              "Schema": "siftql.hot.v1",
               "RuntimeVersion": "10.0.0",
               "FilterEngineVersion": "tiered-v1",
               "GeneratorVersion": "hot-sourcegen-v1",
@@ -23,8 +23,8 @@ internal static class HotManifestPathStabilityTests
             }
             """;
 
-        object first = Parse(@"C:\agent-a\filters.fourstory-hot.json", manifest);
-        object second = Parse(@"D:\agent-b\filters.fourstory-hot.json", manifest);
+        object first = Parse(@"C:\agent-a\filters.siftql-hot.json", manifest);
+        object second = Parse(@"D:\agent-b\filters.siftql-hot.json", manifest);
 
         AssertEx.Equal(Property(first, "ProviderName"), Property(second, "ProviderName"), "provider name should be path-stable");
         AssertEx.Equal(Property(first, "HintName"), Property(second, "HintName"), "hint name should be path-stable");
@@ -33,7 +33,7 @@ internal static class HotManifestPathStabilityTests
     private static object Parse(string path, string manifest)
     {
         Type parser = typeof(FilterSchemaSourceGenerator).Assembly.GetType(
-            "SiftQL.Generators.HotManifestParser",
+            "SiftQL.Generators.Hot.HotManifestParser",
             throwOnError: true)!;
         return parser.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static)!
             .Invoke(null, [new InMemoryAdditionalText(path, manifest), CancellationToken.None])!;

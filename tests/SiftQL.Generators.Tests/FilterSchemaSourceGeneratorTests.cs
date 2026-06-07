@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Generators;
@@ -34,19 +35,20 @@ internal static class FilterSchemaSourceGeneratorTests
             RuntimeAssemblyName,
             includeAbstractions: true,
             includeFilters: true,
-            includeFilterRuntimeReference: false);
+            includeFilterRuntimeReference: false,
+            ParseTree(FilterSchemaRuntimeEventSource.Text));
         AssertEx.Equal(0, run.Diagnostics.Length, "generator driver diagnostics");
         AssertEx.Equal(1, run.Result.Results[0].GeneratedSources.Length, "generated source count");
 
         string source = GeneratedSource(run, BuiltInProviderHint);
-        AssertEx.Contains("typeof(global::SiftQL.DamageDealtEvent)", source, "server event schema emitted");
-        AssertEx.Contains("\"Attacker.ObjectId\"", source, "nested server value object field emitted");
+        AssertEx.Contains("typeof(global::SiftQL.WorldActionEvent)", source, "world event schema emitted");
+        AssertEx.Contains("\"Actor.ObjectId\"", source, "nested value object field emitted");
         AssertEx.Contains("new FilterScalarAccessor(FilterScalarKind.Number", source, "typed number accessor emitted");
         AssertEx.Contains("ProjectionValueFactory.FromInt32", source, "typed projection accessor emitted");
-        AssertEx.Contains("typeof(global::SiftQL.Input.ClientMouseEvent)", source, "client input schema emitted");
-        AssertEx.Contains("\"OverPluginHud\"", source, "client event scalar field emitted");
+        AssertEx.Contains("typeof(global::SiftQL.Input.ClientPointerEvent)", source, "input schema emitted");
+        AssertEx.Contains("\"OverOverlay\"", source, "input event scalar field emitted");
         AssertEx.Contains("\"WindowId\"", source, "inherited UI event field emitted");
-        AssertEx.Contains("typeof(global::SiftQL.Dtos.Character.PlayerSnapshot)", source, "client snapshot schema emitted");
+        AssertEx.Contains("typeof(global::SiftQL.Dtos.Character.AvatarSnapshot)", source, "snapshot schema emitted");
 
         Diagnostic[] errors = run.OutputCompilation.GetDiagnostics()
             .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
@@ -86,6 +88,7 @@ internal static class FilterSchemaSourceGeneratorTests
         AssertEx.True(emit.Success, "generated plugin assembly emitted: " + string.Join(" | ", emit.Diagnostics));
 
         Assembly assembly = Assembly.Load(pe.ToArray());
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
         Type eventType = assembly.GetType("Plugin.Events.PluginOwnedEvent", throwOnError: true)!;
         FilterSchema schema = FilterSchema.For(eventType);
 
@@ -253,12 +256,13 @@ internal static class FilterSchemaSourceGeneratorTests
     private static SyntaxTree PluginEventTree() =>
         ParseTree("""
             using System;
-            // removed: game-specific value types
+            // removed: source-specific value types
             using SiftQL;
 
             namespace Plugin.Events;
 
             public enum PluginEventKind { Unknown, Hit }
+            public sealed record SkillRef(int SkillId, int Level);
 
             public sealed record PluginOwnedEvent(
                 Guid EventId,
