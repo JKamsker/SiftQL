@@ -24,6 +24,7 @@ internal static class KernelCatalogEmitter
         source.AppendLine();
         source.AppendLine("{");
         EmitSubjects(source, catalog);
+        EmitSubjectContract(source, catalog);
         EmitFor(source, catalog);
         EmitKnownSubjectCheck(source, catalog);
         foreach (KernelCatalogSubject subject in catalog.Subjects)
@@ -47,6 +48,23 @@ internal static class KernelCatalogEmitter
         source.AppendLine();
         source.AppendLine("    public static global::System.Collections.Generic.IReadOnlyList<global::System.Type> SubjectTypes =>");
         source.AppendLine("        s_subjectTypes;");
+        source.AppendLine();
+    }
+
+    private static void EmitSubjectContract(StringBuilder source, KernelCatalogModel catalog)
+    {
+        source.AppendLine("    public static global::System.Type? SubjectContract =>");
+        if (catalog.SubjectContractTypeName is { Length: > 0 } contract)
+        {
+            source.Append("        typeof(");
+            source.Append(contract);
+            source.AppendLine(");");
+        }
+        else
+        {
+            source.AppendLine("        null;");
+        }
+
         source.AppendLine();
     }
 

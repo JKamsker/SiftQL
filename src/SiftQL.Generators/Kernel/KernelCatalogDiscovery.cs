@@ -9,7 +9,6 @@ internal static class KernelCatalogDiscovery
 {
     public const string CatalogAttributeName = "SiftQL.KernelCatalogAttribute";
     private const string SubjectAttributeName = "SiftQL.KernelSubjectAttribute";
-    private const string FilterSubjectName = "SiftQL.IFilterSubject";
     private static readonly SymbolDisplayFormat s_format = SymbolDisplayFormat.FullyQualifiedFormat;
 
     public static bool IsCandidate(SyntaxNode node, CancellationToken _) =>
@@ -24,9 +23,7 @@ internal static class KernelCatalogDiscovery
         var catalog = (INamedTypeSymbol)context.TargetSymbol;
         ValidateCatalog(catalog, diagnostics);
 
-        INamedTypeSymbol? contract = SubjectContract(
-            context,
-            context.SemanticModel.Compilation.GetTypeByMetadataName(FilterSubjectName));
+        INamedTypeSymbol? contract = SubjectContract(context);
         EquatableArray<KernelCatalogSubject> subjects = DiscoverSubjects(
             catalog,
             contract,
@@ -154,12 +151,11 @@ internal static class KernelCatalogDiscovery
             StringComparison.Ordinal);
 
     private static INamedTypeSymbol? SubjectContract(
-        GeneratorAttributeSyntaxContext context,
-        INamedTypeSymbol? defaultContract)
+        GeneratorAttributeSyntaxContext context)
     {
         AttributeData? attribute = context.Attributes.FirstOrDefault(IsCatalogAttribute);
         if (attribute is null)
-            return defaultContract;
+            return null;
 
         foreach (KeyValuePair<string, TypedConstant> argument in attribute.NamedArguments)
         {
@@ -167,7 +163,7 @@ internal static class KernelCatalogDiscovery
                 return argument.Value.Value as INamedTypeSymbol;
         }
 
-        return defaultContract;
+        return null;
     }
 
     private static bool IsCatalogAttribute(AttributeData attribute) =>

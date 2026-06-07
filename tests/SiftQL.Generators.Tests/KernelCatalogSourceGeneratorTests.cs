@@ -17,6 +17,7 @@ internal static class KernelCatalogSourceGeneratorTests
     public static void RunAll()
     {
         GeneratorEmitsTypedFacadeAndCompilesPartialExtensions();
+        GeneratorAllowsCatalogWithoutSubjectContract();
         GeneratorSupportsCustomSubjectContract();
         GeneratedCatalogRejectsUnknownSubject();
         GeneratorReportsInvalidCatalogShape();
@@ -32,13 +33,16 @@ internal static class KernelCatalogSourceGeneratorTests
             using SiftQL;
             namespace SampleHost;
 
-            public interface IHostOwnedRecord;
+            public interface IHostOwnedRecord
+            {
+                System.Guid EventId { get; }
+            }
 
             [KernelCatalog(SubjectContract = typeof(IHostOwnedRecord))]
             [KernelSubject(typeof(StatusChangedEvent), Alias = "StatusChanged")]
             public static partial class SharedKernel;
 
-            public sealed record StatusChangedEvent(int Value) : IHostOwnedRecord;
+            public sealed record StatusChangedEvent(System.Guid EventId, int Value) : IHostOwnedRecord;
             """));
         string source = GeneratedSource(run, hint);
 
@@ -46,8 +50,35 @@ internal static class KernelCatalogSourceGeneratorTests
             "where TSubject : global::SampleHost.IHostOwnedRecord",
             source,
             "custom subject contract emitted");
+        AssertEx.Contains("SubjectContract =>", source, "custom subject contract property emitted");
+        AssertEx.Contains(
+            "typeof(global::SampleHost.IHostOwnedRecord);",
+            source,
+            "custom subject contract type emitted");
         AssertEx.Contains("ForStatusChanged()", source, "subject factory emitted for custom contract");
         AssertNoCompilationErrors(run, "generated kernel catalog with custom subject contract");
+    }
+
+    private static void GeneratorAllowsCatalogWithoutSubjectContract()
+    {
+        const string hint = "SampleHost.LooseKernel.KernelCatalog.g.cs";
+        GeneratorRun run = RunGenerator(ParseTree("""
+            using SiftQL;
+            namespace SampleHost;
+
+            [KernelCatalog]
+            [KernelSubject(typeof(PlainRecord), Alias = "Plain")]
+            public static partial class LooseKernel;
+
+            public sealed record PlainRecord(int Value);
+            """));
+        string source = GeneratedSource(run, hint);
+
+        AssertEx.Contains("ForPlain()", source, "subject factory emitted without subject contract");
+        AssertEx.Contains("SubjectContract =>", source, "subject contract property emitted");
+        AssertEx.Contains("null;", source, "null subject contract emitted");
+        AssertEx.True(!source.Contains("where TSubject", StringComparison.Ordinal), "no subject constraint emitted");
+        AssertNoCompilationErrors(run, "generated kernel catalog without subject contract");
     }
 
     private static void GeneratorEmitsTypedFacadeAndCompilesPartialExtensions()
@@ -59,6 +90,7 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertEx.Contains("ForItemUsed()", source, "alias-based subject factory emitted");
         AssertEx.Contains("ForWorldTickEvent()", source, "default subject factory emitted");
         AssertEx.Contains("IsKnownSubject", source, "known subject guard emitted");
+        AssertEx.Contains("SubjectContract =>", source, "subject contract property emitted");
         AssertNoCompilationErrors(run, "generated kernel catalog");
 
         Assembly assembly = EmitAssembly(run);
@@ -117,7 +149,7 @@ internal static class KernelCatalogSourceGeneratorTests
             using SiftQL;
             namespace SampleHost;
 
-            [KernelCatalog]
+            [KernelCatalog(SubjectContract = typeof(IFilterSubject))]
             [KernelSubject(typeof(NotAFilterSubject))]
             public static partial class ServerKernel;
 

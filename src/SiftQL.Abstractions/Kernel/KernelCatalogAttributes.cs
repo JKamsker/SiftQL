@@ -3,7 +3,7 @@ namespace SiftQL;
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class KernelCatalogAttribute : Attribute
 {
-    public Type? SubjectContract { get; set; } = typeof(IFilterSubject);
+    public Type? SubjectContract { get; set; }
 }
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false, AllowMultiple = true)]
