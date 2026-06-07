@@ -1,0 +1,155 @@
+using System.Runtime.Loader;
+using System.Runtime.CompilerServices;
+using System.Reflection;
+using System.Text.Json;
+
+namespace SiftQL.Hot;
+
+public static class HotTieredProviderLoader
+{
+    private const string Schema = "fourstory.filters.hot.v1";
+    private const string Engine = "tiered-v1";
+    private const string Generator = "hot-sourcegen-v1";
+    private const string HashKey = "FourStoryHotManifestHash";
+    private const string SchemaKey = "FourStoryHotManifestSchema";
+    private const string EngineKey = "FourStoryHotFilterEngine";
+    private const string GeneratorKey = "FourStoryHotGenerator";
+
+    public static HotTieredProviderLoadResult TryLoad(HotTieredProviderLoadOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        try
+        {
+            if (!File.Exists(options.ManifestPath) || !File.Exists(options.AssemblyPath))
+            {
+                return Result(
+                    HotTieredProviderLoadStatus.MissingArtifact,
+                    "Hot provider manifest or DLL does not exist.");
+            }
+
+            string manifestJson = File.ReadAllText(options.ManifestPath);
+            HotCompilationManifest? manifest = DeserializeManifest(manifestJson);
+            if (manifest is null)
+                return Result(HotTieredProviderLoadStatus.InvalidManifest, "Hot provider manifest did not deserialize.");
+
+            var version = ValidateManifest(manifest, options.RequireExactRuntimeVersion);
+            if (version is not null)
+                return version;
+
+            string manifestHash = HotManifestSemanticHash.Compute(manifestJson);
+            IReadOnlyDictionary<string, string> metadata =
+                HotTieredProviderAssemblyMetadata.Read(options.AssemblyPath);
+            var metadataResult = ValidateAssemblyMetadata(metadata, manifestHash);
+            if (metadataResult is not null)
+                return metadataResult;
+
+            string assemblyPath = Path.GetFullPath(options.AssemblyPath);
+            var loadContext = new HotTieredProviderLoadContext(assemblyPath);
+            Assembly assembly;
+            try
+            {
+                assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
+                RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+            }
+            catch
+            {
+                loadContext.Unload();
+                throw;
+            }
+
+            return new(
+                HotTieredProviderLoadStatus.Loaded,
+                $"Loaded hot provider DLL '{assemblyPath}'.",
+                assembly,
+                loadContext);
+        }
+        catch (BadImageFormatException ex)
+        {
+            return Result(HotTieredProviderLoadStatus.InvalidAssembly, ex.Message);
+        }
+        catch (JsonException ex)
+        {
+            return Result(HotTieredProviderLoadStatus.InvalidManifest, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return Result(HotTieredProviderLoadStatus.LoadFailed, ex.Message);
+        }
+    }
+
+    private static HotCompilationManifest? DeserializeManifest(string manifestJson) =>
+        JsonSerializer.Deserialize<HotCompilationManifest>(manifestJson);
+
+    private static HotTieredProviderLoadResult? ValidateManifest(
+        HotCompilationManifest manifest,
+        bool requireExactRuntimeVersion)
+    {
+        if (manifest.Schema != Schema)
+            return VersionMismatch("manifest schema", manifest.Schema, Schema);
+        if (manifest.FilterEngineVersion != Engine)
+            return VersionMismatch("filter engine", manifest.FilterEngineVersion, Engine);
+        if (manifest.GeneratorVersion != Generator)
+            return VersionMismatch("generator", manifest.GeneratorVersion, Generator);
+        if (requireExactRuntimeVersion && manifest.RuntimeVersion != Environment.Version.ToString())
+        {
+            return VersionMismatch(
+                "runtime",
+                manifest.RuntimeVersion,
+                Environment.Version.ToString());
+        }
+
+        return null;
+    }
+
+    private static HotTieredProviderLoadResult? ValidateAssemblyMetadata(
+        IReadOnlyDictionary<string, string> metadata,
+        string manifestHash)
+    {
+        if (!metadata.TryGetValue(HashKey, out string? dllHash))
+            return Result(HotTieredProviderLoadStatus.InvalidAssembly, "Hot provider DLL has no manifest hash.");
+        if (!string.Equals(dllHash, manifestHash, StringComparison.OrdinalIgnoreCase))
+            return Result(HotTieredProviderLoadStatus.ManifestHashMismatch, "Hot provider manifest hash is stale.");
+        if (!MetadataEquals(metadata, SchemaKey, Schema) ||
+            !MetadataEquals(metadata, EngineKey, Engine) ||
+            !MetadataEquals(metadata, GeneratorKey, Generator))
+        {
+            return Result(HotTieredProviderLoadStatus.VersionMismatch, "Hot provider DLL version metadata is stale.");
+        }
+
+        return null;
+    }
+
+    private static bool MetadataEquals(
+        IReadOnlyDictionary<string, string> metadata,
+        string key,
+        string expected) =>
+        metadata.TryGetValue(key, out string? value) &&
+        string.Equals(value, expected, StringComparison.Ordinal);
+
+    private static HotTieredProviderLoadResult VersionMismatch(
+        string name,
+        string actual,
+        string expected) =>
+        Result(
+            HotTieredProviderLoadStatus.VersionMismatch,
+            $"Hot provider {name} '{actual}' does not match expected '{expected}'.");
+
+    private static HotTieredProviderLoadResult Result(
+        HotTieredProviderLoadStatus status,
+        string message) =>
+        new(status, message);
+
+    private sealed class HotTieredProviderLoadContext(string assemblyPath)
+        : AssemblyLoadContext(
+            name: "FourStoryHotProvider:" + Path.GetFileNameWithoutExtension(assemblyPath),
+            isCollectible: true)
+    {
+        private readonly AssemblyDependencyResolver _resolver = new(assemblyPath);
+
+        protected override System.Reflection.Assembly? Load(System.Reflection.AssemblyName assemblyName)
+        {
+            string? path = _resolver.ResolveAssemblyToPath(assemblyName);
+            return path is null ? null : LoadFromAssemblyPath(path);
+        }
+    }
+}

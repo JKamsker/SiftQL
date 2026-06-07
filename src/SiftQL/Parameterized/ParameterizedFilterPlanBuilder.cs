@@ -1,0 +1,166 @@
+using SiftQL;
+using SiftQL.Compiler;
+using SiftQL.Expressions;
+using SiftQL.Projected;
+using SiftQL.Schema;
+using SiftQL.Values;
+
+namespace SiftQL.Parameterized;
+
+internal static class ParameterizedFilterPlanBuilder
+{
+    private const int MaxDepth = 16;
+    private const int MaxNodes = 128;
+    private const int MaxValues = 128;
+
+    public static ParameterizedFilterPlan Build(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory)
+    {
+        string[] keys = FilterExpressionParameters.Keys(expression);
+        var indexes = keys
+            .Select((key, index) => new KeyValuePair<string, int>(key, index))
+            .ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.Ordinal);
+        int nodes = 0;
+        var root = BuildNode(schema, expression, indexes, depth: 0, ref nodes, errorFactory);
+        return new ParameterizedFilterPlan(keys, root);
+    }
+
+    private static ParameterizedFilterPlanNode BuildNode(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        int depth,
+        ref int nodes,
+        Func<string, Exception>? errorFactory)
+    {
+        if (++nodes > MaxNodes)
+            throw Error(errorFactory, $"Filter exceeds the {MaxNodes} node limit.");
+        if (depth > MaxDepth)
+            throw Error(errorFactory, $"Filter exceeds the {MaxDepth} level depth limit.");
+
+        return expression.Kind switch
+        {
+            FilterExpressionKind.Any => new ConstantFilterPlanNode(true),
+            FilterExpressionKind.And => BuildComposite(schema, expression.Children, indexes, depth, ref nodes, errorFactory, and: true),
+            FilterExpressionKind.Or => BuildComposite(schema, expression.Children, indexes, depth, ref nodes, errorFactory, and: false),
+            FilterExpressionKind.Not => BuildNot(schema, expression.Children, indexes, depth, ref nodes, errorFactory),
+            FilterExpressionKind.Compare => BuildCompare(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.In => BuildIn(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.Exists => BuildExists(schema, expression, errorFactory),
+            FilterExpressionKind.Contains => BuildContains(schema, expression, indexes, errorFactory),
+            _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
+        };
+    }
+
+    private static ParameterizedFilterPlanNode BuildComposite(
+        FilterSchema schema,
+        FilterExpression[] children,
+        IReadOnlyDictionary<string, int> indexes,
+        int depth,
+        ref int nodes,
+        Func<string, Exception>? errorFactory,
+        bool and)
+    {
+        if (children.Length == 0)
+            throw Error(errorFactory, "Composite filters must have at least one child.");
+        FilterExpression[] ordered = and && children.Length > 1
+            ? children.OrderBy(FilterExpressionCost.Estimate).ToArray()
+            : children;
+        var compiled = new ParameterizedFilterPlanNode[ordered.Length];
+        for (int i = 0; i < ordered.Length; i++)
+            compiled[i] = BuildNode(schema, ordered[i], indexes, depth + 1, ref nodes, errorFactory);
+        return new CompositeFilterPlanNode(compiled, and);
+    }
+
+    private static ParameterizedFilterPlanNode BuildNot(
+        FilterSchema schema,
+        FilterExpression[] children,
+        IReadOnlyDictionary<string, int> indexes,
+        int depth,
+        ref int nodes,
+        Func<string, Exception>? errorFactory)
+    {
+        if (children.Length != 1)
+            throw Error(errorFactory, "Not filters must have exactly one child.");
+        return new NotFilterPlanNode(BuildNode(schema, children[0], indexes, depth + 1, ref nodes, errorFactory));
+    }
+
+    private static ParameterizedFilterPlanNode BuildCompare(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        EnsureScalar(field, errorFactory);
+        FilterValue value = expression.Value ??
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
+        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory);
+        return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
+    }
+
+    private static ParameterizedFilterPlanNode BuildIn(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        EnsureScalar(field, errorFactory);
+        ValidateValues(field, expression.Values, errorFactory);
+        return new InFilterPlanNode(
+            field,
+            expression.Values.Select(value => FilterValueRef.Create(value, indexes)).ToArray());
+    }
+
+    private static ParameterizedFilterPlanNode BuildExists(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory) =>
+        new ExistsFilterPlanNode(RequireField(schema, expression.Field, errorFactory));
+
+    private static ParameterizedFilterPlanNode BuildContains(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (field.Kind != FilterFieldKind.Array && field.ValueType != typeof(ProjectedEventValue))
+            throw Error(errorFactory, $"Filter field '{field.Name}' is not a scalar array.");
+        FilterValue value = expression.Value ??
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
+        FilterValues.ValidateValue(field, value, errorFactory);
+        return new ContainsFilterPlanNode(field, FilterValueRef.Create(value, indexes));
+    }
+
+    private static FilterField RequireField(
+        FilterSchema schema,
+        string fieldName,
+        Func<string, Exception>? errorFactory) =>
+        schema.TryGetField(fieldName, out var field)
+            ? field
+            : throw Error(errorFactory, $"Filter field '{fieldName}' is not supported by {schema.SubjectType.FullName}.");
+
+    private static void EnsureScalar(FilterField field, Func<string, Exception>? errorFactory)
+    {
+        if (field.Kind != FilterFieldKind.Scalar)
+            throw Error(errorFactory, $"Filter field '{field.Name}' is not scalar.");
+    }
+
+    private static void ValidateValues(
+        FilterField field,
+        FilterValue[] values,
+        Func<string, Exception>? errorFactory)
+    {
+        if (values.Length == 0 || values.Length > MaxValues)
+            throw Error(errorFactory, $"Filter field '{field.Name}' must have between 1 and {MaxValues} values.");
+        for (int i = 0; i < values.Length; i++)
+            FilterValues.ValidateValue(field, values[i], errorFactory);
+    }
+
+    private static Exception Error(Func<string, Exception>? errorFactory, string message) =>
+        errorFactory?.Invoke(message) ?? new FilterValidationException(message);
+}

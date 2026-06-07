@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SiftQL.Abstractions/SiftQL.Abstractions.csproj" />
+    <Project Path="src/SiftQL/SiftQL.csproj" />
+    <Project Path="src/SiftQL.Generators/SiftQL.Generators.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SiftQL.Generators.Tests/SiftQL.Generators.Tests.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/SiftQL.Benchmarks/SiftQL.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/SiftQL.Examples.BasicFiltering/SiftQL.Examples.BasicFiltering.csproj" />
+    <Project Path="examples/SiftQL.Examples.Subscriptions/SiftQL.Examples.Subscriptions.csproj" />
+    <Project Path="examples/SiftQL.Examples.Projection/SiftQL.Examples.Projection.csproj" />
+    <Project Path="examples/SiftQL.Examples.RpcQuery/SiftQL.Examples.RpcQuery.csproj" />
+  </Folder>
+</Solution>

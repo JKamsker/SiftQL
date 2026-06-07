@@ -1,0 +1,198 @@
+using System.Collections.Immutable;
+using System.Text.Json;
+
+namespace SiftQL.Generators.Hot;
+
+internal static partial class HotManifestParser
+{
+    private static HotFilterNode? ParseFilter(
+        JsonElement element,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics)
+    {
+        if (!TryReadEnum(element, "Kind", out HotFilterNodeKind kind))
+        {
+            Add(diagnostics, "FSFHOT009", path, "Hot filter node kind is missing or invalid.");
+            return null;
+        }
+
+        int op = ReadInt(element, "Operator");
+        if (kind == HotFilterNodeKind.Compare)
+        {
+            if (!TryReadOperator(element, out op))
+            {
+                Add(diagnostics, "FSFHOT009", path, "Hot filter compare operator is missing or invalid.");
+                return null;
+            }
+        }
+
+        HotFilterValue? value = null;
+        if (element.TryGetProperty("Value", out JsonElement valueElement) &&
+            valueElement.ValueKind != JsonValueKind.Null)
+        {
+            if (!RequireObject(valueElement, path, "Hot filter value", diagnostics))
+                return null;
+
+            value = ParseValue(valueElement, path, diagnostics);
+            if (value is null)
+                return null;
+        }
+
+        EquatableArray<HotFilterValue> values = ParseValues(element, path, diagnostics, out bool valuesValid);
+        EquatableArray<HotFilterNode> children = ParseChildren(element, path, diagnostics, out bool childrenValid);
+        if (!valuesValid || !childrenValid)
+            return null;
+
+        return new(
+            kind,
+            ReadString(element, "Field"),
+            op,
+            value,
+            values,
+            children);
+    }
+
+    private static EquatableArray<HotFilterNode> ParseChildren(
+        JsonElement element,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        out bool valid)
+    {
+        valid = true;
+        if (!element.TryGetProperty("Children", out JsonElement items) ||
+            items.ValueKind != JsonValueKind.Array)
+        {
+            return EquatableArray<HotFilterNode>.Empty;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<HotFilterNode>();
+        foreach (JsonElement item in items.EnumerateArray())
+        {
+            if (!RequireObject(item, path, "Hot filter child", diagnostics))
+            {
+                valid = false;
+                continue;
+            }
+
+            HotFilterNode? child = ParseFilter(item, path, diagnostics);
+            if (child is null)
+            {
+                valid = false;
+                continue;
+            }
+
+            builder.Add(child);
+        }
+
+        return new(builder.ToImmutable());
+    }
+
+    private static EquatableArray<HotFilterValue> ParseValues(
+        JsonElement element,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        out bool valid)
+    {
+        valid = true;
+        if (!element.TryGetProperty("Values", out JsonElement items) ||
+            items.ValueKind != JsonValueKind.Array)
+        {
+            return EquatableArray<HotFilterValue>.Empty;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<HotFilterValue>();
+        foreach (JsonElement item in items.EnumerateArray())
+        {
+            if (!RequireObject(item, path, "Hot filter value", diagnostics))
+            {
+                valid = false;
+                continue;
+            }
+
+            HotFilterValue? value = ParseValue(item, path, diagnostics);
+            if (value is null)
+            {
+                valid = false;
+                continue;
+            }
+
+            builder.Add(value);
+        }
+
+        return new(builder.ToImmutable());
+    }
+
+    private static HotFilterValue? ParseValue(
+        JsonElement element,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics)
+    {
+        if (!TryReadEnum(element, "Kind", out HotFilterValueKind kind))
+        {
+            Add(diagnostics, "FSFHOT009", path, "Hot filter value kind is missing or invalid.");
+            return null;
+        }
+
+        string guid = ReadNullableString(element, "Guid") ?? "00000000-0000-0000-0000-000000000000";
+        if (kind == HotFilterValueKind.Guid)
+        {
+            if (!Guid.TryParse(guid, out Guid parsed))
+            {
+                Add(diagnostics, "FSFHOT009", path, "Hot filter GUID value is missing or invalid.");
+                return null;
+            }
+
+            guid = parsed.ToString("D");
+        }
+
+        double number = ReadDouble(element, "Number");
+        if (kind == HotFilterValueKind.Number &&
+            (double.IsNaN(number) || double.IsInfinity(number)))
+        {
+            Add(diagnostics, "FSFHOT009", path, "Hot filter numeric value must be finite.");
+            return null;
+        }
+
+        return new(
+            kind,
+            ReadNullableString(element, "ParameterKey"),
+            ReadBoolean(element, "Boolean"),
+            ReadLong(element, "Integer"),
+            ReadUInt64(element, "UnsignedInteger"),
+            number,
+            ReadNullableString(element, "String"),
+            guid);
+    }
+
+    private static bool TryReadEnum<TEnum>(
+        JsonElement element,
+        string name,
+        out TEnum value)
+        where TEnum : struct, Enum
+    {
+        value = default;
+        if (!element.TryGetProperty(name, out JsonElement item) ||
+            !item.TryGetInt32(out int raw) ||
+            !Enum.IsDefined(typeof(TEnum), raw))
+        {
+            return false;
+        }
+
+        value = (TEnum)Enum.ToObject(typeof(TEnum), raw);
+        return true;
+    }
+
+    private static bool TryReadOperator(JsonElement element, out int value)
+    {
+        value = 0;
+        if (!element.TryGetProperty("Operator", out JsonElement item) ||
+            !item.TryGetInt32(out int raw) ||
+            raw is < 0 or > 5)
+        {
+            return false;
+        }
+
+        value = raw;
+        return true;
+    }
+}
