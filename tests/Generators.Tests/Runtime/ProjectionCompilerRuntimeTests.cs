@@ -1,3 +1,5 @@
+using MessagePack;
+using MessagePack.Resolvers;
 using SiftQL;
 using SiftQL.Expressions;
 using SiftQL.Projected;
@@ -11,6 +13,7 @@ internal static class ProjectionCompilerRuntimeTests
     public static void RunAll()
     {
         DefaultProjectionSkipsVirtualMetadataFields();
+        ScalarProjectedPayloadMatchesMaterializedProjection();
         SelectingPlayerKeepsItems();
     }
 
@@ -50,6 +53,52 @@ internal static class ProjectionCompilerRuntimeTests
         Guid EventId,
         long CharacterId,
         int Damage);
+
+    private static void ScalarProjectedPayloadMatchesMaterializedProjection()
+    {
+        var item = new PayloadProjectionEvent(
+            Guid.NewGuid(),
+            42,
+            true,
+            "inventory",
+            OptionalScore: null);
+        var projection = ProjectionCompiler.Compile<object?>(
+            typeof(PayloadProjectionEvent),
+            EventProjectionExpression.Select(
+                nameof(PayloadProjectionEvent.EventId),
+                nameof(PayloadProjectionEvent.CharacterId),
+                nameof(PayloadProjectionEvent.Accepted),
+                nameof(PayloadProjectionEvent.Name),
+                nameof(PayloadProjectionEvent.OptionalScore)),
+            RejectInclude);
+        MessagePackSerializerOptions options =
+            MessagePackSerializerOptions.Standard.WithResolver(ContractlessStandardResolver.Instance);
+
+        ProjectedEvent materialized = projection.ProjectAsync(
+                item,
+                null,
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        ReadOnlyMemory<byte> payload = projection.ProjectPayloadAsync(
+                item,
+                null,
+                options,
+                CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+        ProjectedEvent roundTripped = MessagePackSerializer.Deserialize<ProjectedEvent>(
+            payload,
+            options);
+
+        AssertEx.Equal(materialized.EventType, roundTripped.EventType, "payload keeps event type");
+        AssertEx.Equal(materialized.EventName, roundTripped.EventName, "payload keeps event name");
+        AssertProjectedField(roundTripped, nameof(PayloadProjectionEvent.EventId), ProjectedEventValueKind.Guid);
+        AssertProjectedField(roundTripped, nameof(PayloadProjectionEvent.CharacterId), ProjectedEventValueKind.Integer);
+        AssertProjectedField(roundTripped, nameof(PayloadProjectionEvent.Accepted), ProjectedEventValueKind.Boolean);
+        AssertProjectedField(roundTripped, nameof(PayloadProjectionEvent.Name), ProjectedEventValueKind.String);
+        AssertProjectedField(roundTripped, nameof(PayloadProjectionEvent.OptionalScore), ProjectedEventValueKind.Null);
+    }
 
     private static void SelectingPlayerKeepsItems()
     {
@@ -97,6 +146,22 @@ internal static class ProjectionCompilerRuntimeTests
 
         throw new InvalidOperationException($"Projected object is missing field '{name}'.");
     }
+
+    private static void AssertProjectedField(
+        ProjectedEvent projected,
+        string name,
+        ProjectedEventValueKind kind)
+    {
+        AssertEx.True(projected.TryGetField(name, out ProjectedEventValue value), $"payload contains {name}");
+        AssertEx.Equal(kind, value.Kind, $"payload field {name} kind");
+    }
+
+    private sealed record PayloadProjectionEvent(
+        Guid EventId,
+        long CharacterId,
+        bool Accepted,
+        string Name,
+        long? OptionalScore);
 
     private sealed record PlayerSelectedProjectionEvent(Guid EventId, PlayerProjection Player);
 

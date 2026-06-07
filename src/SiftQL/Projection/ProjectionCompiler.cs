@@ -62,14 +62,15 @@ public static class ProjectionCompiler
             out var fields);
         var includes = projection.Includes.Select(include => compileInclude(schema, include)).ToArray();
         ProjectionExpressionKey projectionKey = ProjectionExpressionFingerprint.CreateKey(projection);
-        string fingerprint = projectionKey.ToString();
+        string? fingerprint = null;
         FilterValue[]? parameters = ProjectionExpressionParameters.HasParameters(projection)
             ? ProjectionExpressionParameters.BindValues(projection, ProjectionExpressionParameters.Keys(projection))
             : null;
         Func<object, ProjectedEventField[]>? projectFields = null;
-        bool hasPrecompiled = TryGetPrecompiledProjection(
+        bool hasPrecompiled = PrecompiledTieredProviderRegistry.HasProviders &&
+            TryGetPrecompiledProjection(
             schema.SubjectType,
-            fingerprint,
+            Fingerprint(),
             parameters,
             out projectFields);
         if (hasPrecompiled)
@@ -88,7 +89,8 @@ public static class ProjectionCompiler
             projectFields = ProjectionFieldArrayCompiler.TryCompile(schema.SubjectType, fields, schemaFields);
 
         Func<Func<object, ProjectedEventField[]>?> compileProjectFields =
-            () => TryGetPrecompiledProjection(schema.SubjectType, fingerprint, parameters, out var precompiled)
+            () => PrecompiledTieredProviderRegistry.HasProviders &&
+                TryGetPrecompiledProjection(schema.SubjectType, Fingerprint(), parameters, out var precompiled)
                 ? precompiled
                 : ProjectionFieldArrayCompiler.TryCompile(schema.SubjectType, fields, schemaFields);
         Action<TieredProjectionSnapshot>? recordHot = options.HotManifestSink is null
@@ -115,6 +117,8 @@ public static class ProjectionCompiler
             projectFields,
             tieredState);
         return compiledProjection;
+
+        string Fingerprint() => fingerprint ??= projectionKey.ToString();
     }
 
     private static bool TryGetPrecompiledProjection(
@@ -169,7 +173,13 @@ public static class ProjectionCompiler
                 field.Name,
                 field.Path,
                 schemaField.ProjectionAccessor ??
-                    (subject => ProjectedEventValue.FromScalar(schemaField.Getter(subject))));
+                    (subject => ProjectedEventValue.FromScalar(schemaField.Getter(subject))))
+            {
+                WritePayload = ProjectionPayloadWriterCompiler.TryCompile(
+                    schema.SubjectType,
+                    field.Name,
+                    schemaField),
+            };
         }
 
         fields = compiled;

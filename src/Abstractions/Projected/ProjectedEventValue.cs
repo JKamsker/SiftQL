@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Reflection;
 
 using SiftQL.Translation;
@@ -23,6 +24,7 @@ public sealed record ProjectedEventValue
     private const int MaxArrayItems = 256;
     private const int MaxObjectDepth = 6;
     private const int MaxObjectFields = 64;
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> s_objectProperties = new();
 
     public ProjectedEventValueKind Kind { get; init; }
     public bool Boolean { get; init; }
@@ -89,6 +91,9 @@ public sealed record ProjectedEventValue
     private static ProjectedEventValue FromArray(IEnumerable items, int depth)
     {
         ArgumentNullException.ThrowIfNull(items);
+        if (items is ICollection collection)
+            return FromCollection(collection, depth);
+
         var values = new List<ProjectedEventValue>();
         foreach (object? item in items)
         {
@@ -108,31 +113,77 @@ public sealed record ProjectedEventValue
         };
     }
 
+    private static ProjectedEventValue FromCollection(ICollection items, int depth)
+    {
+        if (items.Count > MaxArrayItems)
+        {
+            throw new KernelExpressionException(
+                $"Projected arrays cannot exceed {MaxArrayItems} items.");
+        }
+
+        var values = new ProjectedEventValue[items.Count];
+        int index = 0;
+        foreach (object? item in items)
+            values[index++] = item is null ? Null : FromValue(item, depth);
+
+        return new()
+        {
+            Kind = ProjectedEventValueKind.Array,
+            Values = values,
+        };
+    }
+
     private static ProjectedEventValue FromObjectValue(object value, int depth)
     {
-        PropertyInfo[] properties = value
-            .GetType()
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public);
-        var fields = new List<ProjectedEventField>(Math.Min(properties.Length, MaxObjectFields));
+        PropertyInfo[] properties = s_objectProperties.GetOrAdd(value.GetType(), DiscoverObjectProperties);
+        if (properties.Length > MaxObjectFields)
+        {
+            throw new KernelExpressionException(
+                $"Projected objects cannot exceed {MaxObjectFields} fields.");
+        }
+
+        var fields = new ProjectedEventField[properties.Length];
         for (int i = 0; i < properties.Length; i++)
         {
             PropertyInfo property = properties[i];
-            if (property.GetMethod is null || property.GetMethod.GetParameters().Length != 0)
-                continue;
-            if (fields.Count >= MaxObjectFields)
-            {
-                throw new KernelExpressionException(
-                    $"Projected objects cannot exceed {MaxObjectFields} fields.");
-            }
-
             object? item = property.GetValue(value);
-            fields.Add(new ProjectedEventField(
+            fields[i] = new ProjectedEventField(
                 property.Name,
-                item is null ? Null : FromValue(item, depth + 1)));
+                item is null ? Null : FromValue(item, depth + 1));
         }
 
-        return new() { Kind = ProjectedEventValueKind.Object, Fields = fields.ToArray() };
+        return new() { Kind = ProjectedEventValueKind.Object, Fields = fields };
     }
+
+    private static PropertyInfo[] DiscoverObjectProperties(Type type) =>
+        FilterObjectProperties(type.GetProperties(BindingFlags.Instance | BindingFlags.Public));
+
+    private static PropertyInfo[] FilterObjectProperties(PropertyInfo[] properties)
+    {
+        int count = 0;
+        for (int i = 0; i < properties.Length; i++)
+        {
+            if (IsProjectableProperty(properties[i]))
+                count++;
+        }
+
+        if (count == properties.Length)
+            return properties;
+
+        var filtered = new PropertyInfo[count];
+        int index = 0;
+        for (int i = 0; i < properties.Length; i++)
+        {
+            if (IsProjectableProperty(properties[i]))
+                filtered[index++] = properties[i];
+        }
+
+        return filtered;
+    }
+
+    private static bool IsProjectableProperty(PropertyInfo property) =>
+        property.GetMethod is not null &&
+        property.GetMethod.GetParameters().Length == 0;
 
     public static ProjectedEventValue FromValues(IEnumerable<ProjectedEventValue> values)
     {

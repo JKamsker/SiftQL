@@ -252,6 +252,8 @@ public sealed class CompiledProjection<TContext>
         string Path,
         Func<object, ProjectedEventValue> ProjectValue)
     {
+        internal ProjectedFieldPayloadWriter? WritePayload { get; init; }
+
         public ProjectedEventField Project(object subject) =>
             new(Name, ProjectValue(subject));
     }

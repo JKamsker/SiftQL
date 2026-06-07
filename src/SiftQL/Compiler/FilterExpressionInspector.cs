@@ -9,7 +9,7 @@ internal static class FilterExpressionInspector
         expression.Kind is FilterExpressionKind.Compare or
             FilterExpressionKind.In or
             FilterExpressionKind.Contains ||
-        expression.Children.Any(HasSelectiveNode);
+        HasSelectiveChild(expression.Children);
 
     public static int PromotionMinimumEvaluations(FilterExpression expression) =>
         expression.Kind switch
@@ -28,5 +28,16 @@ internal static class FilterExpressionInspector
             minimum = Math.Min(minimum, PromotionMinimumEvaluations(expression.Children[i]));
 
         return expression.Children.Length >= 3 ? Math.Min(minimum, 75_000) : minimum;
+    }
+
+    private static bool HasSelectiveChild(FilterExpression[] children)
+    {
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (HasSelectiveNode(children[i]))
+                return true;
+        }
+
+        return false;
     }
 }

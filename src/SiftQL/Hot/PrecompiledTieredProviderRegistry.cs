@@ -40,6 +40,7 @@ public static class PrecompiledTieredProviderRegistry
 
     internal static bool IsolatedScopeActive => s_scope.Value is not null;
     internal static int GlobalVersion => Volatile.Read(ref s_globalVersion);
+    internal static bool HasProviders => Providers().Length != 0;
 
     internal static void RemoveAssembly(Assembly assembly)
     {

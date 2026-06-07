@@ -86,9 +86,10 @@ public static class FilterCompiler
 
         bool hasParameters = FilterExpressionParameters.HasParameters(expression);
         FilterExpressionKey expressionKey = FilterExpressionFingerprint.CreateKey(expression);
-        string fingerprint = expressionKey.ToString();
+        string? fingerprint = null;
         if (!hasParameters &&
-            PrecompiledTieredProviderRegistry.TryGetFilter(subjectType, fingerprint, out var precompiled))
+            PrecompiledTieredProviderRegistry.HasProviders &&
+            PrecompiledTieredProviderRegistry.TryGetFilter(subjectType, Fingerprint(), out var precompiled))
         {
             bool isBroad = !FilterExpressionInspector.HasSelectiveNode(expression);
             return new CompiledKernel(precompiled!, isBroad);
@@ -102,9 +103,10 @@ public static class FilterCompiler
             FilterValue[] parameters = FilterExpressionParameters.BindValues(
                 expression,
                 FilterExpressionParameters.Keys(expression));
-            if (PrecompiledTieredProviderRegistry.TryGetParameterizedFilter(
+            if (PrecompiledTieredProviderRegistry.HasProviders &&
+                PrecompiledTieredProviderRegistry.TryGetParameterizedFilter(
                 subjectType,
-                fingerprint,
+                Fingerprint(),
                 parameters,
                 out precompiled))
             {
@@ -146,6 +148,8 @@ public static class FilterCompiler
                 PromotionPolicy: promotionPolicy,
                 ErrorFactory: errorFactory,
                 SchemaFactory: schemaFactory));
+
+        string Fingerprint() => fingerprint ??= expressionKey.ToString();
     }
 
     private static CompiledKernel CompileUncached(

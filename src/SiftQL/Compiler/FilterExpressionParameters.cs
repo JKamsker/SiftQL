@@ -7,13 +7,21 @@ internal static class FilterExpressionParameters
 {
     public static bool HasParameters(FilterExpression expression)
     {
-        bool found = false;
-        VisitValues(expression, value =>
+        if (HasParameter(expression.Value))
+            return true;
+        for (int i = 0; i < expression.Values.Length; i++)
         {
-            if (!string.IsNullOrWhiteSpace(value.ParameterKey))
-                found = true;
-        });
-        return found;
+            if (HasParameter(expression.Values[i]))
+                return true;
+        }
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (HasParameters(expression.Children[i]))
+                return true;
+        }
+
+        return false;
     }
 
     public static string[] Keys(FilterExpression expression)
@@ -81,4 +89,7 @@ internal static class FilterExpressionParameters
         for (int i = 0; i < expression.Children.Length; i++)
             VisitValues(expression.Children[i], visit);
     }
+
+    private static bool HasParameter(FilterValue? value) =>
+        !string.IsNullOrWhiteSpace(value?.ParameterKey);
 }
