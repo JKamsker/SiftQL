@@ -12,6 +12,9 @@ namespace SiftQL.Generators.Tests;
 
 public sealed class ParameterizedFilterCompilerTests : IDisposable
 {
+    private const int MinimumQuantityTwo = 2;
+    private const int MinimumQuantityThree = 3;
+
     public ParameterizedFilterCompilerTests() =>
         ParameterizedFilterPlanCache.ClearForTests();
 
@@ -117,6 +120,37 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
         Assert.Equal(1, snapshot.Misses);
     }
 
+    [Fact]
+    public async Task QueryKernelDifferentCompileTimeConstantsReusePlanAndBindCurrentValues()
+    {
+        ItemUsedEvent[] events =
+        [
+            Event(characterId: 7, itemId: 200, quantity: 1),
+            Event(characterId: 7, itemId: 201, quantity: 2),
+            Event(characterId: 7, itemId: 202, quantity: 3),
+        ];
+
+        QueryKernel<ItemUsedEvent> firstQuery = BuildConstantMinimumQuantityTwoQuery();
+        CompiledEventPipeline<object> firstPipeline = CompilePipeline(firstQuery);
+        AssertSingleSourceFilter(firstQuery, firstPipeline.IndexFilter, expectedCompareNodes: 1);
+        long[] firstItemIds = await ProjectItemIdsAsync(firstPipeline, events);
+
+        QueryKernel<ItemUsedEvent> secondQuery = BuildConstantMinimumQuantityThreeQuery();
+        CompiledEventPipeline<object> secondPipeline = CompilePipeline(secondQuery);
+        AssertSingleSourceFilter(secondQuery, secondPipeline.IndexFilter, expectedCompareNodes: 1);
+        long[] secondItemIds = await ProjectItemIdsAsync(secondPipeline, events);
+
+        Assert.Equal([201L, 202L], firstItemIds);
+        Assert.Equal([202L], secondItemIds);
+        Assert.NotEqual(firstItemIds, secondItemIds);
+
+        ParameterizedFilterPlanCacheSnapshot snapshot = ParameterizedFilterPlanCache.Snapshot;
+        Assert.Equal(1, snapshot.Count);
+        Assert.Equal(2, snapshot.Requests);
+        Assert.Equal(1, snapshot.Hits);
+        Assert.Equal(1, snapshot.Misses);
+    }
+
     public void Dispose() =>
         ParameterizedFilterPlanCache.ClearForTests();
 
@@ -135,6 +169,18 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
             .Where(item =>
                 item.CharacterId == criteria.CharacterId &&
                 item.Quantity >= minimumQuantity);
+
+    private static QueryKernel<ItemUsedEvent> BuildConstantMinimumQuantityTwoQuery() =>
+        QueryKernel
+            .For<ItemUsedEvent>()
+            .Select(static item => item.ItemId)
+            .Where(static item => item.Quantity >= MinimumQuantityTwo);
+
+    private static QueryKernel<ItemUsedEvent> BuildConstantMinimumQuantityThreeQuery() =>
+        QueryKernel
+            .For<ItemUsedEvent>()
+            .Select(static item => item.ItemId)
+            .Where(static item => item.Quantity >= MinimumQuantityThree);
 
     private static CompiledEventPipeline<object> CompilePipeline(QueryKernel<ItemUsedEvent> query) =>
         EventPipelineCompiler.Compile<object>(
@@ -163,15 +209,16 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
 
     private static void AssertSingleSourceFilter(
         QueryKernel<ItemUsedEvent> query,
-        FilterExpression compiledIndexFilter)
+        FilterExpression compiledIndexFilter,
+        int expectedCompareNodes = 2)
     {
         Assert.Equal(2, query.Pipeline.Stages.Length);
         Assert.Equal(EventPipelineStageKind.Filter, query.Pipeline.Stages[0].Kind);
         Assert.Equal(EventPipelineStageKind.Projection, query.Pipeline.Stages[1].Kind);
         Assert.Single(query.Pipeline.Stages, static stage => stage.Kind == EventPipelineStageKind.Filter);
-        Assert.Equal(2, CountCompareNodes(EventPipelineCompiler.SourceFilter(query.Pipeline)));
-        Assert.Equal(2, CountCompareNodes(compiledIndexFilter));
-        Assert.Equal(2, KernelParameterKeyRewriter.ParameterCount(query.Pipeline));
+        Assert.Equal(expectedCompareNodes, CountCompareNodes(EventPipelineCompiler.SourceFilter(query.Pipeline)));
+        Assert.Equal(expectedCompareNodes, CountCompareNodes(compiledIndexFilter));
+        Assert.Equal(expectedCompareNodes, KernelParameterKeyRewriter.ParameterCount(query.Pipeline));
     }
 
     private static int CountCompareNodes(FilterExpression expression)
