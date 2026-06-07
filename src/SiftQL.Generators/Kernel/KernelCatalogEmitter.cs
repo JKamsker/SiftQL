@@ -24,7 +24,7 @@ internal static class KernelCatalogEmitter
         source.AppendLine();
         source.AppendLine("{");
         EmitSubjects(source, catalog);
-        EmitFor(source);
+        EmitFor(source, catalog);
         EmitKnownSubjectCheck(source, catalog);
         foreach (KernelCatalogSubject subject in catalog.Subjects)
             EmitSubjectFactory(source, subject);
@@ -50,10 +50,15 @@ internal static class KernelCatalogEmitter
         source.AppendLine();
     }
 
-    private static void EmitFor(StringBuilder source)
+    private static void EmitFor(StringBuilder source, KernelCatalogModel catalog)
     {
         source.AppendLine("    public static global::SiftQL.QueryKernel<TSubject> For<TSubject>()");
-        source.AppendLine("        where TSubject : global::SiftQL.IFilterSubject");
+        if (catalog.SubjectContractTypeName is { Length: > 0 } contract)
+        {
+            source.Append("        where TSubject : ");
+            source.AppendLine(contract);
+        }
+
         source.AppendLine("    {");
         source.AppendLine("        if (!IsKnownSubject(typeof(TSubject)))");
         source.AppendLine("        {");

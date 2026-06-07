@@ -8,6 +8,7 @@ internal sealed record KernelCatalogModel(
     string NamespaceName,
     string Accessibility,
     string Name,
+    string? SubjectContractTypeName,
     EquatableArray<KernelCatalogSubject> Subjects);
 
 internal sealed record KernelCatalogSubject(

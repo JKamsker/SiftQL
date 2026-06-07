@@ -16,5 +16,8 @@
     <Project Path="examples/SiftQL.Examples.Projection/SiftQL.Examples.Projection.csproj" />
     <Project Path="examples/SiftQL.Examples.RpcQuery/SiftQL.Examples.RpcQuery.csproj" />
     <Project Path="examples/SiftQL.Examples.ServerPluginHost/SiftQL.Examples.ServerPluginHost.csproj" />
+    <Project Path="examples/SiftQL.Examples.ShaRpc.SharedContracts/SiftQL.Examples.ShaRpc.SharedContracts.csproj" />
+    <Project Path="examples/SiftQL.Examples.ShaRpc.Server/SiftQL.Examples.ShaRpc.Server.csproj" />
+    <Project Path="examples/SiftQL.Examples.ShaRpc.Client/SiftQL.Examples.ShaRpc.Client.csproj" />
   </Folder>
 </Solution>

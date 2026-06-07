@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ShaRPC" Version="1.0.0-ci.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SiftQL\SiftQL.csproj" />
+    <ProjectReference Include="..\SiftQL.Examples.ShaRpc.Client\SiftQL.Examples.ShaRpc.Client.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+    <ProjectReference Include="..\SiftQL.Examples.ShaRpc.SharedContracts\SiftQL.Examples.ShaRpc.SharedContracts.csproj" />
+  </ItemGroup>
+
+</Project>

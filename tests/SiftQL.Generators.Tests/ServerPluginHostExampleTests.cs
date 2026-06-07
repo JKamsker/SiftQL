@@ -1,12 +1,18 @@
+using System.Buffers;
 using SiftQL.Examples.ServerPluginHost.Client;
 using SiftQL.Examples.ServerPluginHost.Domain;
 using SiftQL.Examples.ServerPluginHost.Hosting;
 using SiftQL.Examples.ServerPluginHost.Plugins;
+using SiftQL.Examples.ShaRpc.SharedContracts.Contracts;
+using SiftQL.Examples.ShaRpc.SharedContracts.Serialization;
+using SiftQL.Expressions;
 
 using ExampleAbilityCastEvent = SiftQL.Examples.ServerPluginHost.Domain.AbilityCastEvent;
 using ExampleItemUsedEvent = SiftQL.Examples.ServerPluginHost.Domain.ItemUsedEvent;
 using ExampleServerOfferSnapshot = SiftQL.Examples.ServerPluginHost.Domain.ServerOfferSnapshot;
 using ExampleZoneEnteredEvent = SiftQL.Examples.ServerPluginHost.Domain.ZoneEnteredEvent;
+using ShaRpcServerKernel = SiftQL.Examples.ShaRpc.SharedContracts.Domain.ServerKernel;
+using ShaRpcServerOfferSnapshot = SiftQL.Examples.ShaRpc.SharedContracts.Domain.ServerOfferSnapshot;
 
 namespace SiftQL.Generators.Tests;
 
@@ -16,6 +22,8 @@ internal static class ServerPluginHostExampleTests
     {
         GeneratedKernelCatalogExposesEventModels();
         ProjectedClientDeliveryRunsFullPipeline();
+        SharedShaRpcContractsExposeHostOwnedKernel();
+        SharedShaRpcQueryRoundTripsThroughSerializer();
     }
 
     private static void GeneratedKernelCatalogExposesEventModels()
@@ -83,6 +91,41 @@ internal static class ServerPluginHostExampleTests
         AssertPayload(encounter.Payload, "EventName", "AbilityCastEvent");
         AssertPayload(encounter.Payload, "Ability", "ember-lance");
         AssertPayload(encounter.Payload, "ThreatScore", 140L);
+    }
+
+    private static void SharedShaRpcContractsExposeHostOwnedKernel()
+    {
+        AssertEx.True(
+            ShaRpcServerKernel.IsKnownSubject(typeof(ShaRpcServerOfferSnapshot)),
+            "shared ShaRPC kernel knows server offers");
+        AssertEx.True(
+            ShaRpcServerKernel.SubjectTypes.Contains(typeof(ShaRpcServerOfferSnapshot)),
+            "shared ShaRPC kernel exposes server offers");
+    }
+
+    private static void SharedShaRpcQueryRoundTripsThroughSerializer()
+    {
+        var query = ShaRpcServerKernel.ForServerOffer()
+            .Where(static offer => offer.Enabled)
+            .Select(static (offer, _) => new
+            {
+                Offer = offer.OfferCode,
+                Cost = offer.Cost,
+            })
+            .WhereProjected(static offer => offer.Field("Cost").Integer <= 50);
+        var request = new ServerQueryRequest(nameof(ShaRpcServerOfferSnapshot), query.Pipeline);
+        var writer = new ArrayBufferWriter<byte>();
+        JsonRpcSerializerFactory.Create().Serialize(writer, request);
+
+        ServerQueryRequest roundTripped = JsonRpcSerializerFactory
+            .Create()
+            .Deserialize<ServerQueryRequest>(writer.WrittenMemory);
+
+        AssertEx.Equal(nameof(ShaRpcServerOfferSnapshot), roundTripped.Subject, "round-tripped subject");
+        AssertEx.Equal(3, roundTripped.Pipeline.Stages.Length, "selection/projection/selection stages");
+        AssertEx.Equal(EventPipelineStageKind.Filter, roundTripped.Pipeline.Stages[0].Kind, "source filter stage");
+        AssertEx.Equal(EventPipelineStageKind.Projection, roundTripped.Pipeline.Stages[1].Kind, "projection stage");
+        AssertEx.Equal(EventPipelineStageKind.Filter, roundTripped.Pipeline.Stages[2].Kind, "projected filter stage");
     }
 
     private static ServerDataStore CreateServerData()

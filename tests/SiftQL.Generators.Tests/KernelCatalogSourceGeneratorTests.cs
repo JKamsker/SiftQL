@@ -17,11 +17,37 @@ internal static class KernelCatalogSourceGeneratorTests
     public static void RunAll()
     {
         GeneratorEmitsTypedFacadeAndCompilesPartialExtensions();
+        GeneratorSupportsCustomSubjectContract();
         GeneratedCatalogRejectsUnknownSubject();
         GeneratorReportsInvalidCatalogShape();
         GeneratorReportsInvalidSubjectContract();
         GeneratorReportsDuplicateAliases();
         GeneratorCachesCatalogForUnrelatedCompilationChange();
+    }
+
+    private static void GeneratorSupportsCustomSubjectContract()
+    {
+        const string hint = "SampleHost.SharedKernel.KernelCatalog.g.cs";
+        GeneratorRun run = RunGenerator(ParseTree("""
+            using SiftQL;
+            namespace SampleHost;
+
+            public interface IHostOwnedRecord;
+
+            [KernelCatalog(SubjectContract = typeof(IHostOwnedRecord))]
+            [KernelSubject(typeof(StatusChangedEvent), Alias = "StatusChanged")]
+            public static partial class SharedKernel;
+
+            public sealed record StatusChangedEvent(int Value) : IHostOwnedRecord;
+            """));
+        string source = GeneratedSource(run, hint);
+
+        AssertEx.Contains(
+            "where TSubject : global::SampleHost.IHostOwnedRecord",
+            source,
+            "custom subject contract emitted");
+        AssertEx.Contains("ForStatusChanged()", source, "subject factory emitted for custom contract");
+        AssertNoCompilationErrors(run, "generated kernel catalog with custom subject contract");
     }
 
     private static void GeneratorEmitsTypedFacadeAndCompilesPartialExtensions()

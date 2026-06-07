@@ -24,7 +24,9 @@ internal static class KernelCatalogDiscovery
         var catalog = (INamedTypeSymbol)context.TargetSymbol;
         ValidateCatalog(catalog, diagnostics);
 
-        INamedTypeSymbol? contract = context.SemanticModel.Compilation.GetTypeByMetadataName(FilterSubjectName);
+        INamedTypeSymbol? contract = SubjectContract(
+            context,
+            context.SemanticModel.Compilation.GetTypeByMetadataName(FilterSubjectName));
         EquatableArray<KernelCatalogSubject> subjects = DiscoverSubjects(
             catalog,
             contract,
@@ -39,6 +41,7 @@ internal static class KernelCatalogDiscovery
                 NamespaceName(catalog),
                 AccessibilityText(catalog),
                 catalog.Name,
+                contract?.ToDisplayString(s_format),
                 subjects),
             EquatableArray<KernelCatalogDiagnostic>.Empty);
     }
@@ -115,11 +118,11 @@ internal static class KernelCatalogDiscovery
             return;
         }
 
-        if (contract is null || !Implements(subject, contract))
+        if (contract is not null && !InheritsOrImplements(subject, contract))
         {
             diagnostics.Add(new(
                 KernelCatalogDiagnostics.InvalidSubject,
-                $"Kernel subject '{subject.ToDisplayString()}' must implement SiftQL.IFilterSubject."));
+                $"Kernel subject '{subject.ToDisplayString()}' must inherit or implement '{contract.ToDisplayString()}'."));
             return;
         }
 
@@ -150,6 +153,29 @@ internal static class KernelCatalogDiscovery
             SubjectAttributeName,
             StringComparison.Ordinal);
 
+    private static INamedTypeSymbol? SubjectContract(
+        GeneratorAttributeSyntaxContext context,
+        INamedTypeSymbol? defaultContract)
+    {
+        AttributeData? attribute = context.Attributes.FirstOrDefault(IsCatalogAttribute);
+        if (attribute is null)
+            return defaultContract;
+
+        foreach (KeyValuePair<string, TypedConstant> argument in attribute.NamedArguments)
+        {
+            if (argument.Key == "SubjectContract")
+                return argument.Value.Value as INamedTypeSymbol;
+        }
+
+        return defaultContract;
+    }
+
+    private static bool IsCatalogAttribute(AttributeData attribute) =>
+        string.Equals(
+            attribute.AttributeClass?.ToDisplayString(),
+            CatalogAttributeName,
+            StringComparison.Ordinal);
+
     private static string? Alias(AttributeData attribute)
     {
         foreach (KeyValuePair<string, TypedConstant> argument in attribute.NamedArguments)
@@ -161,8 +187,16 @@ internal static class KernelCatalogDiscovery
         return null;
     }
 
-    private static bool Implements(INamedTypeSymbol subject, INamedTypeSymbol contract) =>
-        subject.AllInterfaces.Any(item => SymbolEqualityComparer.Default.Equals(item, contract));
+    private static bool InheritsOrImplements(INamedTypeSymbol subject, INamedTypeSymbol contract)
+    {
+        for (INamedTypeSymbol? current = subject; current is not null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, contract))
+                return true;
+        }
+
+        return subject.AllInterfaces.Any(item => SymbolEqualityComparer.Default.Equals(item, contract));
+    }
 
     private static bool IsPartial(INamedTypeSymbol type) =>
         type.DeclaringSyntaxReferences
