@@ -74,11 +74,55 @@ internal static class FilterFieldAccessExpression
         return Expression.Equal(expression, Expression.Constant(null, expression.Type));
     }
 
-    private static MemberInfo? FindMember(Type type, string name) =>
-        type.GetProperty(
-            name,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase) ??
-        (MemberInfo?)type.GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+    private static MemberInfo? FindMember(Type type, string name)
+    {
+        for (Type? current = type; current is not null; current = current.BaseType)
+        {
+            MemberInfo? exact = FindDeclaredProperty(current, name, ignoreCase: false) ??
+                (MemberInfo?)FindDeclaredField(current, name, ignoreCase: false);
+            if (exact is not null)
+                return exact;
+
+            MemberInfo? ignoreCase = FindDeclaredProperty(current, name, ignoreCase: true) ??
+                (MemberInfo?)FindDeclaredField(current, name, ignoreCase: true);
+            if (ignoreCase is not null)
+                return ignoreCase;
+        }
+
+        return null;
+    }
+
+    private static PropertyInfo? FindDeclaredProperty(Type type, string name, bool ignoreCase)
+    {
+        StringComparison comparison = ignoreCase
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        foreach (PropertyInfo property in type.GetProperties(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
+        {
+            if (string.Equals(property.Name, name, comparison) &&
+                property.GetMethod is not null &&
+                property.GetMethod.GetParameters().Length == 0)
+            {
+                return property;
+            }
+        }
+
+        return null;
+    }
+
+    private static FieldInfo? FindDeclaredField(Type type, string name, bool ignoreCase)
+    {
+        StringComparison comparison = ignoreCase
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        foreach (FieldInfo field in type.GetFields(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
+        {
+            if (string.Equals(field.Name, name, comparison))
+                return field;
+        }
+
+        return null;
+    }
 }

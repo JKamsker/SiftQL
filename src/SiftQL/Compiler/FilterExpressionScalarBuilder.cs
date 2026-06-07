@@ -22,7 +22,12 @@ internal static class FilterExpressionScalarBuilder
         if (value.Kind == FilterValueKind.Null)
         {
             Expression isNull = FilterExpressionNull.IsNull(actual);
-            return op == FilterOperator.Equal ? isNull : Expression.Not(isNull);
+            return op switch
+            {
+                FilterOperator.Equal => isNull,
+                FilterOperator.NotEqual => Expression.Not(isNull),
+                _ => Expression.Constant(false),
+            };
         }
 
         if (type == typeof(string))
@@ -43,6 +48,9 @@ internal static class FilterExpressionScalarBuilder
 
     private static Expression BuildStringCompare(Expression actual, FilterValue value, FilterOperator op)
     {
+        if (value.String is null)
+            return Expression.Constant(op == FilterOperator.NotEqual);
+
         var equals = Expression.Call(
             s_stringEquals,
             actual,

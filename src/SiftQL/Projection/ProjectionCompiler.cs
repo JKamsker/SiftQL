@@ -31,8 +31,14 @@ public static class ProjectionCompiler
         EventProjectionExpression? projection,
         Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> compileInclude,
         ProjectionCompilerOptions options,
-        Func<string, Exception>? errorFactory = null) =>
-        CompileWithSchema(subjectType, projection, compileInclude, options, errorFactory, FilterSchema.For);
+        Func<string, Exception>? errorFactory = null)
+    {
+        EventProjectionExpression normalized = projection ?? EventProjectionExpression.Default;
+        Func<Type, FilterSchema> schemaFactory = subjectType == typeof(ProjectedEvent)
+            ? _ => ProjectedEventFilterSchema.ForProjection(normalized)
+            : FilterSchema.For;
+        return CompileWithSchema(subjectType, normalized, compileInclude, options, errorFactory, schemaFactory);
+    }
 
     internal static CompiledProjection<TContext> CompileWithSchema<TContext>(
         Type subjectType,
@@ -177,10 +183,12 @@ public static class ProjectionCompiler
                 schemaField.ProjectionAccessor ??
                     (subject => ProjectedEventValue.FromScalar(schemaField.Getter(subject))))
             {
-                WritePayload = ProjectionPayloadWriterCompiler.TryCompile(
-                    schema.SubjectType,
-                    field.Name,
-                    schemaField),
+                WritePayload = schemaField.ProjectionAccessor is null
+                    ? ProjectionPayloadWriterCompiler.TryCompile(
+                        schema.SubjectType,
+                        field.Name,
+                        schemaField)
+                    : null,
             };
         }
 

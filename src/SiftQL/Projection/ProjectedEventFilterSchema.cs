@@ -88,6 +88,7 @@ public static class ProjectedEventFilterSchema
             ProjectedEventValueKind.String => value.String,
             ProjectedEventValueKind.Guid => value.Guid,
             ProjectedEventValueKind.Array => value.Values.Select(ToObject).ToArray(),
+            ProjectedEventValueKind.Object => value,
             _ => null,
         };
 }

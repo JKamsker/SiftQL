@@ -33,7 +33,8 @@ public static class EventPipelineCompiler
         ArgumentNullException.ThrowIfNull(options);
         EventPipelineExpression normalized = Normalize(pipeline);
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
-        if (HasParameters(normalized) ||
+        if (HasInvalidProjectionShape(normalized) ||
+            HasParameters(normalized) ||
             PrecompiledTieredProviderRegistry.IsolatedScopeActive)
         {
             return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
@@ -110,7 +111,7 @@ public static class EventPipelineCompiler
         Func<string, Exception>? errorFactory)
     {
         var stages = new List<PipelineStage<TContext>>();
-        bool projected = false;
+        bool projected = subjectType == typeof(ProjectedEvent);
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {
             EventPipelineStage stage = pipeline.Stages[i];
@@ -208,6 +209,28 @@ public static class EventPipelineCompiler
 
             if (stage.Kind == EventPipelineStageKind.Projection &&
                 ProjectionExpressionParameters.HasParameters(stage.Projection))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasInvalidProjectionShape(EventPipelineExpression pipeline)
+    {
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            EventPipelineStage stage = pipeline.Stages[i];
+            if (stage.Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            if (stage.Projection.Fields.Any(static field => field is null))
+                return true;
+            if (stage.Projection.Includes.Any(static include =>
+                    include is null ||
+                    include.Arguments is null ||
+                    include.Arguments.Any(static argument => argument is null)))
             {
                 return true;
             }

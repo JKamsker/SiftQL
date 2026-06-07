@@ -55,13 +55,10 @@ internal static class ProjectionFieldArrayCompiler
         if (field.Kind != FilterFieldKind.Scalar)
             return null;
 
-        if (field.Access is null && field.ProjectionAccessor is not null)
+        if (field.ProjectionAccessor is not null)
             return BuildProjectionAccessorExpression(subject, field.ProjectionAccessor);
         if (field.Access is null)
             return null;
-
-        if (field.Access.PropertyPath?.Contains('.') == true && field.ProjectionAccessor is not null)
-            return BuildProjectionAccessorExpression(subject, field.ProjectionAccessor);
 
         var value = field.Access.PropertyPath is { } path
             ? FilterFieldAccessExpression.Build(subject, path)

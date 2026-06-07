@@ -57,9 +57,10 @@ internal static class FilterSchemaDiscovery
     public static EquatableArray<GeneratedSchema> SortCurrent(ImmutableArray<GeneratedSchema?> schemas)
     {
         var builder = ImmutableArray.CreateBuilder<GeneratedSchema>(schemas.Length);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (GeneratedSchema? schema in schemas)
         {
-            if (schema is not null)
+            if (schema is not null && seen.Add(schema.MetadataName))
                 builder.Add(schema);
         }
 

@@ -52,9 +52,12 @@ internal static class FilterTypedPredicates
         FilterOperator op)
     {
         if (value.Kind == FilterValueKind.Null)
-            return op == FilterOperator.Equal
-                ? subject => !getter(subject).HasValue
-                : subject => getter(subject).HasValue;
+            return op switch
+            {
+                FilterOperator.Equal => subject => !getter(subject).HasValue,
+                FilterOperator.NotEqual => subject => getter(subject).HasValue,
+                _ => static _ => false,
+            };
 
         bool expected = value.Boolean;
         return op == FilterOperator.Equal
@@ -68,9 +71,12 @@ internal static class FilterTypedPredicates
         FilterOperator op)
     {
         if (value.Kind == FilterValueKind.Null)
-            return op == FilterOperator.Equal
-                ? subject => !getter(subject).HasValue
-                : subject => getter(subject).HasValue;
+            return op switch
+            {
+                FilterOperator.Equal => subject => !getter(subject).HasValue,
+                FilterOperator.NotEqual => subject => getter(subject).HasValue,
+                _ => static _ => false,
+            };
 
         double expected = value.Kind switch
         {
@@ -96,7 +102,16 @@ internal static class FilterTypedPredicates
         FilterValue value,
         FilterOperator op)
     {
-        string? expected = value.Kind == FilterValueKind.Null ? null : value.String;
+        if (value.Kind == FilterValueKind.Null)
+            return op == FilterOperator.Equal
+                ? subject => getter(subject) is null
+                : subject => getter(subject) is not null;
+        if (value.String is null)
+            return op == FilterOperator.NotEqual
+                ? static _ => true
+                : static _ => false;
+
+        string expected = value.String;
         return op == FilterOperator.Equal
             ? subject => string.Equals(getter(subject), expected, StringComparison.Ordinal)
             : subject => !string.Equals(getter(subject), expected, StringComparison.Ordinal);
@@ -108,9 +123,12 @@ internal static class FilterTypedPredicates
         FilterOperator op)
     {
         if (value.Kind == FilterValueKind.Null)
-            return op == FilterOperator.Equal
-                ? subject => !getter(subject).HasValue
-                : subject => getter(subject).HasValue;
+            return op switch
+            {
+                FilterOperator.Equal => subject => !getter(subject).HasValue,
+                FilterOperator.NotEqual => subject => getter(subject).HasValue,
+                _ => static _ => false,
+            };
 
         Guid expected = value.Guid;
         return op == FilterOperator.Equal

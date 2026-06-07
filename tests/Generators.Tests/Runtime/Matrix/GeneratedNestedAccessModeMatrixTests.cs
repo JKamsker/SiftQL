@@ -65,6 +65,46 @@ public sealed class GeneratedNestedAccessModeMatrixTests
 
     [Theory]
     [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
+    public void NestedNullParentMatchesCompareInAndExistsSemantics(GeneratedExecutionMode mode)
+    {
+        string assemblyName = "Plugin.Matrix.NestedNullSemantics." + mode;
+        FilterExpression notEqual = FilterExpression.Compare(
+            "Location.Country",
+            FilterOperator.NotEqual,
+            FilterValue.From("AT"));
+        FilterExpression inNull = FilterExpression.In("Location.Country", [FilterValue.Null]);
+        FilterExpression exists = FilterExpression.Exists("Location.Score");
+        using var context = LoadContext(
+            mode,
+            assemblyName,
+            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), notEqual),
+            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), inNull),
+            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), exists));
+
+        CompiledKernel notEqualKernel = FilterCompiler.Compile(
+            context.EventType,
+            notEqual,
+            GeneratedModeMatrixSupport.FilterOptions(mode));
+        CompiledKernel inNullKernel = FilterCompiler.Compile(
+            context.EventType,
+            inNull,
+            GeneratedModeMatrixSupport.FilterOptions(mode));
+        CompiledKernel existsKernel = FilterCompiler.Compile(
+            context.EventType,
+            exists,
+            GeneratedModeMatrixSupport.FilterOptions(mode));
+        object nullParent = Event(context.EventType, location: null);
+        object presentParent = Event(context.EventType, Location(context.EventType, "DE", 10, ["common"]));
+
+        Assert.True(notEqualKernel.Matches(nullParent));
+        Assert.True(inNullKernel.Matches(nullParent));
+        Assert.False(existsKernel.Matches(nullParent));
+        Assert.False(inNullKernel.Matches(presentParent));
+        Assert.True(existsKernel.Matches(presentParent));
+    }
+
+    [Theory]
+    [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
     public async Task NestedProjectionWritesNullWhenParentIsNull(GeneratedExecutionMode mode)
     {
         string assemblyName = "Plugin.Matrix.NestedProjection." + mode;

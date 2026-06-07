@@ -24,6 +24,9 @@ internal static class SchemaFieldDiscovery
                 continue;
 
             string name = string.IsNullOrEmpty(prefix) ? property.Name : prefix + "." + property.Name;
+            if (IsReservedTopLevelField(name) || ContainsField(fields, name))
+                continue;
+
             string access = string.IsNullOrEmpty(accessPrefix) ? property.Name : accessPrefix + "." + property.Name;
             string safeAccess = SafeAccess(safeAccessPrefix, owner, property.Name);
             bool accessCanReturnNull = IsNullable(property.Type) ||
@@ -117,7 +120,7 @@ internal static class SchemaFieldDiscovery
 
     private static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (INamedTypeSymbol? current = owner; current is not null; current = current.BaseType)
         {
             foreach (IPropertySymbol property in current.GetMembers().OfType<IPropertySymbol>())
@@ -127,6 +130,21 @@ internal static class SchemaFieldDiscovery
             }
         }
     }
+
+    private static bool ContainsField(ImmutableArray<GeneratedField>.Builder fields, string name)
+    {
+        for (int i = 0; i < fields.Count; i++)
+        {
+            if (string.Equals(fields[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsReservedTopLevelField(string name) =>
+        string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
 
     private static ITypeSymbol UnwrapNullable(ITypeSymbol type) =>
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T

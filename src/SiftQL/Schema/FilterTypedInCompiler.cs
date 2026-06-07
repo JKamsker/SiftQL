@@ -50,7 +50,7 @@ internal static class FilterTypedInCompiler
     {
         bool hasNull = HasNull(values);
         string[] expected = values
-            .Where(static value => value.Kind == FilterValueKind.String)
+            .Where(static value => value.Kind == FilterValueKind.String && value.String is not null)
             .Select(static value => value.String!)
             .Distinct(StringComparer.Ordinal)
             .ToArray();

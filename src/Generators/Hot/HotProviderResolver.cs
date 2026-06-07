@@ -6,6 +6,8 @@ namespace SiftQL.Generators.Hot;
 
 internal static class HotProviderResolver
 {
+    private const int MaxProjectionFields = 64;
+    private const int MaxProjectionIncludes = 8;
     private static readonly SymbolDisplayFormat s_format = SymbolDisplayFormat.FullyQualifiedFormat;
 
     public static HotProviderSource Resolve(
@@ -103,9 +105,27 @@ internal static class HotProviderResolver
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string path)
     {
+        if (projection.Includes.Count > MaxProjectionIncludes)
+        {
+            HotProviderFieldValidator.Unsupported(
+                diagnostics,
+                path,
+                $"Hot projection exceeds the {MaxProjectionIncludes} include limit.");
+            return null;
+        }
+
         EquatableArray<HotProjectionField> requested = projection.Fields.Count == 0
             ? DefaultProjectionFields(fields)
             : projection.Fields;
+        if (requested.Count > MaxProjectionFields)
+        {
+            HotProviderFieldValidator.Unsupported(
+                diagnostics,
+                path,
+                $"Hot projection exceeds the {MaxProjectionFields} field limit.");
+            return null;
+        }
+
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < requested.Count; i++)
         {

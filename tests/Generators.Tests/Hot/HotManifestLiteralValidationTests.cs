@@ -64,6 +64,32 @@ public sealed class HotManifestLiteralValidationTests
     }
 
     [Fact]
+    public void RejectsIncompatibleHotFilterLiteral()
+    {
+        var filter = FilterExpression.Compare(
+            "Enabled",
+            FilterOperator.Equal,
+            new FilterValue { Kind = FilterValueKind.String, String = "true" });
+        GeneratorRun run = RunGenerator(Manifest(filter));
+
+        AssertDiagnostic(run, "FSFHOT009", "incompatible filter literal diagnostic");
+        AssertEx.Equal(0, HotProviderSourceCount(run), "incompatible filter literal emitted no provider");
+    }
+
+    [Fact]
+    public void RejectsOrderedComparisonOnStringField()
+    {
+        var filter = FilterExpression.Compare(
+            "Source",
+            FilterOperator.GreaterThan,
+            FilterValue.From("m"));
+        GeneratorRun run = RunGenerator(Manifest(filter));
+
+        AssertDiagnostic(run, "FSFHOT009", "ordered string filter diagnostic");
+        AssertEx.Equal(0, HotProviderSourceCount(run), "ordered string filter emitted no provider");
+    }
+
+    [Fact]
     public void EscapesUnicodeSeparatorsInStringLiterals()
     {
         string value = "line\u2028paragraph\u2029";

@@ -79,6 +79,100 @@ public sealed class EventPipelineRegressionTests
         }
     }
 
+    [Fact]
+    public async Task DirectProjectedEventProjectionSupportsDynamicFieldPath()
+    {
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            EventProjectionExpression.Default.WithFields(
+                [new EventProjectionField(ProjectedEventPaths.Field("ItemId"), "ItemId")]),
+            ProjectionRuntimeTestSupport.RejectInclude);
+
+        ProjectedEvent projected = await projection.ProjectAsync(
+            ProjectedEventWithField("ItemId", ProjectedEventValue.FromScalar(100L)),
+            new object(),
+            CancellationToken.None);
+
+        Assert.Equal(100, projected.Field("ItemId").Integer);
+    }
+
+    [Fact]
+    public async Task ProjectedEventPipelineStartsWithProjectedSchema()
+    {
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendFilter(FilterExpression.Compare(
+                ProjectedEventPaths.Field("ItemId"),
+                FilterOperator.Equal,
+                FilterValue.From(100L)))
+            .AppendProjection(EventProjectionExpression.Default.WithFields(
+                [new EventProjectionField(ProjectedEventPaths.Field("ItemId"), "ItemId")]));
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            pipeline,
+            ProjectionRuntimeTestSupport.RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(
+            ProjectedEventWithField("ItemId", ProjectedEventValue.FromScalar(100L)),
+            new object(),
+            CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(
+            ProjectedEventWithField("ItemId", ProjectedEventValue.FromScalar(101L)),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.Equal(100, accepted!.Field("ItemId").Integer);
+        Assert.Null(rejected);
+    }
+
+    [Fact]
+    public async Task ProjectedObjectExistsMatchesPresentObject()
+    {
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendFilter(FilterExpression.Exists(ProjectedEventPaths.Field("Player")));
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            pipeline,
+            ProjectionRuntimeTestSupport.RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+        ProjectedEvent present = ProjectedEventWithField(
+            "Player",
+            ProjectedEventValue.FromFields(
+            [
+                new ProjectedEventField("Id", ProjectedEventValue.FromScalar(7L)),
+            ]));
+        ProjectedEvent missing = new() { EventType = "Projected", EventName = "Projected" };
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(present, new object(), CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(missing, new object(), CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.Null(rejected);
+    }
+
+    [Fact]
+    public void ProjectionIncludeWithNullArgumentsThrowsValidationException()
+    {
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendProjection(EventProjectionExpression.Default.WithIncludes(
+            [
+                new EventProjectionInclude
+                {
+                    Intrinsic = "test.context",
+                    ResultName = "context",
+                    Arguments = null!,
+                },
+            ]));
+
+        Assert.Throws<FilterValidationException>(() =>
+            EventPipelineCompiler.Compile<object>(
+                typeof(ItemUsedEvent),
+                pipeline,
+                ProjectionRuntimeTestSupport.RejectInclude,
+                EventPipelineCompilerOptions.Immediate));
+    }
+
     private static CompiledProjection<string>.IncludeProjector CompileStringInclude(
         FilterSchema schema,
         EventProjectionInclude include)
@@ -93,4 +187,12 @@ public sealed class EventPipelineRegressionTests
         [EventPipelineCompilerOptions.Immediate, EventPipelineCompilerOptions.Tiered];
 
     private sealed record TokenEvent(Guid EventId, int[] Tokens) : IFilterSubject;
+
+    private static ProjectedEvent ProjectedEventWithField(string name, ProjectedEventValue value) =>
+        new()
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Fields = [new ProjectedEventField(name, value)],
+        };
 }
