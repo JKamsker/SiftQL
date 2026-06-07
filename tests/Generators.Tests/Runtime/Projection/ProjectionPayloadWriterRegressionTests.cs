@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Reflection;
 using MessagePack;
 using MessagePack.Formatters;
 using MessagePack.Resolvers;
@@ -82,6 +84,61 @@ public sealed class ProjectionPayloadWriterRegressionTests
     }
 
     [Fact]
+    public void ProjectPayloadAsyncReusesThreadLocalWriterBuffer()
+    {
+        ClearWriterBuffer();
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId)),
+            ProjectionRuntimeTestSupport.RejectInclude);
+
+        _ = ProjectPayloadSync(projection, new ItemUsedEvent(Guid.NewGuid(), 10, 100, 2));
+        ArrayBufferWriter<byte> first = CurrentWriterBuffer();
+        _ = ProjectPayloadSync(projection, new ItemUsedEvent(Guid.NewGuid(), 10, 200, 2));
+        ArrayBufferWriter<byte> second = CurrentWriterBuffer();
+
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void ProjectPayloadAsyncDoesNotRetainOversizedWriterBuffer()
+    {
+        ClearWriterBuffer();
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(LargePayloadSubject),
+            EventProjectionExpression.Select(nameof(LargePayloadSubject.Description)),
+            ProjectionRuntimeTestSupport.RejectInclude);
+
+        _ = ProjectPayloadSync(
+            projection,
+            new LargePayloadSubject(new string('x', 70 * 1024)));
+
+        Assert.Null(CurrentWriterBufferOrNull());
+    }
+
+    [Fact]
+    public async Task ProjectPayloadAsyncUsesThreadStaticWriterBuffer()
+    {
+        ClearWriterBuffer();
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId)),
+            ProjectionRuntimeTestSupport.RejectInclude);
+
+        ArrayBufferWriter<byte> workerBuffer = await Task.Run(() =>
+        {
+            ClearWriterBuffer();
+            _ = ProjectPayloadSync(projection, new ItemUsedEvent(Guid.NewGuid(), 10, 100, 2));
+            return CurrentWriterBuffer();
+        });
+
+        Assert.Null(CurrentWriterBufferOrNull());
+        _ = ProjectPayloadSync(projection, new ItemUsedEvent(Guid.NewGuid(), 10, 200, 2));
+
+        Assert.NotSame(workerBuffer, CurrentWriterBuffer());
+    }
+
+    [Fact]
     public async Task ProjectPayloadAsyncRoundTripsSynchronousIncludeProjection()
     {
         var projection = ProjectionCompiler.Compile<object>(
@@ -118,4 +175,33 @@ public sealed class ProjectionPayloadWriterRegressionTests
             MessagePackSerializerOptions options) =>
             throw new InvalidOperationException("ProjectedEvent DTO deserialization should not be used.");
     }
+
+    private static ReadOnlyMemory<byte> ProjectPayloadSync<TSubject>(
+        CompiledProjection<object> projection,
+        TSubject subject) =>
+        projection.ProjectPayloadAsync(
+            subject!,
+            new object(),
+            ProjectionRuntimeTestSupport.PayloadOptions,
+            CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+    private static ArrayBufferWriter<byte> CurrentWriterBuffer() =>
+        CurrentWriterBufferOrNull() ??
+        throw new InvalidOperationException("Expected a retained projected payload writer buffer.");
+
+    private static ArrayBufferWriter<byte>? CurrentWriterBufferOrNull() =>
+        (ArrayBufferWriter<byte>?)WriterBufferField.GetValue(null);
+
+    private static void ClearWriterBuffer() =>
+        WriterBufferField.SetValue(null, null);
+
+    private static FieldInfo WriterBufferField { get; } =
+        typeof(ProjectedPayloadWriter).GetField(
+            "t_buffer",
+            BindingFlags.Static | BindingFlags.NonPublic) ??
+        throw new MissingFieldException(typeof(ProjectedPayloadWriter).FullName, "t_buffer");
+
+    private sealed record LargePayloadSubject(string Description) : IFilterSubject;
 }
