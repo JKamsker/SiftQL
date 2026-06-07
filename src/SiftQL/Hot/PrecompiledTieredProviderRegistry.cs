@@ -35,9 +35,9 @@ public static class PrecompiledTieredProviderRegistry
         lock (s_gate)
         {
             s_providers = [.. s_providers, provider];
-            IncrementGlobalVersion();
         }
 
+        IncrementGlobalVersion();
         return new Registration(provider);
     }
 
@@ -49,17 +49,19 @@ public static class PrecompiledTieredProviderRegistry
     {
         ArgumentNullException.ThrowIfNull(assembly);
         s_scope.Value?.RemoveAssembly(assembly);
+        bool changed;
         lock (s_gate)
         {
             IPrecompiledTieredProvider[] updated = s_providers
                 .Where(item => !ReferenceEquals(item.GetType().Assembly, assembly))
                 .ToArray();
-            if (updated.Length == s_providers.Length)
-                return;
-
-            s_providers = updated;
-            IncrementGlobalVersion();
+            changed = updated.Length != s_providers.Length;
+            if (changed)
+                s_providers = updated;
         }
+
+        if (changed)
+            IncrementGlobalVersion();
     }
 
     internal static bool TryGetFilter(
@@ -213,8 +215,9 @@ public static class PrecompiledTieredProviderRegistry
             lock (s_gate)
             {
                 s_providers = s_providers.Where(item => !ReferenceEquals(item, provider)).ToArray();
-                IncrementGlobalVersion();
             }
+
+            IncrementGlobalVersion();
         }
     }
 
