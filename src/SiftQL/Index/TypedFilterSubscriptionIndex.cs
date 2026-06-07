@@ -13,7 +13,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     private readonly Dictionary<string, TypedSubscriptionFieldIndex<TSubscription, TSubject>> _fields =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<TSubscription, List<TypedSubscriptionEntry<TSubscription, TSubject>>> _entries = [];
-    private TypedSubscriptionEntry<TSubscription, TSubject>[] _unindexed = [];
+    private readonly SubscriptionBucket<TypedSubscriptionEntry<TSubscription, TSubject>> _unindexed = new();
     private int _count;
     private Snapshot _snapshot = new([], [], 0);
 
@@ -36,7 +36,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
             _count++;
             Track(entry);
             if (key is null)
-                _unindexed = SubscriptionIndexArrays.Add(_unindexed, entry);
+                _unindexed.Add(entry);
             else
                 GetOrAddField(key).Add(key.Value, entry);
             PublishSnapshot();
@@ -167,14 +167,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     }
 
     private bool TryRemoveUnindexed(TypedSubscriptionEntry<TSubscription, TSubject> entry)
-    {
-        var unindexed = SubscriptionIndexArrays.Remove(_unindexed, entry);
-        if (unindexed is null)
-            return false;
-
-        _unindexed = unindexed;
-        return true;
-    }
+        => _unindexed.Remove(entry);
 
     private bool TryRemoveIndexed(TypedSubscriptionEntry<TSubscription, TSubject> entry) =>
         entry.Key is { } key &&
@@ -187,7 +180,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         int index = 0;
         foreach (var field in _fields.Values)
             fields[index++] = field.ToSnapshot();
-        Volatile.Write(ref _snapshot, new Snapshot(_unindexed, fields, _count));
+        Volatile.Write(ref _snapshot, new Snapshot(_unindexed.Snapshot(), fields, _count));
     }
 
     private static TypedSubscriptionEntry<TSubscription, TSubject> SelectRemovalEntry(

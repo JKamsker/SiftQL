@@ -18,7 +18,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     private readonly Dictionary<string, SubscriptionFieldIndex<TSubscription>> _fields =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<TSubscription, List<SubscriptionEntry<TSubscription>>> _entries = [];
-    private SubscriptionEntry<TSubscription>[] _unindexed = [];
+    private readonly SubscriptionBucket<SubscriptionEntry<TSubscription>> _unindexed = new();
     private int _count;
     private Snapshot _snapshot = new([], [], 0);
 
@@ -45,7 +45,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
             _count++;
             Track(entry);
             if (key is null)
-                _unindexed = SubscriptionIndexArrays.Add(_unindexed, entry);
+                _unindexed.Add(entry);
             else
                 GetOrAddField(key).Add(key.Value, entry);
             PublishSnapshot();
@@ -186,14 +186,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     }
 
     private bool TryRemoveUnindexed(SubscriptionEntry<TSubscription> entry)
-    {
-        var unindexed = SubscriptionIndexArrays.Remove(_unindexed, entry);
-        if (unindexed is null)
-            return false;
-
-        _unindexed = unindexed;
-        return true;
-    }
+        => _unindexed.Remove(entry);
 
     private bool TryRemoveIndexed(SubscriptionEntry<TSubscription> entry) =>
         entry.Key is { } key &&
@@ -206,7 +199,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         int index = 0;
         foreach (var field in _fields.Values)
             fields[index++] = field.ToSnapshot();
-        Volatile.Write(ref _snapshot, new Snapshot(_unindexed, fields, _count));
+        Volatile.Write(ref _snapshot, new Snapshot(_unindexed.Snapshot(), fields, _count));
     }
 
     private static SubscriptionEntry<TSubscription> SelectRemovalEntry(

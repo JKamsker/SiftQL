@@ -6,31 +6,40 @@ internal sealed class TypedSubscriptionFieldIndex<TSubscription, TSubject>
     where TSubscription : class
 {
     private readonly Func<TSubject, FilterIndexValue?> _accessor;
-    private readonly Dictionary<FilterIndexValue, TypedSubscriptionEntry<TSubscription, TSubject>[]> _byValue = [];
+    private readonly Dictionary<FilterIndexValue, SubscriptionBucket<TypedSubscriptionEntry<TSubscription, TSubject>>> _byValue = [];
 
     public TypedSubscriptionFieldIndex(FilterField field) =>
         _accessor = FilterIndexValueAccessor<TSubject>.Create(field);
 
-    public void Add(FilterIndexValue value, TypedSubscriptionEntry<TSubscription, TSubject> entry) =>
-        _byValue[value] = _byValue.TryGetValue(value, out TypedSubscriptionEntry<TSubscription, TSubject>[]? items)
-            ? SubscriptionIndexArrays.Add(items, entry)
-            : [entry];
+    public void Add(FilterIndexValue value, TypedSubscriptionEntry<TSubscription, TSubject> entry)
+    {
+        if (!_byValue.TryGetValue(value, out var bucket))
+        {
+            bucket = new SubscriptionBucket<TypedSubscriptionEntry<TSubscription, TSubject>>();
+            _byValue.Add(value, bucket);
+        }
+
+        bucket.Add(entry);
+    }
 
     public bool Remove(FilterIndexValue value, TypedSubscriptionEntry<TSubscription, TSubject> entry)
     {
-        if (!_byValue.TryGetValue(value, out TypedSubscriptionEntry<TSubscription, TSubject>[]? items))
+        if (!_byValue.TryGetValue(value, out var bucket) ||
+            !bucket.Remove(entry))
+        {
             return false;
+        }
 
-        TypedSubscriptionEntry<TSubscription, TSubject>[]? next = SubscriptionIndexArrays.Remove(items, entry);
-        if (next is null)
-            return false;
-        if (next.Length == 0)
+        if (bucket.Count == 0)
             _byValue.Remove(value);
-        else
-            _byValue[value] = next;
         return true;
     }
 
-    public TypedSubscriptionFieldSnapshot<TSubscription, TSubject> ToSnapshot() =>
-        new(_accessor, new Dictionary<FilterIndexValue, TypedSubscriptionEntry<TSubscription, TSubject>[]>(_byValue));
+    public TypedSubscriptionFieldSnapshot<TSubscription, TSubject> ToSnapshot()
+    {
+        var byValue = new Dictionary<FilterIndexValue, TypedSubscriptionEntry<TSubscription, TSubject>[]>(_byValue.Count);
+        foreach (var pair in _byValue)
+            byValue.Add(pair.Key, pair.Value.Snapshot());
+        return new(_accessor, byValue);
+    }
 }
