@@ -1,57 +1,15 @@
 using System.Reflection;
-using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
 public sealed class GeneratorHarnessFact
 {
-    [Fact]
-    public void RunFilterSchemaHarness()
-    {
-        EventPipelineRegressionTests.RunAll();
-        FilterSchemaSourceGeneratorTests.RunAll();
-        FilterSchemaGeneratorRegressionTests.RunAll();
-        FilterSchemaFallbackRegressionTests.RunAll();
-        FilterSchemaParitySourceGeneratorTests.RunAll();
-        FilterCompilerCacheRegressionTests.RunAll();
-        FilterNumericPrecisionRegressionTests.RunAll();
-        FilterRuntimeRegressionTests.RunAll();
-        HotCompilationManifestWriterRegressionTests.RunAll();
-        HotManifestLiteralValidationTests.RunAll();
-        HotProviderNullStringLiteralTests.RunAll();
-        HotManifestProjectionValidationTests.RunAll();
-        HotManifestPathStabilityTests.RunAll();
-        HotManifestIdentityRegressionTests.RunAll();
-        HotManifestShapeValidationTests.RunAll();
-        HotProviderFingerprintValidationTests.RunAll();
-        HotProviderDuplicateFingerprintTests.RunAll();
-        HotProviderLoaderLifecycleTests.RunAll();
-        HotProviderLoaderManifestIsolationTests.RunAll();
-        HotProviderRegistrationGateTests.RunAll();
-        HotProviderSourceGeneratorTests.RunAll();
-        HotProviderSemanticValidationTests.RunAll();
-        HotProviderValidationTests.RunAll();
-        HotProviderValueCompatibilityTests.RunAll();
-        KernelCatalogSourceGeneratorTests.RunAll();
-        KeywordFilterSchemaSourceGeneratorTests.RunAll();
-        ParameterizedHotProviderSourceGeneratorTests.RunAll();
-        ProjectionCompilerRuntimeTests.RunAll();
-        ProjectionDecimalRegressionTests.RunAll();
-        ProjectionPayloadWriterRegressionTests.RunAll();
-        ProjectedHotProviderSourceGeneratorTests.RunAll();
-        QueryKernelProjectionRegressionTests.RunAll();
-        RuntimeHotProviderBatchSinkTests.RunAll();
-        ServerPluginHostExampleTests.RunAll();
-        TieredProjectionRegressionTests.RunAll();
-        TieredProviderRecoveryTests.RunAll();
-    }
+    private const string RunAllMethodName = "RunAll";
 
-    [Fact]
-    public void RunFilterSchemaHarnessInvokesEveryStandaloneSuite()
-    {
-        string harnessSource = File.ReadAllText(CurrentFilePath());
-        string[] suiteNames = typeof(GeneratorHarnessFact).Assembly
+    public static IEnumerable<object[]> StandaloneSuites =>
+        typeof(GeneratorHarnessFact).Assembly
             .GetTypes()
             .Where(static type =>
                 type.Namespace == typeof(GeneratorHarnessFact).Namespace &&
@@ -59,17 +17,26 @@ public sealed class GeneratorHarnessFact
                 type.IsSealed &&
                 type.Name.EndsWith("Tests", StringComparison.Ordinal) &&
                 HasParameterlessRunAll(type))
-            .Select(static type => type.Name)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+            .OrderBy(static type => type.Name, StringComparer.Ordinal)
+            .Select(static type => new object[] { type.FullName! });
 
-        foreach (string suiteName in suiteNames)
-            Assert.Contains($"{suiteName}.RunAll()", harnessSource);
+    [Theory]
+    [MemberData(nameof(StandaloneSuites))]
+    public void RunStandaloneSuite(string typeName)
+    {
+        Type type = typeof(GeneratorHarnessFact).Assembly.GetType(typeName, throwOnError: true)!;
+        MethodInfo runAll = type.GetMethod(RunAllMethodName, BindingFlags.Public | BindingFlags.Static)!;
+
+        Exception? exception = Record.Exception(() => runAll.Invoke(null, null));
+
+        if (exception is TargetInvocationException { InnerException: { } inner })
+            exception = inner;
+
+        if (exception is not null)
+            ExceptionDispatchInfo.Capture(exception).Throw();
     }
 
     private static bool HasParameterlessRunAll(Type type) =>
-        type.GetMethod("RunAll", BindingFlags.Public | BindingFlags.Static) is { } method &&
+        type.GetMethod(RunAllMethodName, BindingFlags.Public | BindingFlags.Static) is { } method &&
         method.GetParameters().Length == 0;
-
-    private static string CurrentFilePath([CallerFilePath] string path = "") => path;
 }

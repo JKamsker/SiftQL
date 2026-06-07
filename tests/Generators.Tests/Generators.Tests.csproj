@@ -1,9 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <IsTestProject>true</IsTestProject>
-    <NoWarn>CS7022</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
