@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using SiftQL.Expressions;
 using SiftQL.Hot;
 using SiftQL.Projected;
@@ -125,6 +127,61 @@ public sealed class TieredProjectionRegressionTests
         Assert.True(projected.TryGetField(nameof(ItemUsedEvent.ItemId), out _));
         Assert.True(projected.TryGetContext("contextValue", out var context));
         Assert.Equal("included", context.String);
+    }
+
+    [Fact]
+    public async Task FailedProjectionRetriesAfterElapsedDelayWithoutProviderChange()
+    {
+        var schema = new FilterSchema(
+            typeof(ProjectionRecoverySubject),
+            [
+                new FilterField(
+                    nameof(ProjectionRecoverySubject.Value),
+                    typeof(int),
+                    FilterFieldKind.Scalar,
+                    static subject => ((ProjectionRecoverySubject)subject).Value,
+                    Access: FilterFieldAccess.ForProperty("Missing")),
+            ]);
+        CompiledProjection<object> projection = ProjectionCompiler.CompileWithSchema<object>(
+            typeof(ProjectionRecoverySubject),
+            EventProjectionExpression.Select(nameof(ProjectionRecoverySubject.Value)),
+            ProjectionRuntimeTestSupport.RejectInclude,
+            ProjectionCompilerOptions.Tiered with
+            {
+                TieredPromotionMinimumAge = TimeSpan.Zero,
+                TieredPromotionMinimumOperations = 1,
+            },
+            errorFactory: null,
+            _ => schema);
+        var subject = new ProjectionRecoverySubject(5);
+
+        await projection.ProjectAsync(subject, new object(), CancellationToken.None);
+        await ProjectionRuntimeTestSupport.WaitForSnapshotAsync(
+            projection, static s => s.CompilationFailed);
+
+        long failedMaterializations = projection.TieredSnapshot!.Materializations;
+
+        // Without manipulating the timestamp, the retry-elapsed branch won't fire
+        // and materializations won't increment.
+        await projection.ProjectAsync(subject, new object(), CancellationToken.None);
+        Assert.Equal(failedMaterializations, projection.TieredSnapshot!.Materializations);
+
+        // Backdate the failed timestamp so retry-elapsed fires without a provider change.
+        object tieredState = typeof(CompiledProjection<object>)
+            .GetField("_tieredState", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(projection)!;
+        FieldInfo timestampField = tieredState.GetType()
+            .GetField("_failedTimestamp", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        long pastTimestamp = Stopwatch.GetTimestamp() - (long)(Stopwatch.Frequency * 31);
+        timestampField.SetValue(tieredState, pastTimestamp);
+
+        await projection.ProjectAsync(subject, new object(), CancellationToken.None);
+        await ProjectionRuntimeTestSupport.WaitForSnapshotAsync(
+            projection, s => s.CompilationFailed && s.Materializations > failedMaterializations);
+
+        Assert.True(
+            projection.TieredSnapshot!.Materializations > failedMaterializations,
+            "Materializations should increment after retry-elapsed reset");
     }
 
     [Fact]
