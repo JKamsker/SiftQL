@@ -11,15 +11,15 @@ internal static class FilterNumericInValues
         decimal max,
         Func<decimal, T> convert)
     {
+        var seen = new HashSet<T>();
         var items = new List<T>(values.Length);
-        var comparer = EqualityComparer<T>.Default;
         for (int i = 0; i < values.Length; i++)
         {
             if (!TryIntegral(values[i], min, max, out decimal number))
                 continue;
 
             T item = convert(number);
-            if (!Contains(items, item, comparer))
+            if (seen.Add(item))
                 items.Add(item);
         }
 
@@ -28,10 +28,11 @@ internal static class FilterNumericInValues
 
     public static decimal[] Decimal(FilterValue[] values)
     {
+        var seen = new HashSet<decimal>();
         var items = new List<decimal>(values.Length);
         for (int i = 0; i < values.Length; i++)
         {
-            if (!TryDecimal(values[i], out decimal number) || items.Contains(number))
+            if (!TryDecimal(values[i], out decimal number) || !seen.Add(number))
                 continue;
 
             items.Add(number);
@@ -94,17 +95,4 @@ internal static class FilterNumericInValues
         return true;
     }
 
-    private static bool Contains<T>(
-        IReadOnlyList<T> items,
-        T candidate,
-        EqualityComparer<T> comparer)
-    {
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (comparer.Equals(items[i], candidate))
-                return true;
-        }
-
-        return false;
-    }
 }

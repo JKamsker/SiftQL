@@ -77,8 +77,8 @@ public sealed class CompiledKernel
     internal void Promote(KernelPredicate predicate)
     {
         ArgumentNullException.ThrowIfNull(predicate);
-        Volatile.Write(ref _typedPredicate, predicate.TypedPredicate);
         Volatile.Write(ref _predicate, predicate.ObjectPredicate);
+        Volatile.Write(ref _typedPredicate, predicate.TypedPredicate);
         Interlocked.Increment(ref _version);
     }
 }
