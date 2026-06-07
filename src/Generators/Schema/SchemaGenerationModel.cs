@@ -30,10 +30,12 @@ internal sealed record GeneratedProvider(
 internal sealed record GeneratedField(
     string Name,
     string Access,
+    string SafeAccess,
     string ValueType,
     string PropertyType,
     GeneratedFieldKind FieldKind,
     GeneratedScalarKind ScalarKind,
     bool IsNullable,
+    bool AccessCanReturnNull,
     bool EmitsScalarAccessor,
     string? ArrayContainsMethod);

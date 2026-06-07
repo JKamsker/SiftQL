@@ -108,16 +108,14 @@ internal static class FilterSchemaEmitter
 
     private static void EmitField(StringBuilder source, GeneratedSchema schema, GeneratedField field)
     {
-        string access = CSharpIdentifier.EscapePath(field.Access);
+        string access = AccessExpression(schema, field);
         source.Append("            new(");
         AppendLiteral(source, field.Name);
         source.Append(", typeof(");
         source.Append(field.ValueType);
         source.Append("), FilterFieldKind.");
         source.Append(FieldKindName(field.FieldKind));
-        source.Append(", static subject => ((");
-        source.Append(schema.TypeName);
-        source.Append(")subject).");
+        source.Append(", static subject => ");
         source.Append(access);
         source.Append(", ");
         source.Append(ScalarAccessor(schema, field));
@@ -136,17 +134,18 @@ internal static class FilterSchemaEmitter
         if (field.FieldKind != GeneratedFieldKind.Scalar || !field.EmitsScalarAccessor)
             return "null";
 
-        string access = "((" + schema.TypeName + ")subject)." + CSharpIdentifier.EscapePath(field.Access);
+        string access = AccessExpression(schema, field);
+        bool nullable = AccessReturnsNullable(field);
         return field.ScalarKind switch
         {
             GeneratedScalarKind.Boolean =>
-                field.IsNullable
+                nullable
                     ? "new FilterScalarAccessor(FilterScalarKind.Boolean, boolean: static subject => " +
                         NullableValue(field, access, "bool", string.Empty) + ")"
                     : "new FilterScalarAccessor(FilterScalarKind.Boolean, requiredBoolean: static subject => " +
                         access + ")",
             GeneratedScalarKind.Number =>
-                field.IsNullable
+                nullable
                     ? "new FilterScalarAccessor(FilterScalarKind.Number, number: static subject => " +
                         NullableValue(field, access, "double", NumberCast(field.ValueType)) + ")"
                     : "new FilterScalarAccessor(FilterScalarKind.Number, requiredNumber: static subject => " +
@@ -154,13 +153,13 @@ internal static class FilterSchemaEmitter
             GeneratedScalarKind.String =>
                 "new FilterScalarAccessor(FilterScalarKind.String, text: static subject => " + access + ")",
             GeneratedScalarKind.Guid =>
-                field.IsNullable
+                nullable
                     ? "new FilterScalarAccessor(FilterScalarKind.Guid, guid: static subject => " +
                         NullableValue(field, access, "Guid", string.Empty) + ")"
                     : "new FilterScalarAccessor(FilterScalarKind.Guid, requiredGuid: static subject => " +
                         access + ")",
             GeneratedScalarKind.Enum =>
-                field.IsNullable
+                nullable
                     ? "new FilterScalarAccessor(FilterScalarKind.Enum, enumeration: static subject => GeneratedFilterSchemaRegistry.NullableEnumToInt64OrNull(" +
                         access + "))"
                     : "new FilterScalarAccessor(FilterScalarKind.Enum, enumeration: static subject => GeneratedFilterSchemaRegistry.EnumToInt64OrNull(" +
@@ -174,7 +173,7 @@ internal static class FilterSchemaEmitter
         if (field.FieldKind != GeneratedFieldKind.Array || field.ArrayContainsMethod is null)
             return "null";
 
-        string access = "((" + schema.TypeName + ")subject)." + CSharpIdentifier.EscapePath(field.Access);
+        string access = AccessExpression(schema, field);
         return field.ScalarKind switch
         {
             GeneratedScalarKind.Boolean =>
@@ -195,7 +194,7 @@ internal static class FilterSchemaEmitter
 
     private static string ProjectionAccessor(GeneratedSchema schema, GeneratedField field)
     {
-        string access = "((" + schema.TypeName + ")subject)." + CSharpIdentifier.EscapePath(field.Access);
+        string access = AccessExpression(schema, field);
         if (field.FieldKind == GeneratedFieldKind.Object)
             return "static subject => ProjectionValueFactory.FromObject(" + access + ")";
         if (field.FieldKind != GeneratedFieldKind.Scalar)
@@ -261,13 +260,14 @@ internal static class FilterSchemaEmitter
     private static string NullableValue(GeneratedField field, string access, string nullableType, string cast)
     {
         string value = string.IsNullOrEmpty(cast) ? access : cast + access + ")";
-        if (!field.IsNullable)
+        if (!AccessReturnsNullable(field))
             return "(" + nullableType + "?)" + value;
 
+        string nullableAccess = "(" + access + ")";
         string nullableValue = string.IsNullOrEmpty(cast)
-            ? access + ".GetValueOrDefault()"
-            : cast + access + ".GetValueOrDefault())";
-        return access + ".HasValue ? (" + nullableType + "?)" + nullableValue + " : null";
+            ? nullableAccess + ".GetValueOrDefault()"
+            : cast + nullableAccess + ".GetValueOrDefault())";
+        return nullableAccess + ".HasValue ? (" + nullableType + "?)" + nullableValue + " : null";
     }
 
     private static string NumberCast(string valueType) =>
@@ -278,6 +278,12 @@ internal static class FilterSchemaEmitter
         string cast = NumberCast(valueType);
         return string.IsNullOrEmpty(cast) ? access : cast + access + ")";
     }
+
+    private static string AccessExpression(GeneratedSchema schema, GeneratedField field) =>
+        "((" + schema.TypeName + ")subject)." + field.SafeAccess;
+
+    private static bool AccessReturnsNullable(GeneratedField field) =>
+        field.IsNullable || field.AccessCanReturnNull;
 
     private static void AppendLiteral(StringBuilder source, string value)
     {

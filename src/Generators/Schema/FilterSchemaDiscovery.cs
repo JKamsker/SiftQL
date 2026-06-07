@@ -74,7 +74,7 @@ internal static class FilterSchemaDiscovery
     private static GeneratedSchema CreateSchema(INamedTypeSymbol type)
     {
         var fields = ImmutableArray.CreateBuilder<GeneratedField>();
-        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, type, depth: 0);
+        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, string.Empty, type, depth: 0);
         return new GeneratedSchema(
             type.ToDisplayString(s_format),
             type.ToDisplayString(),

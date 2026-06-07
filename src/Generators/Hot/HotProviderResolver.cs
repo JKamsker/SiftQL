@@ -92,7 +92,7 @@ internal static class HotProviderResolver
     private static EquatableArray<GeneratedField> DiscoverFields(INamedTypeSymbol subject)
     {
         var fields = ImmutableArray.CreateBuilder<GeneratedField>();
-        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, subject, depth: 0);
+        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, string.Empty, subject, depth: 0);
         return new(fields.ToImmutable());
     }
 

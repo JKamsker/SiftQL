@@ -104,6 +104,24 @@ public sealed class FilterRuntimeRegressionTests
     }
 
     [Fact]
+    public void NestedArrayContainsReturnsFalseWhenParentIsNull()
+    {
+        FilterSchema.RegisterValueObject<NestedArrayContainer>();
+        var filter = FilterExpression.Contains(
+            "Container.Tags",
+            FilterValue.From("rare"));
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(NestedArraySubject),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.False(kernel.Matches(new NestedArraySubject(null!)));
+        Assert.False(kernel.Matches(new NestedArraySubject(new NestedArrayContainer(["common"]))));
+        Assert.True(kernel.Matches(new NestedArraySubject(new NestedArrayContainer(["rare"]))));
+    }
+
+    [Fact]
     public void ImmediateCompiledMatcherDoesNotTrackKernelVersionForever()
     {
         CompiledKernel kernel = FilterCompiler.Compile(
@@ -185,6 +203,10 @@ public sealed class FilterRuntimeRegressionTests
     private sealed record NestedSubject(NestedLocation Location) : IFilterSubject;
 
     private sealed record NestedLocation(string Country, int Temperature);
+
+    private sealed record NestedArraySubject(NestedArrayContainer Container) : IFilterSubject;
+
+    private sealed record NestedArrayContainer(string[] Tags);
 
     private sealed class AlwaysProvider : IPrecompiledTieredProvider
     {
