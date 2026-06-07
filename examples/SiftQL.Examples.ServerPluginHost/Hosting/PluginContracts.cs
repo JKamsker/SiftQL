@@ -12,6 +12,9 @@ public interface IServerPlugin
 
 public sealed class PluginRegistration(string pluginId, InMemoryServerPluginHost host)
 {
+    public void OnStart(Func<PluginContext, CancellationToken, ValueTask> handler) =>
+        host.RegisterStartup(pluginId, handler);
+
     public void OnProjected<TEvent>(
         QueryKernel<TEvent> kernel,
         Func<ProjectedEvent, PluginContext, ValueTask> handler)
@@ -19,4 +22,7 @@ public sealed class PluginRegistration(string pluginId, InMemoryServerPluginHost
         host.SubscribeProjected(pluginId, kernel, handler);
 }
 
-public sealed record PluginContext(string PluginId, ClientGateway Clients);
+public sealed record PluginContext(
+    string PluginId,
+    ClientGateway Clients,
+    ServerQueryGateway Server);

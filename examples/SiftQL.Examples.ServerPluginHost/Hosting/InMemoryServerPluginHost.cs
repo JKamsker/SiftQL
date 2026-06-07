@@ -10,15 +10,34 @@ namespace SiftQL.Examples.ServerPluginHost.Hosting;
 public sealed class InMemoryServerPluginHost
 {
     private readonly ClientGateway _clients;
+    private readonly ServerDataStore _serverData;
+    private readonly List<StartupHandler> _startupHandlers = [];
     private readonly Dictionary<Type, List<ISubscription>> _subscriptions = [];
 
-    public InMemoryServerPluginHost(ClientGateway clients) =>
+    public InMemoryServerPluginHost(ClientGateway clients)
+        : this(clients, new ServerDataStore())
+    {
+    }
+
+    public InMemoryServerPluginHost(ClientGateway clients, ServerDataStore serverData)
+    {
         _clients = clients ?? throw new ArgumentNullException(nameof(clients));
+        _serverData = serverData ?? throw new ArgumentNullException(nameof(serverData));
+    }
 
     public void Register(IServerPlugin plugin)
     {
         ArgumentNullException.ThrowIfNull(plugin);
         plugin.Configure(new PluginRegistration(plugin.Id, this));
+    }
+
+    public void RegisterStartup(
+        string pluginId,
+        Func<PluginContext, CancellationToken, ValueTask> handler)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        ArgumentNullException.ThrowIfNull(handler);
+        _startupHandlers.Add(new StartupHandler(pluginId, handler));
     }
 
     public void SubscribeProjected<TEvent>(
@@ -37,7 +56,7 @@ public sealed class InMemoryServerPluginHost
             RejectInclude,
             EventPipelineCompilerOptions.Immediate);
         var subscription = new ProjectedSubscription<TEvent>(
-            new PluginContext(pluginId, _clients),
+            CreateContext(pluginId),
             pipeline,
             handler);
 
@@ -63,6 +82,47 @@ public sealed class InMemoryServerPluginHost
             await subscriptions[i].DispatchAsync(ev, cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask StartAsync(CancellationToken cancellationToken = default)
+    {
+        for (int i = 0; i < _startupHandlers.Count; i++)
+        {
+            StartupHandler startup = _startupHandlers[i];
+            await startup.Handler(CreateContext(startup.PluginId), cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public async ValueTask<IReadOnlyList<ProjectedEvent>> QueryProjectedAsync<TModel>(
+        string pluginId,
+        QueryKernel<TModel> query,
+        CancellationToken cancellationToken = default)
+        where TModel : IFilterSubject
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        ArgumentNullException.ThrowIfNull(query);
+        var pipeline = EventPipelineCompiler.Compile<PluginContext>(
+            typeof(TModel),
+            query.Pipeline,
+            RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+        var results = new List<ProjectedEvent>();
+        PluginContext context = CreateContext(pluginId);
+
+        foreach (TModel row in _serverData.Rows<TModel>())
+        {
+            ProjectedEvent? projected = await pipeline
+                .ProjectAsync(row, context, cancellationToken)
+                .ConfigureAwait(false);
+            if (projected is not null)
+                results.Add(projected);
+        }
+
+        return results;
+    }
+
+    private PluginContext CreateContext(string pluginId) =>
+        new(pluginId, _clients, new ServerQueryGateway(pluginId, this));
+
     private static CompiledProjection<PluginContext>.IncludeProjector RejectInclude(
         FilterSchema schema,
         EventProjectionInclude include)
@@ -75,6 +135,10 @@ public sealed class InMemoryServerPluginHost
     {
         ValueTask DispatchAsync(object ev, CancellationToken cancellationToken);
     }
+
+    private sealed record StartupHandler(
+        string PluginId,
+        Func<PluginContext, CancellationToken, ValueTask> Handler);
 
     private sealed class ProjectedSubscription<TEvent>(
         PluginContext context,

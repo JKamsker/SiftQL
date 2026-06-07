@@ -5,6 +5,7 @@ using SiftQL.Examples.ServerPluginHost.Plugins;
 
 using ExampleAbilityCastEvent = SiftQL.Examples.ServerPluginHost.Domain.AbilityCastEvent;
 using ExampleItemUsedEvent = SiftQL.Examples.ServerPluginHost.Domain.ItemUsedEvent;
+using ExampleServerOfferSnapshot = SiftQL.Examples.ServerPluginHost.Domain.ServerOfferSnapshot;
 using ExampleZoneEnteredEvent = SiftQL.Examples.ServerPluginHost.Domain.ZoneEnteredEvent;
 
 namespace SiftQL.Generators.Tests;
@@ -28,6 +29,9 @@ internal static class ServerPluginHostExampleTests
         AssertEx.True(
             ServerKernel.SubjectTypes.Contains(typeof(ExampleZoneEnteredEvent)),
             "generated kernel catalog exposes zone events");
+        AssertEx.True(
+            ServerKernel.IsKnownSubject(typeof(ExampleServerOfferSnapshot)),
+            "generated kernel catalog knows server offers");
 
         try
         {
@@ -45,28 +49,53 @@ internal static class ServerPluginHostExampleTests
         clients.Register(1001);
         clients.Register(1002);
 
-        var host = new InMemoryServerPluginHost(clients);
+        ServerDataStore data = CreateServerData();
+        var host = new InMemoryServerPluginHost(clients, data);
+        host.Register(new OfferLookupPlugin());
         host.Register(new InventoryAuditPlugin());
         host.Register(new EncounterMonitorPlugin());
 
+        host.StartAsync()
+            .AsTask()
+            .GetAwaiter()
+            .GetResult();
         PublishEvents(host);
 
         ClientSession avatar1001 = Session(clients, 1001);
         ClientSession avatar1002 = Session(clients, 1002);
-        AssertEx.Equal(2, avatar1001.Messages.Count, "only matching projected events reached client 1001");
+        AssertEx.Equal(3, avatar1001.Messages.Count, "only matching projected events reached client 1001");
         AssertEx.Equal(0, avatar1002.Messages.Count, "client 1002 received no filtered events");
 
-        ClientMessage inventory = avatar1001.Messages[0];
+        ClientMessage offer = Message(avatar1001, "server.offer");
+        AssertPayload(offer.Payload, "EventName", "ServerOfferSnapshot");
+        AssertPayload(offer.Payload, "Offer", "field-kit");
+        AssertPayload(offer.Payload, "Cost", 45L);
+        AssertEx.True(!offer.Payload.ContainsKey("Enabled"), "server offer payload was projected");
+
+        ClientMessage inventory = Message(avatar1001, "inventory.notice");
         AssertEx.Equal("inventory.notice", inventory.Channel, "inventory channel");
         AssertPayload(inventory.Payload, "EventName", "ItemUsedEvent");
         AssertPayload(inventory.Payload, "RecipientAvatar", 1001L);
         AssertPayload(inventory.Payload, "Amount", 2L);
 
-        ClientMessage encounter = avatar1001.Messages[1];
+        ClientMessage encounter = Message(avatar1001, "encounter.notice");
         AssertEx.Equal("encounter.notice", encounter.Channel, "encounter channel");
         AssertPayload(encounter.Payload, "EventName", "AbilityCastEvent");
         AssertPayload(encounter.Payload, "Ability", "ember-lance");
         AssertPayload(encounter.Payload, "ThreatScore", 140L);
+    }
+
+    private static ServerDataStore CreateServerData()
+    {
+        var data = new ServerDataStore();
+        data.Replace<ExampleServerOfferSnapshot>(
+        [
+            new("north-gate", "field-kit", "potion", 45, 3, true),
+            new("north-gate", "vault-kit", "crystal", 75, 2, true),
+            new("north-gate", "closed-cache", "token", 15, 6, false),
+            new("harbor", "dock-kit", "potion", 35, 4, true),
+        ]);
+        return data;
     }
 
     private static void PublishEvents(InMemoryServerPluginHost host)
@@ -99,6 +128,9 @@ internal static class ServerPluginHostExampleTests
 
     private static ClientSession Session(ClientGateway clients, long avatarId) =>
         clients.Sessions.Single(session => session.AvatarId == avatarId);
+
+    private static ClientMessage Message(ClientSession session, string channel) =>
+        session.Messages.Single(message => message.Channel == channel);
 
     private static void AssertPayload<TValue>(
         IReadOnlyDictionary<string, object?> payload,

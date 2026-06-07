@@ -8,10 +8,22 @@ var clients = new ClientGateway();
 clients.Register(1001);
 clients.Register(1002);
 
-var host = new InMemoryServerPluginHost(clients);
+var serverData = new ServerDataStore();
+serverData.Replace<ServerOfferSnapshot>(
+[
+    new("north-gate", "field-kit", "potion", 45, 3, true),
+    new("north-gate", "vault-kit", "crystal", 75, 2, true),
+    new("north-gate", "closed-cache", "token", 15, 6, false),
+    new("harbor", "dock-kit", "potion", 35, 4, true),
+]);
 
+var host = new InMemoryServerPluginHost(clients, serverData);
+
+host.Register(new OfferLookupPlugin());
 host.Register(new InventoryAuditPlugin());
 host.Register(new EncounterMonitorPlugin());
+
+await host.StartAsync();
 
 ItemUsedEvent[] inventoryEvents =
 [
@@ -32,7 +44,7 @@ foreach (ItemUsedEvent itemUsed in inventoryEvents)
 foreach (AbilityCastEvent cast in castEvents)
     await host.PublishAsync(cast);
 
-Console.WriteLine("Registered event models:");
+Console.WriteLine("Registered server models:");
 foreach (Type type in ServerKernel.SubjectTypes)
     Console.WriteLine($"  {type.Name}");
 
