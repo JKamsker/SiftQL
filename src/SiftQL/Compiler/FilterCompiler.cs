@@ -179,9 +179,10 @@ public static class FilterCompiler
                 errorFactory);
         }
 
-        if (cacheKey is null || Volatile.Read(ref s_kernelCacheCount) >= MaxCachedKernels)
+        if (cacheKey is null)
             return CompileUncached(schema, expression, options, promotionPolicy, errorFactory);
 
+        EnsureCacheCapacity();
         CompiledKernel compiled = CompileUncached(schema, expression, options, promotionPolicy, errorFactory);
         if (s_kernelCache.TryAdd(cacheKey.Value, compiled))
         {
@@ -192,6 +193,14 @@ public static class FilterCompiler
         return s_kernelCache.TryGetValue(cacheKey.Value, out CompiledKernel? raced)
             ? raced
             : compiled;
+    }
+
+    private static void EnsureCacheCapacity()
+    {
+        if (Volatile.Read(ref s_kernelCacheCount) < MaxCachedKernels)
+            return;
+
+        ClearCache();
     }
 
     private static CompiledKernel CompileUncached(

@@ -2,7 +2,7 @@ using SiftQL;
 using SiftQL.Expressions;
 using SiftQL.Index;
 
-// Typed subscription index — routes events to matching subscribers
+// Typed subscription index - routes events to matching subscribers
 var index = new TypedFilterSubscriptionIndex<Subscription, SensorReading>();
 
 // Subscriber 1: high-temperature alerts
@@ -31,7 +31,7 @@ var readings = new SensorReading[]
 foreach (var reading in readings)
 {
     Console.WriteLine($"\nSensor {reading.SensorId} (Zone={reading.Zone}, Temp={reading.Temperature}, Pressure={reading.Pressure}):");
-    var matches = index.SnapshotCandidates(reading);
+    var matches = index.SnapshotMatches(reading);
     foreach (var match in matches)
         Console.WriteLine($"  -> {match.Name}");
 }

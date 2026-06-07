@@ -18,6 +18,16 @@ public sealed class Wave1BugRegressionTests
     }
 
     [Fact]
+    public void ContainsBoundedCollectionReturnsAfterFirstMatch()
+    {
+        var items = new ThrowAfterFirstMatchCollection();
+
+        bool result = FilterValues.Contains(items, FilterValue.From(42L));
+
+        Assert.True(result);
+    }
+
+    [Fact]
     public void ContainsFallbackReturnsFalseWhenNoMatch()
     {
         var items = new List<int> { 1, 2, 3 };
@@ -133,5 +143,21 @@ public sealed class Wave1BugRegressionTests
     {
         Active = 1,
         Inactive = 2,
+    }
+
+    private sealed class ThrowAfterFirstMatchCollection : System.Collections.ICollection
+    {
+        public int Count => 2;
+        public bool IsSynchronized => false;
+        public object SyncRoot => this;
+
+        public void CopyTo(Array array, int index) =>
+            throw new NotSupportedException();
+
+        public System.Collections.IEnumerator GetEnumerator()
+        {
+            yield return 42;
+            throw new InvalidOperationException("Contains should stop after the first match.");
+        }
     }
 }

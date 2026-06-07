@@ -25,6 +25,7 @@ public sealed record ProjectedEventValue
     private const int MaxArrayItems = 256;
     private const int MaxObjectDepth = 6;
     private const int MaxObjectFields = 64;
+    private const int MaxCachedObjectTypes = 1024;
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> s_objectProperties = new();
 
     public ProjectedEventValueKind Kind { get; init; }
@@ -137,7 +138,7 @@ public sealed record ProjectedEventValue
 
     private static ProjectedEventValue FromObjectValue(object value, int depth)
     {
-        PropertyInfo[] properties = s_objectProperties.GetOrAdd(value.GetType(), DiscoverObjectProperties);
+        PropertyInfo[] properties = ObjectProperties(value.GetType());
         if (properties.Length > MaxObjectFields)
         {
             throw new KernelExpressionException(
@@ -155,6 +156,17 @@ public sealed record ProjectedEventValue
         }
 
         return new() { Kind = ProjectedEventValueKind.Object, Fields = fields };
+    }
+
+    private static PropertyInfo[] ObjectProperties(Type type)
+    {
+        if (!s_objectProperties.ContainsKey(type) &&
+            s_objectProperties.Count >= MaxCachedObjectTypes)
+        {
+            s_objectProperties.Clear();
+        }
+
+        return s_objectProperties.GetOrAdd(type, DiscoverObjectProperties);
     }
 
     private static PropertyInfo[] DiscoverObjectProperties(Type type) =>

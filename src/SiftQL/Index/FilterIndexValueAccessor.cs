@@ -37,7 +37,7 @@ internal static class FilterIndexValueAccessor<TSubject>
 
         var parameter = Expression.Parameter(typeof(TSubject), "subject");
         Expression? value = field.Access?.PropertyPath is { } path
-            ? BuildPropertyExpression(parameter, path)
+            ? FilterFieldAccessExpression.Build(parameter, path)
             : null;
         Expression? key = value is null ? null : BuildKeyExpression(field, value);
         if (key is not null)
@@ -146,39 +146,6 @@ internal static class FilterIndexValueAccessor<TSubject>
             Expression.Convert(converted, nullableTarget),
             Expression.Default(nullableTarget));
     }
-
-    private static Expression? BuildPropertyExpression(Expression subject, string propertyPath)
-    {
-        Expression current = subject;
-        foreach (string part in propertyPath.Split('.'))
-        {
-            MemberInfo? member = FindMember(current.Type, part);
-            if (member is PropertyInfo { GetMethod: { } getter } property &&
-                getter.GetParameters().Length == 0)
-            {
-                current = Expression.Property(current, property);
-                continue;
-            }
-
-            if (member is FieldInfo field)
-            {
-                current = Expression.Field(current, field);
-                continue;
-            }
-
-            return null;
-        }
-
-        return current;
-    }
-
-    private static MemberInfo? FindMember(Type type, string name) =>
-        type.GetProperty(
-            name,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase) ??
-        (MemberInfo?)type.GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
 
     private static MethodInfo Method(string name, Type parameterType) =>
         typeof(FilterIndexValue).GetMethod(

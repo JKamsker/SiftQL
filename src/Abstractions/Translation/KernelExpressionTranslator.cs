@@ -270,15 +270,13 @@ internal static class KernelExpressionTranslator
         return expression;
     }
 
-    private static bool IsKernelIn(MethodInfo method) =>
-        method.Name == nameof(QueryKernelPredicates.In) &&
-        (method.DeclaringType == typeof(QueryKernelPredicates) ||
-            method.DeclaringType == typeof(QueryKernelPredicates));
+    private static bool IsKernelIn(MethodInfo method) => IsKernelPredicate(method, nameof(QueryKernelPredicates.In));
 
-    private static bool IsKernelExists(MethodInfo method) =>
-        method.Name == nameof(QueryKernelPredicates.Exists) &&
-        (method.DeclaringType == typeof(QueryKernelPredicates) ||
-            method.DeclaringType == typeof(QueryKernelPredicates));
+    private static bool IsKernelExists(MethodInfo method) => IsKernelPredicate(method, nameof(QueryKernelPredicates.Exists));
+
+    private static bool IsKernelPredicate(MethodInfo method, string name) =>
+        method.Name == name &&
+        method.DeclaringType == typeof(QueryKernelPredicates);
 
     private static bool IsContains(MethodInfo method) =>
         method.Name == nameof(Enumerable.Contains) ||
@@ -297,7 +295,5 @@ internal static class KernelExpressionTranslator
             FilterOperator.LessThanOrEqual => FilterOperator.GreaterThanOrEqual,
             _ => op,
         };
-
-    private static KernelExpressionException Unsupported(Expression expression) =>
-        new($"Unsupported server kernel expression '{expression}'.");
+    private static KernelExpressionException Unsupported(Expression expression) => new($"Unsupported server kernel expression '{expression}'.");
 }

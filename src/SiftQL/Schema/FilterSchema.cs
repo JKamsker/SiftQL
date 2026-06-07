@@ -88,7 +88,7 @@ public sealed class FilterSchema
 
         var parameter = Expression.Parameter(typeof(object), "subject");
         var typedSubject = Expression.Convert(parameter, subjectType);
-        AddProperties(fields, string.Empty, subjectType, typedSubject, parameter, depth: 0);
+        AddProperties(fields, string.Empty, subjectType, typedSubject, typedSubject, parameter, depth: 0);
         return new FilterSchema(subjectType, fields);
     }
 
@@ -97,6 +97,7 @@ public sealed class FilterSchema
         string prefix,
         Type ownerType,
         Expression ownerExpression,
+        Expression rootExpression,
         ParameterExpression parameter,
         int depth)
     {
@@ -117,22 +118,40 @@ public sealed class FilterSchema
 
             if (IsScalar(scalarType))
             {
-                fields.Add(BuildField(name, scalarType, FilterFieldKind.Scalar, propertyExpression, parameter));
+                fields.Add(BuildField(
+                    name,
+                    scalarType,
+                    FilterFieldKind.Scalar,
+                    propertyExpression,
+                    rootExpression,
+                    parameter));
                 continue;
             }
 
             Type? elementType = GetScalarElementType(propertyType);
             if (elementType is not null)
             {
-                fields.Add(BuildField(name, elementType, FilterFieldKind.Array, propertyExpression, parameter));
+                fields.Add(BuildField(
+                    name,
+                    elementType,
+                    FilterFieldKind.Array,
+                    propertyExpression,
+                    rootExpression,
+                    parameter));
                 continue;
             }
 
             if (s_valueObjects.ContainsKey(scalarType))
             {
-                fields.Add(BuildField(name, scalarType, FilterFieldKind.Object, propertyExpression, parameter));
+                fields.Add(BuildField(
+                    name,
+                    scalarType,
+                    FilterFieldKind.Object,
+                    propertyExpression,
+                    rootExpression,
+                    parameter));
                 if (!IsNullableProperty(property))
-                    AddProperties(fields, name, scalarType, propertyExpression, parameter, depth + 1);
+                    AddProperties(fields, name, scalarType, propertyExpression, rootExpression, parameter, depth + 1);
             }
         }
     }
@@ -180,20 +199,24 @@ public sealed class FilterSchema
         Type valueType,
         FilterFieldKind kind,
         Expression propertyExpression,
+        Expression rootExpression,
         ParameterExpression parameter)
     {
-        Expression boxed = Expression.Convert(propertyExpression, typeof(object));
+        Expression accessExpression = name.Contains('.', StringComparison.Ordinal)
+            ? FilterFieldAccessExpression.Build(rootExpression, name) ?? propertyExpression
+            : propertyExpression;
+        Expression boxed = Expression.Convert(accessExpression, typeof(object));
         var getter = Expression.Lambda<Func<object, object?>>(boxed, parameter).Compile();
         var scalarAccessor = kind == FilterFieldKind.Scalar
-            ? FilterSchemaAccessors.BuildScalar(valueType, propertyExpression, parameter)
+            ? FilterSchemaAccessors.BuildScalar(valueType, accessExpression, parameter)
             : null;
         var arrayAccessor = kind == FilterFieldKind.Array
-            ? FilterSchemaAccessors.BuildArray(valueType, propertyExpression, parameter)
+            ? FilterSchemaAccessors.BuildArray(valueType, accessExpression, parameter)
             : null;
         var projectionAccessor = kind == FilterFieldKind.Scalar
-            ? FilterSchemaAccessors.BuildProjection(valueType, propertyExpression, parameter)
+            ? FilterSchemaAccessors.BuildProjection(valueType, accessExpression, parameter)
             : kind == FilterFieldKind.Object
-                ? FilterSchemaAccessors.BuildObjectProjection(propertyExpression, parameter)
+                ? FilterSchemaAccessors.BuildObjectProjection(accessExpression, parameter)
             : null;
         return new FilterField(
             name,

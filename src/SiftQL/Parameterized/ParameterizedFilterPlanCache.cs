@@ -34,7 +34,7 @@ internal static class ParameterizedFilterPlanCache
 
         Interlocked.Increment(ref s_misses);
         if (Volatile.Read(ref s_planCount) >= MaxCachedPlans)
-            return ParameterizedFilterPlanBuilder.Build(schema, expression, errorFactory);
+            ClearPlans();
 
         ParameterizedFilterPlan plan = ParameterizedFilterPlanBuilder.Build(schema, expression, errorFactory);
         if (s_plans.TryAdd(key, plan))
@@ -57,11 +57,16 @@ internal static class ParameterizedFilterPlanCache
 
     internal static void ClearForTests()
     {
-        s_plans.Clear();
-        Volatile.Write(ref s_planCount, 0);
+        ClearPlans();
         Interlocked.Exchange(ref s_requests, 0);
         Interlocked.Exchange(ref s_hits, 0);
         Interlocked.Exchange(ref s_misses, 0);
+    }
+
+    private static void ClearPlans()
+    {
+        s_plans.Clear();
+        Volatile.Write(ref s_planCount, 0);
     }
 }
 

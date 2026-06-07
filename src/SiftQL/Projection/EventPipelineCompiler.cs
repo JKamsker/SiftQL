@@ -49,9 +49,8 @@ public static class EventPipelineCompiler
             ProjectionCompilerOptionsCacheKey.From(options.ProjectionOptions));
         if (s_cache.TryGetValue(key, out object? cached))
             return (CompiledEventPipeline<TContext>)cached;
-        if (Volatile.Read(ref s_cacheCount) >= MaxCachedPipelines)
-            return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
 
+        EnsureCacheCapacity();
         var compiled = CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
         if (s_cache.TryAdd(key, compiled))
         {
@@ -62,6 +61,14 @@ public static class EventPipelineCompiler
         return s_cache.TryGetValue(key, out object? raced)
             ? (CompiledEventPipeline<TContext>)raced
             : compiled;
+    }
+
+    private static void EnsureCacheCapacity()
+    {
+        if (Volatile.Read(ref s_cacheCount) < MaxCachedPipelines)
+            return;
+
+        ClearCache();
     }
 
     public static FilterExpression SourceFilter(EventPipelineExpression? pipeline)

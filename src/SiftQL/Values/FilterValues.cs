@@ -94,13 +94,19 @@ public static class FilterValues
             throw TooManyRuntimeArrayItems();
 
         int seen = 0;
+        bool canReturnEarly = actual is ICollection;
         bool found = false;
         foreach (object? item in enumerable)
         {
-            if (++seen > MaxRuntimeArrayItems)
+            if (!canReturnEarly && ++seen > MaxRuntimeArrayItems)
                 throw TooManyRuntimeArrayItems();
-            if (!found && AreEqual(item, expected))
+            if (AreEqual(item, expected))
+            {
+                if (canReturnEarly)
+                    return true;
+
                 found = true;
+            }
         }
 
         return found;

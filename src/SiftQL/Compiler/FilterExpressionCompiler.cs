@@ -202,12 +202,7 @@ internal static class FilterExpressionCompiler
     private static Expression? BuildAccess(Expression subject, FilterField field)
     {
         if (field.Access?.PropertyPath is { } path)
-        {
-            Expression current = subject;
-            foreach (string segment in path.Split('.'))
-                current = Expression.PropertyOrField(current, segment);
-            return current;
-        }
+            return FilterFieldAccessExpression.Build(subject, path);
 
         if (field.Access is not null)
             return Expression.Constant(field.Access.ConstantValue, field.Access.ConstantValue?.GetType() ?? field.ValueType);

@@ -5,6 +5,32 @@ namespace SiftQL.Generators.Tests;
 public sealed class FilterExpressionFactoryTests
 {
     [Fact]
+    public void AndIgnoresAnyChildren()
+    {
+        var condition = FilterExpression.Compare(
+            "ItemId",
+            FilterOperator.Equal,
+            FilterValue.From(1L));
+
+        FilterExpression combined = FilterExpression.And(FilterExpression.Any, condition);
+
+        Assert.Same(condition, combined);
+    }
+
+    [Fact]
+    public void OrWithAnyReturnsAny()
+    {
+        var condition = FilterExpression.Compare(
+            "ItemId",
+            FilterOperator.Equal,
+            FilterValue.From(1L));
+
+        FilterExpression combined = FilterExpression.Or(condition, FilterExpression.Any);
+
+        Assert.Equal(FilterExpressionKind.Any, combined.Kind);
+    }
+
+    [Fact]
     public void AndRejectsNullChildren()
     {
         Assert.ThrowsAny<ArgumentException>(() =>

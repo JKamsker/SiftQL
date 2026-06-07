@@ -79,14 +79,12 @@ public sealed record FilterExpression
         };
 
     public static FilterExpression And(params FilterExpression[] children) =>
-        Combine(FilterExpressionKind.And, children);
+        CombineAnd(children);
 
     public static FilterExpression Or(params FilterExpression[] children) =>
-        Combine(FilterExpressionKind.Or, children);
+        CombineOr(children);
 
-    private static FilterExpression Combine(
-        FilterExpressionKind kind,
-        IReadOnlyCollection<FilterExpression> children)
+    private static FilterExpression CombineAnd(IReadOnlyCollection<FilterExpression> children)
     {
         ArgumentNullException.ThrowIfNull(children);
         var filtered = children
@@ -100,7 +98,26 @@ public sealed record FilterExpression
         {
             0 => Any,
             1 => filtered[0],
-            _ => new FilterExpression(kind) { Children = filtered },
+            _ => new FilterExpression(FilterExpressionKind.And) { Children = filtered },
+        };
+    }
+
+    private static FilterExpression CombineOr(IReadOnlyCollection<FilterExpression> children)
+    {
+        ArgumentNullException.ThrowIfNull(children);
+        var filtered = children
+            .Select(static child => child ?? throw new ArgumentException(
+                "Composite filters cannot contain null children.",
+                nameof(children)))
+            .ToArray();
+        if (filtered.Any(static child => child.Kind == FilterExpressionKind.Any))
+            return Any;
+
+        return filtered.Length switch
+        {
+            0 => Any,
+            1 => filtered[0],
+            _ => new FilterExpression(FilterExpressionKind.Or) { Children = filtered },
         };
     }
 

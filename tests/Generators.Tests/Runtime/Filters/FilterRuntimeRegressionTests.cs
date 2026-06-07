@@ -71,6 +71,39 @@ public sealed class FilterRuntimeRegressionTests
     }
 
     [Fact]
+    public void NestedScalarFilterReturnsFalseWhenParentIsNull()
+    {
+        FilterSchema.RegisterValueObject<NestedLocation>();
+        var filter = FilterExpression.Compare(
+            "Location.Country",
+            FilterOperator.Equal,
+            FilterValue.From("AT"));
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(NestedSubject),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.False(kernel.Matches(new NestedSubject(null!)));
+        Assert.True(kernel.Matches(new NestedSubject(new NestedLocation("AT", 21))));
+    }
+
+    [Fact]
+    public void NestedValueTypeExistsReturnsFalseWhenParentIsNull()
+    {
+        FilterSchema.RegisterValueObject<NestedLocation>();
+        var filter = FilterExpression.Exists("Location.Temperature");
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(NestedSubject),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.False(kernel.Matches(new NestedSubject(null!)));
+        Assert.True(kernel.Matches(new NestedSubject(new NestedLocation("AT", 21))));
+    }
+
+    [Fact]
     public void ImmediateCompiledMatcherDoesNotTrackKernelVersionForever()
     {
         CompiledKernel kernel = FilterCompiler.Compile(
@@ -148,6 +181,10 @@ public sealed class FilterRuntimeRegressionTests
         for (int i = 1; i < count; i++)
             yield return i;
     }
+
+    private sealed record NestedSubject(NestedLocation Location) : IFilterSubject;
+
+    private sealed record NestedLocation(string Country, int Temperature);
 
     private sealed class AlwaysProvider : IPrecompiledTieredProvider
     {
