@@ -10,6 +10,10 @@ internal static class ProjectedPayloadWriter
     private const int ProjectedEventPropertyCount = 4;
     private const int ProjectedEventFieldPropertyCount = 2;
     private const int ProjectedEventValuePropertyCount = 10;
+    private const int MaxRetainedBufferBytes = 64 * 1024;
+
+    [ThreadStatic]
+    private static ArrayBufferWriter<byte>? t_buffer;
 
     public static ReadOnlyMemory<byte> Write<TContext>(
         string eventType,
@@ -19,7 +23,8 @@ internal static class ProjectedPayloadWriter
         IReadOnlyList<ProjectedEventField>? context,
         MessagePackSerializerOptions options)
     {
-        var buffer = new ArrayBufferWriter<byte>(EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0));
+        ArrayBufferWriter<byte> buffer = RentBuffer(
+            EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0));
         var writer = new MessagePackWriter(buffer);
         writer.WriteMapHeader(ProjectedEventPropertyCount);
         writer.Write(nameof(ProjectedEvent.EventType));
@@ -31,7 +36,7 @@ internal static class ProjectedPayloadWriter
         writer.Write(nameof(ProjectedEvent.Context));
         WriteContext(ref writer, context, options);
         writer.Flush();
-        return buffer.WrittenMemory;
+        return CopyWrittenPayload(buffer);
     }
 
     public static ReadOnlyMemory<byte> Write(
@@ -41,7 +46,8 @@ internal static class ProjectedPayloadWriter
         IReadOnlyList<ProjectedEventField>? context,
         MessagePackSerializerOptions options)
     {
-        var buffer = new ArrayBufferWriter<byte>(EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0));
+        ArrayBufferWriter<byte> buffer = RentBuffer(
+            EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0));
         var writer = new MessagePackWriter(buffer);
         writer.WriteMapHeader(ProjectedEventPropertyCount);
         writer.Write(nameof(ProjectedEvent.EventType));
@@ -53,7 +59,7 @@ internal static class ProjectedPayloadWriter
         writer.Write(nameof(ProjectedEvent.Context));
         WriteContext(ref writer, context, options);
         writer.Flush();
-        return buffer.WrittenMemory;
+        return CopyWrittenPayload(buffer);
     }
 
     private static void WriteFields<TContext>(
@@ -249,5 +255,32 @@ internal static class ProjectedPayloadWriter
         int fields = fieldCount + contextCount;
         int estimate = 160 + eventType.Length + eventName.Length + fields * 80;
         return Math.Max(256, estimate);
+    }
+
+    private static ArrayBufferWriter<byte> RentBuffer(int capacity)
+    {
+        ArrayBufferWriter<byte>? buffer = t_buffer;
+        if (buffer is null)
+        {
+            buffer = new ArrayBufferWriter<byte>(capacity);
+            t_buffer = buffer;
+            return buffer;
+        }
+
+        buffer.Clear();
+        if (buffer.Capacity >= capacity)
+            return buffer;
+
+        buffer = new ArrayBufferWriter<byte>(capacity);
+        t_buffer = buffer;
+        return buffer;
+    }
+
+    private static ReadOnlyMemory<byte> CopyWrittenPayload(ArrayBufferWriter<byte> buffer)
+    {
+        byte[] payload = buffer.WrittenSpan.ToArray();
+        if (buffer.Capacity > MaxRetainedBufferBytes)
+            t_buffer = null;
+        return payload;
     }
 }

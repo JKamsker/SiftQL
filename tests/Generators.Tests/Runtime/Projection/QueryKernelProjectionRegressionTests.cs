@@ -1,5 +1,9 @@
+using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Kernel;
 using SiftQL.Projected;
+using SiftQL.Projection;
+using SiftQL.Schema;
 using SiftQL.Translation;
 using Xunit;
 
@@ -60,8 +64,152 @@ public sealed class QueryKernelProjectionRegressionTests
                     ProjectedEventValueKind.Integer));
     }
 
+    [Fact]
+    public void RawSourceFilterParametersDoNotCollideWithCapturedFilter()
+    {
+        int itemId = 100;
+        var rawQuantity = FilterExpression.Compare(
+            nameof(ItemUsedEvent.Quantity),
+            FilterOperator.Equal,
+            FilterValue.From(2L) with { ParameterKey = "p0" });
+
+        EventPipelineExpression pipeline = QueryKernel.For<ItemUsedEvent>()
+            .Where(ev => ev.ItemId == itemId)
+            .WithSourceFilter(rawQuantity)
+            .Pipeline;
+
+        Assert.Equal("p1", pipeline.Stages[1].Filter.Value?.ParameterKey);
+        AssertFilter(
+            EventPipelineCompiler.SourceFilter(pipeline),
+            new FilterCase(new ItemUsedEvent(Guid.NewGuid(), 7, 100, 2), true),
+            new FilterCase(new ItemUsedEvent(Guid.NewGuid(), 7, 100, 100), false),
+            new FilterCase(new ItemUsedEvent(Guid.NewGuid(), 7, 2, 2), false));
+    }
+
+    [Fact]
+    public async Task RawIncludeParametersDoNotCollideWithCapturedFilter()
+    {
+        int itemId = 100;
+        var rawInclude = new EventProjectionInclude(
+            "test.limit",
+            "limit",
+            [new EventProjectionArgument(
+                "limit",
+                FilterValue.From(3L) with { ParameterKey = "p0" })]);
+
+        EventPipelineExpression pipeline = QueryKernel.For<ItemUsedEvent>()
+            .Where(ev => ev.ItemId == itemId)
+            .Include(rawInclude)
+            .Pipeline;
+
+        Assert.Equal("p1", pipeline.Stages[1].Projection.Includes[0].Arguments[0].Value.ParameterKey);
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            pipeline,
+            CompileLimitInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 7, 100, 2),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.True(projected!.TryGetContext("limit", out var limit));
+        Assert.Equal(3, limit.Integer);
+    }
+
+    [Fact]
+    public void RawFiltersRejectConflictingDuplicateParameterKeys()
+    {
+        FilterValue itemId = FilterValue.From(100L) with { ParameterKey = "p0" };
+        FilterValue quantity = FilterValue.From(2L) with { ParameterKey = "p0" };
+        FilterExpression filter = FilterExpression.And(
+            FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.Equal,
+                itemId),
+            FilterExpression.Compare(
+                nameof(ItemUsedEvent.Quantity),
+                FilterOperator.Equal,
+                quantity));
+
+        var exception = Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(typeof(ItemUsedEvent), filter));
+
+        Assert.Contains("p0", exception.Message);
+    }
+
+    [Fact]
+    public void RawProjectionIncludesRejectConflictingDuplicateParameterKeys()
+    {
+        var projection = EventProjectionExpression.Default.WithIncludes(
+        [
+            new EventProjectionInclude(
+                "test.limit",
+                "limit",
+                [
+                    new EventProjectionArgument(
+                        "first",
+                        FilterValue.From(1L) with { ParameterKey = "p0" }),
+                    new EventProjectionArgument(
+                        "second",
+                        FilterValue.From(2L) with { ParameterKey = "p0" }),
+                ]),
+        ]);
+
+        var exception = Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.Compile<object>(
+                typeof(ItemUsedEvent),
+                projection,
+                CompileNoopInclude));
+
+        Assert.Contains("p0", exception.Message);
+    }
+
     private static EventProjectionExpression LastProjection(QueryKernel<ItemUsedEvent> kernel) =>
         kernel.Pipeline.Stages
             .Last(static stage => stage.Kind == EventPipelineStageKind.Projection)
             .Projection;
+
+    private static void AssertFilter(FilterExpression filter, params FilterCase[] cases)
+    {
+        CompiledKernel immediate = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            filter,
+            FilterCompilerOptions.Immediate);
+        CompiledKernel tiered = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            filter,
+            FilterCompilerOptions.Tiered);
+
+        foreach (FilterCase item in cases)
+        {
+            Assert.Equal(item.Expected, immediate.Matches(item.Subject));
+            Assert.Equal(item.Expected, tiered.Matches(item.Subject));
+        }
+    }
+
+    private static CompiledProjection<object>.IncludeProjector CompileLimitInclude(
+        FilterSchema schema,
+        EventProjectionInclude include)
+    {
+        _ = schema;
+        int limit = ProjectionIncludeArguments.RequiredInt(include, "limit");
+        return new CompiledProjection<object>.IncludeProjector(
+            include.ResultName,
+            (_, _, _) => ValueTask.FromResult(ProjectedEventValue.FromScalar(limit)));
+    }
+
+    private static CompiledProjection<object>.IncludeProjector CompileNoopInclude(
+        FilterSchema schema,
+        EventProjectionInclude include)
+    {
+        _ = schema;
+        return new CompiledProjection<object>.IncludeProjector(
+            include.ResultName,
+            static (_, _, _) => ValueTask.FromResult(ProjectedEventValue.Null));
+    }
+
+    private sealed record FilterCase(ItemUsedEvent Subject, bool Expected);
 }

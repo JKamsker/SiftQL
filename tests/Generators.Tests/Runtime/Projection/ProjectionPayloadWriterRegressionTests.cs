@@ -56,6 +56,32 @@ public sealed class ProjectionPayloadWriterRegressionTests
     }
 
     [Fact]
+    public async Task ProjectPayloadAsyncReturnsIndependentBuffersWhenWriterIsReused()
+    {
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId)),
+            ProjectionRuntimeTestSupport.RejectInclude);
+
+        ReadOnlyMemory<byte> firstPayload = await projection.ProjectPayloadAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 10, 100, 2),
+            new object(),
+            ProjectionRuntimeTestSupport.PayloadOptions,
+            CancellationToken.None);
+        ReadOnlyMemory<byte> secondPayload = await projection.ProjectPayloadAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 10, 200, 2),
+            new object(),
+            ProjectionRuntimeTestSupport.PayloadOptions,
+            CancellationToken.None);
+
+        ProjectedEvent first = ProjectionRuntimeTestSupport.Deserialize(firstPayload);
+        ProjectedEvent second = ProjectionRuntimeTestSupport.Deserialize(secondPayload);
+
+        Assert.Equal(100, first.Field(nameof(ItemUsedEvent.ItemId)).Integer);
+        Assert.Equal(200, second.Field(nameof(ItemUsedEvent.ItemId)).Integer);
+    }
+
+    [Fact]
     public async Task ProjectPayloadAsyncRoundTripsSynchronousIncludeProjection()
     {
         var projection = ProjectionCompiler.Compile<object>(

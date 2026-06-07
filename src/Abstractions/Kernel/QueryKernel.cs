@@ -17,6 +17,8 @@ public static class QueryKernel
 
 public sealed record QueryKernel<TSubject>
 {
+    private EventPipelineExpression _pipeline = EventPipelineExpression.Default;
+
     public QueryKernel()
     {
     }
@@ -43,7 +45,13 @@ public sealed record QueryKernel<TSubject>
 
     public FilterExpression Filter { get; init; } = FilterExpression.Any;
     public EventProjectionExpression Projection { get; init; } = EventProjectionExpression.Default;
-    public EventPipelineExpression Pipeline { get; init; } = EventPipelineExpression.Default;
+    public EventPipelineExpression Pipeline
+    {
+        get => _pipeline.IsDefault
+            ? EventPipelineExpression.From(Filter, Projection)
+            : _pipeline;
+        init => _pipeline = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     public QueryKernel<TSubject> WithSourceFilter(FilterExpression filter)
     {

@@ -6,6 +6,7 @@ using SiftQL.Examples.ServerPluginHost.Plugins;
 using SiftQL.Examples.ShaRpc.SharedContracts.Contracts;
 using SiftQL.Examples.ShaRpc.SharedContracts.Serialization;
 using SiftQL.Expressions;
+using SiftQL.Projected;
 
 using ExampleAbilityCastEvent = SiftQL.Examples.ServerPluginHost.Domain.AbilityCastEvent;
 using ExampleItemUsedEvent = SiftQL.Examples.ServerPluginHost.Domain.ItemUsedEvent;
@@ -96,6 +97,51 @@ public sealed class ServerPluginHostExampleTests
     }
 
     [Fact]
+    public async Task ProjectedSubscriptionNormalizesSplitFilterAndProjection()
+    {
+        var clients = new ClientGateway();
+        var host = new InMemoryServerPluginHost(clients);
+        List<ProjectedEvent> projected = [];
+
+        host.SubscribeProjected<ExampleItemUsedEvent>(
+            "split-subscription",
+            SplitItemKernel(),
+            (ev, _) =>
+            {
+                projected.Add(ev);
+                return ValueTask.CompletedTask;
+            });
+
+        await host.PublishAsync(new ExampleItemUsedEvent(1001, "north-gate", "ore", "material", 1, 0));
+        await host.PublishAsync(new ExampleItemUsedEvent(1001, "north-gate", "potion", "consumable", 3, 0));
+
+        ProjectedEvent item = Assert.Single(projected);
+        AssertPayloadField(item, nameof(ExampleItemUsedEvent.Quantity), 3L);
+        Assert.False(item.TryGetField(nameof(ExampleItemUsedEvent.ItemCode), out _));
+    }
+
+    [Fact]
+    public async Task ProjectedQueryNormalizesSplitFilterAndProjection()
+    {
+        var clients = new ClientGateway();
+        var data = new ServerDataStore();
+        data.Replace<ExampleItemUsedEvent>(
+        [
+            new(1001, "north-gate", "ore", "material", 1, 0),
+            new(1001, "north-gate", "potion", "consumable", 3, 0),
+        ]);
+        var host = new InMemoryServerPluginHost(clients, data);
+
+        IReadOnlyList<ProjectedEvent> projected = await host.QueryProjectedAsync(
+            "split-query",
+            SplitItemKernel());
+
+        ProjectedEvent item = Assert.Single(projected);
+        AssertPayloadField(item, nameof(ExampleItemUsedEvent.Quantity), 3L);
+        Assert.False(item.TryGetField(nameof(ExampleItemUsedEvent.ItemCode), out _));
+    }
+
+    [Fact]
     public void SharedShaRpcQueryRoundTripsThroughSerializer()
     {
         var query = ShaRpcServerKernel.ForServerOffer()
@@ -120,6 +166,17 @@ public sealed class ServerPluginHostExampleTests
         AssertEx.Equal(EventPipelineStageKind.Projection, roundTripped.Pipeline.Stages[1].Kind, "projection stage");
         AssertEx.Equal(EventPipelineStageKind.Filter, roundTripped.Pipeline.Stages[2].Kind, "projected filter stage");
     }
+
+    private static QueryKernel<ExampleItemUsedEvent> SplitItemKernel() =>
+        new()
+        {
+            Filter = FilterExpression.Compare(
+                nameof(ExampleItemUsedEvent.ItemCode),
+                FilterOperator.Equal,
+                FilterValue.From("potion")),
+            Projection = EventProjectionExpression.Select(nameof(ExampleItemUsedEvent.Quantity)),
+            Pipeline = EventPipelineExpression.Default,
+        };
 
     private static ServerDataStore CreateServerData()
     {
@@ -157,6 +214,12 @@ public sealed class ServerPluginHostExampleTests
     {
         AssertEx.True(payload.TryGetValue(key, out object? actual), $"payload contains {key}");
         AssertEx.Equal(expected, actual, $"payload value {key}");
+    }
+
+    private static void AssertPayloadField(ProjectedEvent projected, string field, long expected)
+    {
+        Assert.True(projected.TryGetField(field, out ProjectedEventValue value));
+        Assert.Equal(expected, value.Integer);
     }
 
     private sealed record UnregisteredEvent : IFilterSubject;
