@@ -11,14 +11,10 @@ using Microsoft.CodeAnalysis.Emit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class FilterSchemaParitySourceGeneratorTests
+public sealed class FilterSchemaParitySourceGeneratorTests
 {
-    public static void RunAll()
-    {
-        GeneratedNestedEventMetadataMatchesRuntimeTypeNames();
-    }
-
-    private static void GeneratedNestedEventMetadataMatchesRuntimeTypeNames()
+    [Fact]
+    public void GeneratedNestedEventMetadataMatchesRuntimeTypeNames()
     {
         GeneratorRun run = RunGenerator(NestedEventTree());
         using var pe = new MemoryStream();

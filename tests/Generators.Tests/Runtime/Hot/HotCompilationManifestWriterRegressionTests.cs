@@ -5,14 +5,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotCompilationManifestWriterRegressionTests
+public sealed class HotCompilationManifestWriterRegressionTests
 {
-    public static void RunAll()
-    {
-        ManifestWriterDisposeFlushesQueuedWrite();
-    }
-
-    private static void ManifestWriterDisposeFlushesQueuedWrite()
+    [Fact]
+    public void ManifestWriterDisposeFlushesQueuedWrite()
     {
         string directory = Path.Combine(
             Path.GetTempPath(),

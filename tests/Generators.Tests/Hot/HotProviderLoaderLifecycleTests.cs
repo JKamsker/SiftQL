@@ -16,17 +16,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderLoaderLifecycleTests
+public sealed class HotProviderLoaderLifecycleTests
 {
-    public static void RunAll()
-    {
-        LoadedProviderCanBeDisposedAndUnregistered();
-        TelemetryOnlyManifestChangesDoNotInvalidateGeneratedProvider();
-        MalformedManifestReportsInvalidManifest();
-        MultipleManifestsInOneAssemblyEachValidateOwnHash();
-    }
-
-    private static void LoadedProviderCanBeDisposedAndUnregistered()
+    [Fact]
+    public void LoadedProviderCanBeDisposedAndUnregistered()
     {
         const string assemblyName = "Plugin.Hot.Lifecycle";
         FilterExpression filter = FilterExpression.Compare(
@@ -68,7 +61,8 @@ internal static class HotProviderLoaderLifecycleTests
         AssertEx.True(afterDispose.IsTiered, "disposed provider was unregistered");
     }
 
-    private static void TelemetryOnlyManifestChangesDoNotInvalidateGeneratedProvider()
+    [Fact]
+    public void TelemetryOnlyManifestChangesDoNotInvalidateGeneratedProvider()
     {
         const string assemblyName = "Plugin.Hot.Telemetry";
         FilterExpression filter = FilterExpression.Compare(
@@ -99,7 +93,8 @@ internal static class HotProviderLoaderLifecycleTests
         AssertEx.True(result.Loaded, "telemetry-only manifest changes do not invalidate provider: " + result.Message);
     }
 
-    private static void MalformedManifestReportsInvalidManifest()
+    [Fact]
+    public void MalformedManifestReportsInvalidManifest()
     {
         string directory = Path.Combine(
             Path.GetTempPath(),
@@ -124,7 +119,8 @@ internal static class HotProviderLoaderLifecycleTests
             "malformed hot provider manifest reports invalid manifest");
     }
 
-    private static void MultipleManifestsInOneAssemblyEachValidateOwnHash()
+    [Fact]
+    public void MultipleManifestsInOneAssemblyEachValidateOwnHash()
     {
         const string assemblyName = "Plugin.Hot.Multiple";
         FilterExpression firstFilter = FilterExpression.Compare(

@@ -5,17 +5,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class QueryKernelProjectionRegressionTests
+public sealed class QueryKernelProjectionRegressionTests
 {
-    public static void RunAll()
-    {
-        SelectorProjectionAfterProjectedFilterReadsProjectedFields();
-        ExplicitProjectedPathIsNotDoublePrefixed();
-        ExplicitProjectedContextPathIsNotRebased();
-        UnsupportedProjectedValueMemberIsRejected();
-    }
-
-    private static void SelectorProjectionAfterProjectedFilterReadsProjectedFields()
+    [Fact]
+    public void SelectorProjectionAfterProjectedFilterReadsProjectedFields()
     {
         QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
             .Select(static ev => ev.ItemId, static ev => ev.Quantity)
@@ -28,7 +21,8 @@ internal static class QueryKernelProjectionRegressionTests
         Assert.Equal(ProjectedEventPaths.Field(nameof(ItemUsedEvent.Quantity)), field.Path);
     }
 
-    private static void ExplicitProjectedPathIsNotDoublePrefixed()
+    [Fact]
+    public void ExplicitProjectedPathIsNotDoublePrefixed()
     {
         QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
             .Select(nameof(ItemUsedEvent.ItemId))
@@ -41,7 +35,8 @@ internal static class QueryKernelProjectionRegressionTests
         Assert.Equal(ProjectedEventPaths.Field(nameof(ItemUsedEvent.ItemId)), field.Path);
     }
 
-    private static void ExplicitProjectedContextPathIsNotRebased()
+    [Fact]
+    public void ExplicitProjectedContextPathIsNotRebased()
     {
         QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
             .Select(nameof(ItemUsedEvent.ItemId))
@@ -54,7 +49,8 @@ internal static class QueryKernelProjectionRegressionTests
         Assert.Equal(ProjectedEventPaths.Context("tag"), field.Path);
     }
 
-    private static void UnsupportedProjectedValueMemberIsRejected()
+    [Fact]
+    public void UnsupportedProjectedValueMemberIsRejected()
     {
         Assert.Throws<KernelExpressionException>(() =>
             QueryKernel.For<ItemUsedEvent>()

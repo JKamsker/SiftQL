@@ -19,15 +19,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderDuplicateFingerprintTests
+public sealed class HotProviderDuplicateFingerprintTests
 {
-    public static void RunAll()
-    {
-        DuplicateFingerprintEntriesDispatchBySubjectType();
-        IdenticalEntriesEmitSingleSubjectBranch();
-    }
-
-    private static void DuplicateFingerprintEntriesDispatchBySubjectType()
+    [Fact]
+    public void DuplicateFingerprintEntriesDispatchBySubjectType()
     {
         const string assemblyName = "Plugin.Hot.DuplicateFingerprint";
         FilterExpression filter = FilterExpression.Compare(
@@ -72,7 +67,8 @@ internal static class HotProviderDuplicateFingerprintTests
         AssertEx.True(secondKernel.Matches(secondMatching), "second event matched");
     }
 
-    private static void IdenticalEntriesEmitSingleSubjectBranch()
+    [Fact]
+    public void IdenticalEntriesEmitSingleSubjectBranch()
     {
         const string assemblyName = "Plugin.Hot.DuplicateIdentical";
         FilterExpression filter = FilterExpression.Compare(

@@ -20,14 +20,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderRegistrationGateTests
+public sealed class HotProviderRegistrationGateTests
 {
-    public static void RunAll()
-    {
-        DirectAssemblyLoadDoesNotRegisterGeneratedHotProvider();
-    }
-
-    private static void DirectAssemblyLoadDoesNotRegisterGeneratedHotProvider()
+    [Fact]
+    public void DirectAssemblyLoadDoesNotRegisterGeneratedHotProvider()
     {
         const string assemblyName = "Plugin.Hot.DirectLoad";
         FilterExpression filter = FilterExpression.Compare(

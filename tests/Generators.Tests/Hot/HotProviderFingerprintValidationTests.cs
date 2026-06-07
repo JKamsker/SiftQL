@@ -15,15 +15,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderFingerprintValidationTests
+public sealed class HotProviderFingerprintValidationTests
 {
-    public static void RunAll()
-    {
-        RejectsProjectionDefinitionWhenFingerprintDoesNotMatch();
-        RejectsFilterDefinitionWhenFingerprintDoesNotMatch();
-    }
-
-    private static void RejectsFilterDefinitionWhenFingerprintDoesNotMatch()
+    [Fact]
+    public void RejectsFilterDefinitionWhenFingerprintDoesNotMatch()
     {
         FilterExpression fingerprintSource = CharacterIdEquals(7);
         FilterExpression embeddedDefinition = CharacterIdEquals(8);
@@ -39,7 +34,8 @@ internal static class HotProviderFingerprintValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "mismatched filter fingerprint emitted no provider");
     }
 
-    private static void RejectsProjectionDefinitionWhenFingerprintDoesNotMatch()
+    [Fact]
+    public void RejectsProjectionDefinitionWhenFingerprintDoesNotMatch()
     {
         EventProjectionExpression fingerprintSource = EventProjectionExpression.Select("CharacterId");
         EventProjectionExpression embeddedDefinition = EventProjectionExpression.Select("EventId");

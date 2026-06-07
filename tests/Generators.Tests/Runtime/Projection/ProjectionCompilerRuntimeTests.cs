@@ -8,27 +8,19 @@ using SiftQL.Schema;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class ProjectionCompilerRuntimeTests
+public sealed class ProjectionCompilerRuntimeTests
 {
-    public static void RunAll()
-    {
-        DefaultProjectionSkipsVirtualMetadataFields();
-        ScalarProjectedPayloadMatchesMaterializedProjection();
-        SelectingPlayerKeepsItems();
-    }
-
-    private static void DefaultProjectionSkipsVirtualMetadataFields()
+    [Fact]
+    public async Task DefaultProjectionSkipsVirtualMetadataFields()
     {
         var projection = ProjectionCompiler.Compile<object?>(
             typeof(DefaultProjectionEvent),
             EventProjectionExpression.Default,
             RejectInclude);
-        var projected = projection.ProjectAsync(
-                new DefaultProjectionEvent(Guid.NewGuid(), 42, 125),
-                null,
-                CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        var projected = await projection.ProjectAsync(
+            new DefaultProjectionEvent(Guid.NewGuid(), 42, 125),
+            null,
+            CancellationToken.None);
 
         string fieldNames = string.Join(",", projected.Fields.Select(static field => field.Name));
         AssertEx.Equal(
@@ -54,7 +46,8 @@ internal static class ProjectionCompilerRuntimeTests
         long CharacterId,
         int Damage);
 
-    private static void ScalarProjectedPayloadMatchesMaterializedProjection()
+    [Fact]
+    public async Task ScalarProjectedPayloadMatchesMaterializedProjection()
     {
         var item = new PayloadProjectionEvent(
             Guid.NewGuid(),
@@ -74,19 +67,15 @@ internal static class ProjectionCompilerRuntimeTests
         MessagePackSerializerOptions options =
             MessagePackSerializerOptions.Standard.WithResolver(ContractlessStandardResolver.Instance);
 
-        ProjectedEvent materialized = projection.ProjectAsync(
-                item,
-                null,
-                CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
-        ReadOnlyMemory<byte> payload = projection.ProjectPayloadAsync(
-                item,
-                null,
-                options,
-                CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        ProjectedEvent materialized = await projection.ProjectAsync(
+            item,
+            null,
+            CancellationToken.None);
+        ReadOnlyMemory<byte> payload = await projection.ProjectPayloadAsync(
+            item,
+            null,
+            options,
+            CancellationToken.None);
         ProjectedEvent roundTripped = MessagePackSerializer.Deserialize<ProjectedEvent>(
             payload,
             options);
@@ -100,7 +89,8 @@ internal static class ProjectionCompilerRuntimeTests
         AssertProjectedField(roundTripped, nameof(PayloadProjectionEvent.OptionalScore), ProjectedEventValueKind.Null);
     }
 
-    private static void SelectingPlayerKeepsItems()
+    [Fact]
+    public async Task SelectingPlayerKeepsItems()
     {
         FilterSchema.RegisterValueObject<PlayerProjection>();
         var kernel = QueryKernel
@@ -110,20 +100,18 @@ internal static class ProjectionCompilerRuntimeTests
             typeof(PlayerSelectedProjectionEvent),
             kernel.Projection,
             RejectInclude);
-        var projected = projection.ProjectAsync(
-                new PlayerSelectedProjectionEvent(
-                    Guid.NewGuid(),
-                    new PlayerProjection(
-                        1001,
-                        "Aster",
-                        [
-                            new PlayerItemProjection(10, "Potion", 4),
-                            new PlayerItemProjection(11, "Ore", 2),
-                        ])),
-                null,
-                CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        var projected = await projection.ProjectAsync(
+            new PlayerSelectedProjectionEvent(
+                Guid.NewGuid(),
+                new PlayerProjection(
+                    1001,
+                    "Aster",
+                    [
+                        new PlayerItemProjection(10, "Potion", 4),
+                        new PlayerItemProjection(11, "Ore", 2),
+                    ])),
+            null,
+            CancellationToken.None);
 
         AssertEx.True(projected.TryGetField("Player", out ProjectedEventValue player), "selected player emitted");
         AssertEx.Equal(ProjectedEventValueKind.Object, player.Kind, "selected player is projected as an object");

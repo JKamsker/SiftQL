@@ -9,28 +9,13 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class FilterNumericPrecisionRegressionTests
+public sealed class FilterNumericPrecisionRegressionTests
 {
     private const long RoundedInteger = 9_007_199_254_740_992L;
     private const long NeighborInteger = 9_007_199_254_740_993L;
 
-    public static void RunAll()
-    {
-        DecimalLiteralsUseNumericFastPaths();
-        IntegralScalarDecimalDoesNotUseRoundedDoubleFastPath();
-        RoundedIntegerNeighborFiltersUseExactSemantics();
-        NullableValueTypeArraysRemainFilterableThroughFallbackSchema();
-        NumericInRejectsNaNRegardlessOfLookupThreshold();
-        ExactNumericOrderedNumberFallsBackConsistentlyAcrossModes();
-        UnsignedScalarIndexesMatchUnsignedValues();
-        UlongBackedEnumOverflowFallsBackWithoutDroppingCandidate();
-        ProjectedDecimalFieldFiltersThroughDynamicSchema();
-        ProjectionIncludeRequiredDoubleAcceptsDecimal();
-        UnsignedEnumNumericLiteralDoesNotWrapToOutOfRangeValue();
-        UnknownOrderedExpectedKindDoesNotFallBackToNumber();
-    }
-
-    private static void DecimalLiteralsUseNumericFastPaths()
+    [Fact]
+    public void DecimalLiteralsUseNumericFastPaths()
     {
         var compare = FilterCompiler.Compile(
             typeof(DecimalFastPathSubject),
@@ -58,7 +43,8 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.True(contains.Matches(new DecimalFastPathSubject(0, [1.25])));
     }
 
-    private static void IntegralScalarDecimalDoesNotUseRoundedDoubleFastPath()
+    [Fact]
+    public void IntegralScalarDecimalDoesNotUseRoundedDoubleFastPath()
     {
         var compare = FilterExpression.Compare(
             nameof(IntegralSubject.Count),
@@ -72,7 +58,8 @@ internal static class FilterNumericPrecisionRegressionTests
         AssertFilter(inFilter, new FilterCase<IntegralSubject>(new(1), false));
     }
 
-    private static void RoundedIntegerNeighborFiltersUseExactSemantics()
+    [Fact]
+    public void RoundedIntegerNeighborFiltersUseExactSemantics()
     {
         NumericSubject subject = Subject();
 
@@ -105,7 +92,8 @@ internal static class FilterNumericPrecisionRegressionTests
             new FilterCase<NumericSubject>(subject, false));
     }
 
-    private static void NullableValueTypeArraysRemainFilterableThroughFallbackSchema()
+    [Fact]
+    public void NullableValueTypeArraysRemainFilterableThroughFallbackSchema()
     {
         var filter = FilterExpression.Contains(
             nameof(NullableArraySubject.OptionalCounts),
@@ -117,7 +105,8 @@ internal static class FilterNumericPrecisionRegressionTests
             new FilterCase<NullableArraySubject>(new([1, 2, 3]), false));
     }
 
-    private static void NumericInRejectsNaNRegardlessOfLookupThreshold()
+    [Fact]
+    public void NumericInRejectsNaNRegardlessOfLookupThreshold()
     {
         var subject = new FloatingSubject(double.NaN);
 
@@ -139,7 +128,8 @@ internal static class FilterNumericPrecisionRegressionTests
             new FilterCase<FloatingSubject>(subject, false));
     }
 
-    private static void ExactNumericOrderedNumberFallsBackConsistentlyAcrossModes()
+    [Fact]
+    public void ExactNumericOrderedNumberFallsBackConsistentlyAcrossModes()
     {
         var filter = FilterExpression.Compare(
             nameof(IntegralSubject.Count),
@@ -149,7 +139,8 @@ internal static class FilterNumericPrecisionRegressionTests
         AssertFilter(filter, new FilterCase<IntegralSubject>(new(10), true));
     }
 
-    private static void UnsignedScalarIndexesMatchUnsignedValues()
+    [Fact]
+    public void UnsignedScalarIndexesMatchUnsignedValues()
     {
         var small = new FilterSubscriptionIndex<string>(typeof(UIntIndexSubject));
         small.Add(
@@ -174,7 +165,8 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.Empty(large.SnapshotCandidates(new ULongIndexSubject(1UL)));
     }
 
-    private static void UlongBackedEnumOverflowFallsBackWithoutDroppingCandidate()
+    [Fact]
+    public void UlongBackedEnumOverflowFallsBackWithoutDroppingCandidate()
     {
         var filter = FilterExpression.Compare(
             nameof(BigEnumSubject.Kind),
@@ -189,7 +181,8 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.True(FilterCompiler.Compile(typeof(BigEnumSubject), filter).Matches(subject));
     }
 
-    private static void ProjectedDecimalFieldFiltersThroughDynamicSchema()
+    [Fact]
+    public void ProjectedDecimalFieldFiltersThroughDynamicSchema()
     {
         var filter = FilterExpression.Compare(
             ProjectedEventPaths.Field("Amount"),
@@ -209,7 +202,8 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.True(kernel.Matches(projected));
     }
 
-    private static void ProjectionIncludeRequiredDoubleAcceptsDecimal()
+    [Fact]
+    public void ProjectionIncludeRequiredDoubleAcceptsDecimal()
     {
         var include = new EventProjectionInclude(
             "window",
@@ -219,7 +213,8 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.Equal(1.5D, ProjectionIncludeArguments.RequiredDouble(include, "seconds"));
     }
 
-    private static void UnsignedEnumNumericLiteralDoesNotWrapToOutOfRangeValue()
+    [Fact]
+    public void UnsignedEnumNumericLiteralDoesNotWrapToOutOfRangeValue()
     {
         bool equal = FilterValues.Compare(
             HugeKind.Last,
@@ -230,7 +225,8 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.True(FilterValues.Compare(HugeKind.First, FilterValue.From(1L), FilterOperator.Equal));
     }
 
-    private static void UnknownOrderedExpectedKindDoesNotFallBackToNumber()
+    [Fact]
+    public void UnknownOrderedExpectedKindDoesNotFallBackToNumber()
     {
         var invalid = new FilterValue { Kind = (FilterValueKind)999, Number = 1000D };
 

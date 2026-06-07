@@ -16,17 +16,10 @@ using ShaRpcServerOfferSnapshot = SiftQL.Examples.ShaRpc.SharedContracts.Domain.
 
 namespace SiftQL.Generators.Tests;
 
-internal static class ServerPluginHostExampleTests
+public sealed class ServerPluginHostExampleTests
 {
-    public static void RunAll()
-    {
-        GeneratedKernelCatalogExposesEventModels();
-        ProjectedClientDeliveryRunsFullPipeline();
-        SharedShaRpcContractsExposeHostOwnedKernel();
-        SharedShaRpcQueryRoundTripsThroughSerializer();
-    }
-
-    private static void GeneratedKernelCatalogExposesEventModels()
+    [Fact]
+    public void GeneratedKernelCatalogExposesEventModels()
     {
         AssertEx.True(
             ServerKernel.IsKnownSubject(typeof(ExampleItemUsedEvent)),
@@ -51,7 +44,8 @@ internal static class ServerPluginHostExampleTests
         }
     }
 
-    private static void ProjectedClientDeliveryRunsFullPipeline()
+    [Fact]
+    public async Task ProjectedClientDeliveryRunsFullPipeline()
     {
         var clients = new ClientGateway();
         clients.Register(1001);
@@ -63,11 +57,8 @@ internal static class ServerPluginHostExampleTests
         host.Register(new InventoryAuditPlugin());
         host.Register(new EncounterMonitorPlugin());
 
-        host.StartAsync()
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
-        PublishEvents(host);
+        await host.StartAsync();
+        await PublishEvents(host);
 
         ClientSession avatar1001 = Session(clients, 1001);
         ClientSession avatar1002 = Session(clients, 1002);
@@ -93,7 +84,8 @@ internal static class ServerPluginHostExampleTests
         AssertPayload(encounter.Payload, "ThreatScore", 140L);
     }
 
-    private static void SharedShaRpcContractsExposeHostOwnedKernel()
+    [Fact]
+    public void SharedShaRpcContractsExposeHostOwnedKernel()
     {
         AssertEx.True(
             ShaRpcServerKernel.IsKnownSubject(typeof(ShaRpcServerOfferSnapshot)),
@@ -103,7 +95,8 @@ internal static class ServerPluginHostExampleTests
             "shared ShaRPC kernel exposes server offers");
     }
 
-    private static void SharedShaRpcQueryRoundTripsThroughSerializer()
+    [Fact]
+    public void SharedShaRpcQueryRoundTripsThroughSerializer()
     {
         var query = ShaRpcServerKernel.ForServerOffer()
             .Where(static offer => offer.Enabled)
@@ -141,32 +134,14 @@ internal static class ServerPluginHostExampleTests
         return data;
     }
 
-    private static void PublishEvents(InMemoryServerPluginHost host)
+    private static async Task PublishEvents(InMemoryServerPluginHost host)
     {
-        host.PublishAsync(new ExampleItemUsedEvent(1001, "north-gate", "potion", "consumable", 2, 18))
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
-        host.PublishAsync(new ExampleItemUsedEvent(1001, "north-gate", "ether", "consumable", 1, 8))
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
-        host.PublishAsync(new ExampleItemUsedEvent(1002, "north-gate", "ore", "material", 3, 0))
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
-        host.PublishAsync(new ExampleAbilityCastEvent(1001, "north-gate", "ember-lance", 140, true))
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
-        host.PublishAsync(new ExampleAbilityCastEvent(1001, "north-gate", "spark", 110, true))
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
-        host.PublishAsync(new ExampleAbilityCastEvent(1002, "harbor", "flare", 160, true))
-            .AsTask()
-            .GetAwaiter()
-            .GetResult();
+        await host.PublishAsync(new ExampleItemUsedEvent(1001, "north-gate", "potion", "consumable", 2, 18));
+        await host.PublishAsync(new ExampleItemUsedEvent(1001, "north-gate", "ether", "consumable", 1, 8));
+        await host.PublishAsync(new ExampleItemUsedEvent(1002, "north-gate", "ore", "material", 3, 0));
+        await host.PublishAsync(new ExampleAbilityCastEvent(1001, "north-gate", "ember-lance", 140, true));
+        await host.PublishAsync(new ExampleAbilityCastEvent(1001, "north-gate", "spark", 110, true));
+        await host.PublishAsync(new ExampleAbilityCastEvent(1002, "harbor", "flare", 160, true));
     }
 
     private static ClientSession Session(ClientGateway clients, long avatarId) =>

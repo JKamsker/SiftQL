@@ -7,19 +7,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class TieredProjectionRegressionTests
+public sealed class TieredProjectionRegressionTests
 {
-    public static void RunAll()
-    {
-        TieredProjectionStartsInterpretedAndCountsOperations().GetAwaiter().GetResult();
-        TieredProjectionPayloadMatchesImmediatePayload().GetAwaiter().GetResult();
-        HotTieredProjectionPromotesOffThread().GetAwaiter().GetResult();
-        HotTieredProjectionWithIncludesPromotesFieldArray().GetAwaiter().GetResult();
-        FailedProjectionRetryDelayMatchesFilterPolicy();
-        FailedProjectionPromotionRetriesWhenProviderAppears().GetAwaiter().GetResult();
-    }
-
-    private static async Task TieredProjectionStartsInterpretedAndCountsOperations()
+    [Fact]
+    public async Task TieredProjectionStartsInterpretedAndCountsOperations()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(ItemUsedEvent),
@@ -49,7 +40,8 @@ internal static class TieredProjectionRegressionTests
         Assert.False(payload.CompilationFailed);
     }
 
-    private static async Task TieredProjectionPayloadMatchesImmediatePayload()
+    [Fact]
+    public async Task TieredProjectionPayloadMatchesImmediatePayload()
     {
         EventProjectionExpression expression = EventProjectionExpression
             .Select(nameof(ItemUsedEvent.ItemId))
@@ -80,7 +72,8 @@ internal static class TieredProjectionRegressionTests
         Assert.Equal(1, tiered.TieredSnapshot?.PayloadWrites);
     }
 
-    private static async Task HotTieredProjectionPromotesOffThread()
+    [Fact]
+    public async Task HotTieredProjectionPromotesOffThread()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(ItemUsedEvent),
@@ -107,7 +100,8 @@ internal static class TieredProjectionRegressionTests
         Assert.Equal(snapshot.Materializations, projection.TieredSnapshot?.Materializations);
     }
 
-    private static async Task HotTieredProjectionWithIncludesPromotesFieldArray()
+    [Fact]
+    public async Task HotTieredProjectionWithIncludesPromotesFieldArray()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(ItemUsedEvent),
@@ -133,7 +127,8 @@ internal static class TieredProjectionRegressionTests
         Assert.Equal("included", context.String);
     }
 
-    private static void FailedProjectionRetryDelayMatchesFilterPolicy()
+    [Fact]
+    public void FailedProjectionRetryDelayMatchesFilterPolicy()
     {
         Type stateType = typeof(ProjectionCompiler).Assembly
             .GetType("SiftQL.Projection.TieredProjectionState`1", throwOnError: true)!
@@ -145,7 +140,8 @@ internal static class TieredProjectionRegressionTests
         Assert.Equal(TimeSpan.FromSeconds(30), (TimeSpan)field.GetValue(null)!);
     }
 
-    private static async Task FailedProjectionPromotionRetriesWhenProviderAppears()
+    [Fact]
+    public async Task FailedProjectionPromotionRetriesWhenProviderAppears()
     {
         EventProjectionExpression expression = EventProjectionExpression.Select(
             nameof(ProjectionRecoverySubject.Value));

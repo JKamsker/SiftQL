@@ -19,15 +19,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderLoaderManifestIsolationTests
+public sealed class HotProviderLoaderManifestIsolationTests
 {
-    public static void RunAll()
-    {
-        LoadingOneManifestFromSharedAssemblyDoesNotRegisterOtherManifestProviders();
-        GeneratedRegistrationChecksManifestBeforeProviderConstruction();
-    }
-
-    private static void LoadingOneManifestFromSharedAssemblyDoesNotRegisterOtherManifestProviders()
+    [Fact]
+    public void LoadingOneManifestFromSharedAssemblyDoesNotRegisterOtherManifestProviders()
     {
         const string assemblyName = "Plugin.Hot.ManifestIsolation";
         FilterExpression firstFilter = Filter(nameof(ItemUsedEvent.ItemId), 100);
@@ -64,7 +59,8 @@ internal static class HotProviderLoaderManifestIsolationTests
         AssertEx.True(second.IsTiered, "unloaded manifest provider was not registered");
     }
 
-    private static void GeneratedRegistrationChecksManifestBeforeProviderConstruction()
+    [Fact]
+    public void GeneratedRegistrationChecksManifestBeforeProviderConstruction()
     {
         const string assemblyName = "Plugin.Hot.ManifestIsolation.Source";
         GeneratorRun run = RunGenerator(

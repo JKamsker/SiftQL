@@ -7,11 +7,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotManifestPathStabilityTests
+public sealed class HotManifestPathStabilityTests
 {
-    public static void RunAll() => ProviderNameIncludesDirectoryIdentity();
-
-    private static void ProviderNameIncludesDirectoryIdentity()
+    [Fact]
+    public void ProviderNameIncludesDirectoryIdentity()
     {
         string manifest = """
             {

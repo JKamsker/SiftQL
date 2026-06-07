@@ -11,23 +11,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotManifestShapeValidationTests
+public sealed class HotManifestShapeValidationTests
 {
-    public static void RunAll()
-    {
-        RejectsNonObjectRoot();
-        RejectsNullRoot();
-        RejectsNonObjectEntry();
-        RejectsNonObjectFilterDefinition();
-        RejectsNonObjectFilterValue();
-        RejectsNonObjectFilterValuesItem();
-        RejectsNonObjectFilterChild();
-        RejectsNonObjectProjectionField();
-        RejectsNonObjectProjectionInclude();
-        RejectsNonObjectProjectionArgument();
-    }
-
-    private static void RejectsNonObjectRoot()
+    [Fact]
+    public void RejectsNonObjectRoot()
     {
         GeneratorRun run = RunGenerator("[]");
 
@@ -35,7 +22,8 @@ internal static class HotManifestShapeValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "non-object root emitted no hot provider source");
     }
 
-    private static void RejectsNullRoot()
+    [Fact]
+    public void RejectsNullRoot()
     {
         GeneratorRun run = RunGenerator("null");
 
@@ -43,7 +31,8 @@ internal static class HotManifestShapeValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "null root emitted no hot provider source");
     }
 
-    private static void RejectsNonObjectEntry()
+    [Fact]
+    public void RejectsNonObjectEntry()
     {
         GeneratorRun run = RunGenerator(Manifest("[123]"));
 
@@ -51,7 +40,8 @@ internal static class HotManifestShapeValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "non-object entry emitted no hot provider source");
     }
 
-    private static void RejectsNonObjectFilterDefinition()
+    [Fact]
+    public void RejectsNonObjectFilterDefinition()
     {
         GeneratorRun run = RunGenerator(Manifest("""
             [
@@ -68,7 +58,8 @@ internal static class HotManifestShapeValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "non-object definition emitted no hot provider source");
     }
 
-    private static void RejectsNonObjectFilterValue()
+    [Fact]
+    public void RejectsNonObjectFilterValue()
     {
         GeneratorRun run = RunGenerator(ManifestWithDefinition("filter", """
             {
@@ -82,7 +73,8 @@ internal static class HotManifestShapeValidationTests
         AssertRejectedNestedShape(run, "non-object filter value diagnostic");
     }
 
-    private static void RejectsNonObjectFilterValuesItem()
+    [Fact]
+    public void RejectsNonObjectFilterValuesItem()
     {
         GeneratorRun run = RunGenerator(ManifestWithDefinition("filter", """
             {
@@ -95,7 +87,8 @@ internal static class HotManifestShapeValidationTests
         AssertRejectedNestedShape(run, "non-object filter values item diagnostic");
     }
 
-    private static void RejectsNonObjectFilterChild()
+    [Fact]
+    public void RejectsNonObjectFilterChild()
     {
         GeneratorRun run = RunGenerator(ManifestWithDefinition("filter", """
             {
@@ -107,7 +100,8 @@ internal static class HotManifestShapeValidationTests
         AssertRejectedNestedShape(run, "non-object filter child diagnostic");
     }
 
-    private static void RejectsNonObjectProjectionField()
+    [Fact]
+    public void RejectsNonObjectProjectionField()
     {
         GeneratorRun run = RunGenerator(ManifestWithDefinition("projection", """
             {
@@ -118,7 +112,8 @@ internal static class HotManifestShapeValidationTests
         AssertRejectedNestedShape(run, "non-object projection field diagnostic");
     }
 
-    private static void RejectsNonObjectProjectionInclude()
+    [Fact]
+    public void RejectsNonObjectProjectionInclude()
     {
         GeneratorRun run = RunGenerator(ManifestWithDefinition("projection", """
             {
@@ -129,7 +124,8 @@ internal static class HotManifestShapeValidationTests
         AssertRejectedNestedShape(run, "non-object projection include diagnostic");
     }
 
-    private static void RejectsNonObjectProjectionArgument()
+    [Fact]
+    public void RejectsNonObjectProjectionArgument()
     {
         GeneratorRun run = RunGenerator(ManifestWithDefinition("projection", """
             {

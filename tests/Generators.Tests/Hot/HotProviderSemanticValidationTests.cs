@@ -15,21 +15,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderSemanticValidationTests
+public sealed class HotProviderSemanticValidationTests
 {
-    public static void RunAll()
-    {
-        RejectsCompareWithoutValue();
-        RejectsContainsWithoutValue();
-        RejectsInWithoutValues();
-        RejectsNotWithWrongChildCount();
-        RejectsDuplicateProjectionNames();
-        RejectsProjectionFieldWithEmptyPath();
-        RejectsNonArrayProjectionFields();
-        RejectsNonArrayProjectionIncludes();
-    }
-
-    private static void RejectsCompareWithoutValue()
+    [Fact]
+    public void RejectsCompareWithoutValue()
     {
         var filter = new FilterExpression(FilterExpressionKind.Compare)
         {
@@ -40,7 +29,8 @@ internal static class HotProviderSemanticValidationTests
         AssertRejected(FilterManifest(filter), "missing compare value diagnostic");
     }
 
-    private static void RejectsContainsWithoutValue()
+    [Fact]
+    public void RejectsContainsWithoutValue()
     {
         var filter = new FilterExpression(FilterExpressionKind.Contains)
         {
@@ -50,7 +40,8 @@ internal static class HotProviderSemanticValidationTests
         AssertRejected(FilterManifest(filter), "missing contains value diagnostic");
     }
 
-    private static void RejectsInWithoutValues()
+    [Fact]
+    public void RejectsInWithoutValues()
     {
         var filter = new FilterExpression(FilterExpressionKind.In)
         {
@@ -61,7 +52,8 @@ internal static class HotProviderSemanticValidationTests
         AssertRejected(FilterManifest(filter), "empty in values diagnostic");
     }
 
-    private static void RejectsNotWithWrongChildCount()
+    [Fact]
+    public void RejectsNotWithWrongChildCount()
     {
         var filter = new FilterExpression(FilterExpressionKind.Not)
         {
@@ -75,7 +67,8 @@ internal static class HotProviderSemanticValidationTests
         AssertRejected(FilterManifest(filter), "invalid not child count diagnostic");
     }
 
-    private static void RejectsDuplicateProjectionNames()
+    [Fact]
+    public void RejectsDuplicateProjectionNames()
     {
         var projection = new EventProjectionExpression
         {
@@ -89,7 +82,8 @@ internal static class HotProviderSemanticValidationTests
         AssertRejected(ProjectionManifest(projection), "duplicate projection field diagnostic");
     }
 
-    private static void RejectsProjectionFieldWithEmptyPath()
+    [Fact]
+    public void RejectsProjectionFieldWithEmptyPath()
     {
         var projection = new EventProjectionExpression
         {
@@ -99,7 +93,8 @@ internal static class HotProviderSemanticValidationTests
         AssertRejected(ProjectionManifest(projection), "empty projection path diagnostic");
     }
 
-    private static void RejectsNonArrayProjectionFields()
+    [Fact]
+    public void RejectsNonArrayProjectionFields()
     {
         string fingerprint = ProjectionFingerprint(EventProjectionExpression.Default);
         AssertRejected(RawDefinitionManifest("projection", fingerprint, """
@@ -109,7 +104,8 @@ internal static class HotProviderSemanticValidationTests
             """), "non-array projection fields diagnostic");
     }
 
-    private static void RejectsNonArrayProjectionIncludes()
+    [Fact]
+    public void RejectsNonArrayProjectionIncludes()
     {
         string fingerprint = ProjectionFingerprint(EventProjectionExpression.Default);
         AssertRejected(RawDefinitionManifest("projection", fingerprint, """

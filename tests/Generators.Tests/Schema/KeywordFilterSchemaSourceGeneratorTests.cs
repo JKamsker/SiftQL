@@ -8,13 +8,11 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class KeywordFilterSchemaSourceGeneratorTests
+public sealed class KeywordFilterSchemaSourceGeneratorTests
 {
     private const string CurrentProviderHint = "GeneratedCurrentFilterSchemaProvider.g.cs";
-
-    public static void RunAll() => GeneratorEscapesKeywordPropertyAccess();
-
-    private static void GeneratorEscapesKeywordPropertyAccess()
+    [Fact]
+    public void GeneratorEscapesKeywordPropertyAccess()
     {
         GeneratorRun run = RunGenerator(KeywordEventTree());
         string source = GeneratedSource(run, CurrentProviderHint);

@@ -18,15 +18,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderValueCompatibilityTests
+public sealed class HotProviderValueCompatibilityTests
 {
-    public static void RunAll()
-    {
-        RejectsStringValueForNumericField();
-        RejectsOrderedComparisonForStringField();
-    }
-
-    private static void RejectsStringValueForNumericField()
+    [Fact]
+    public void RejectsStringValueForNumericField()
     {
         GeneratorRun run = RunGenerator(
             Manifest(FilterExpression.Compare(
@@ -39,7 +34,8 @@ internal static class HotProviderValueCompatibilityTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "invalid value emitted no provider");
     }
 
-    private static void RejectsOrderedComparisonForStringField()
+    [Fact]
+    public void RejectsOrderedComparisonForStringField()
     {
         GeneratorRun run = RunGenerator(
             Manifest(FilterExpression.Compare(

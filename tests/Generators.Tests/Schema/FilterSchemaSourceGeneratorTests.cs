@@ -12,24 +12,14 @@ using Microsoft.CodeAnalysis.Emit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class FilterSchemaSourceGeneratorTests
+public sealed class FilterSchemaSourceGeneratorTests
 {
     private const string RuntimeAssemblyName = "SiftQL";
     private const string BuiltInProviderHint = "GeneratedFilterSchemaProvider.g.cs";
     private const string CurrentProviderHint = "GeneratedCurrentFilterSchemaProvider.g.cs";
 
-    public static void RunAll()
-    {
-        GeneratorEmitsServerAndClientSchemas();
-        GeneratorEmitsPluginOwnedCurrentSchemas();
-        GeneratedPluginOwnedProviderRegistersWithRuntime();
-        GeneratorSkipsPluginSchemasWithoutFilterRuntime();
-        GeneratorEmitsEmptyProviderWithoutAbstractionsReference();
-        GeneratorCachesDiscoveryForUnrelatedCompilationChange();
-        GeneratorCachesCurrentSchemaForUnrelatedCompilationChange();
-    }
-
-    private static void GeneratorEmitsServerAndClientSchemas()
+    [Fact]
+    public void GeneratorEmitsServerAndClientSchemas()
     {
         GeneratorRun run = RunGenerator(
             RuntimeAssemblyName,
@@ -56,7 +46,8 @@ internal static class FilterSchemaSourceGeneratorTests
         AssertEx.Equal(0, errors.Length, "generated provider compilation errors: " + string.Join(" | ", errors.Take(8)));
     }
 
-    private static void GeneratorEmitsPluginOwnedCurrentSchemas()
+    [Fact]
+    public void GeneratorEmitsPluginOwnedCurrentSchemas()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.Tests",
@@ -74,7 +65,8 @@ internal static class FilterSchemaSourceGeneratorTests
         AssertNoCompilationErrors(run, "plugin generated provider");
     }
 
-    private static void GeneratedPluginOwnedProviderRegistersWithRuntime()
+    [Fact]
+    public void GeneratedPluginOwnedProviderRegistersWithRuntime()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.Loaded",
@@ -97,7 +89,8 @@ internal static class FilterSchemaSourceGeneratorTests
         AssertEx.True(schema.TryGetField("Tokens", out var tokens) && tokens.ArrayAccessor is not null, "generated array field registered");
     }
 
-    private static void GeneratorSkipsPluginSchemasWithoutFilterRuntime()
+    [Fact]
+    public void GeneratorSkipsPluginSchemasWithoutFilterRuntime()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.NoRuntime",
@@ -110,7 +103,8 @@ internal static class FilterSchemaSourceGeneratorTests
         AssertNoCompilationErrors(run, "plugin event without filter runtime");
     }
 
-    private static void GeneratorEmitsEmptyProviderWithoutAbstractionsReference()
+    [Fact]
+    public void GeneratorEmitsEmptyProviderWithoutAbstractionsReference()
     {
         GeneratorRun run = RunGenerator(
             RuntimeAssemblyName,
@@ -124,7 +118,8 @@ internal static class FilterSchemaSourceGeneratorTests
         AssertEx.DoesNotContain("SiftQL.Abstractions", source, "no abstraction type references emitted");
     }
 
-    private static void GeneratorCachesDiscoveryForUnrelatedCompilationChange()
+    [Fact]
+    public void GeneratorCachesDiscoveryForUnrelatedCompilationChange()
     {
         SyntaxTree unrelatedTree = ParseTree(
             "namespace Consumer; internal static class Unrelated { public const int Value = 1; }");
@@ -151,7 +146,8 @@ internal static class FilterSchemaSourceGeneratorTests
                 string.Join(", ", outputs.Select(static output => output.Reason)));
     }
 
-    private static void GeneratorCachesCurrentSchemaForUnrelatedCompilationChange()
+    [Fact]
+    public void GeneratorCachesCurrentSchemaForUnrelatedCompilationChange()
     {
         SyntaxTree eventTree = PluginEventTree();
         SyntaxTree unrelatedTree = ParseTree(

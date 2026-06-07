@@ -15,16 +15,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotManifestLiteralValidationTests
+public sealed class HotManifestLiteralValidationTests
 {
-    public static void RunAll()
-    {
-        RejectsNonFiniteHotNumbers();
-        RejectsMalformedBooleanLiteral();
-        EscapesUnicodeSeparatorsInStringLiterals();
-    }
-
-    private static void RejectsNonFiniteHotNumbers()
+    [Fact]
+    public void RejectsNonFiniteHotNumbers()
     {
         GeneratorRun run = RunGenerator(RawManifest("""
             {
@@ -44,7 +38,8 @@ internal static class HotManifestLiteralValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "non-finite number emitted no provider");
     }
 
-    private static void RejectsMalformedBooleanLiteral()
+    [Fact]
+    public void RejectsMalformedBooleanLiteral()
     {
         var falseFilter = FilterExpression.Compare(
             "Enabled",
@@ -68,7 +63,8 @@ internal static class HotManifestLiteralValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "malformed boolean emitted no provider");
     }
 
-    private static void EscapesUnicodeSeparatorsInStringLiterals()
+    [Fact]
+    public void EscapesUnicodeSeparatorsInStringLiterals()
     {
         string value = "line\u2028paragraph\u2029";
         var filter = FilterExpression.Compare(

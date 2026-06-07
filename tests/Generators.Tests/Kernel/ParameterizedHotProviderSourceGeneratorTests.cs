@@ -19,14 +19,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class ParameterizedHotProviderSourceGeneratorTests
+public sealed class ParameterizedHotProviderSourceGeneratorTests
 {
-    public static void RunAll()
-    {
-        GeneratorEmitsParameterizedHotFilterAndProjectionProvider();
-    }
-
-    private static void GeneratorEmitsParameterizedHotFilterAndProjectionProvider()
+    [Fact]
+    public async Task GeneratorEmitsParameterizedHotFilterAndProjectionProvider()
     {
         const string assemblyName = "Plugin.Hot.Parameterized";
         FilterExpression manifestFilter = ItemIdFilter(7);
@@ -70,10 +66,10 @@ internal static class ParameterizedHotProviderSourceGeneratorTests
             EchoLimit,
             ProjectionCompilerOptions.Tiered);
         AssertEx.True(!compiledProjection.IsTiered, "parameterized hot projection provider beat tiered fallback");
-        ProjectedEvent projected = compiledProjection
-            .ProjectAsync(matching, new object(), CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        ProjectedEvent projected = await compiledProjection.ProjectAsync(
+            matching,
+            new object(),
+            CancellationToken.None);
         AssertEx.Equal(9L, projected.Fields.Single().Value.Integer, "parameterized hot projection field");
         AssertEx.Equal(5L, projected.Context.Single().Value.Integer, "runtime include kept bound parameter");
     }

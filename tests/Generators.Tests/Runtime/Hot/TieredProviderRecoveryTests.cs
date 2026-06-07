@@ -9,17 +9,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class TieredProviderRecoveryTests
+public sealed class TieredProviderRecoveryTests
 {
-    public static void RunAll()
-    {
-        FailedFilterPromotionRetriesWhenProviderAppears().GetAwaiter().GetResult();
-        ParameterizedFilterPromotionCanUseProviderRegisteredAfterCompile()
-            .GetAwaiter()
-            .GetResult();
-    }
-
-    private static async Task FailedFilterPromotionRetriesWhenProviderAppears()
+    [Fact]
+    public async Task FailedFilterPromotionRetriesWhenProviderAppears()
     {
         var filter = FilterExpression.Compare(
             nameof(RecoverySubject.Value),
@@ -59,7 +52,8 @@ internal static class TieredProviderRecoveryTests
         Assert.False(afterProvider);
     }
 
-    private static async Task ParameterizedFilterPromotionCanUseProviderRegisteredAfterCompile()
+    [Fact]
+    public async Task ParameterizedFilterPromotionCanUseProviderRegisteredAfterCompile()
     {
         var filter = FilterExpression.Compare(
             nameof(ItemUsedEvent.ItemId),

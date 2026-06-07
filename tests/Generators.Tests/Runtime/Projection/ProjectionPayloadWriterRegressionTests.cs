@@ -8,22 +8,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class ProjectionPayloadWriterRegressionTests
+public sealed class ProjectionPayloadWriterRegressionTests
 {
-    public static void RunAll()
-    {
-        ProjectPayloadAsyncRoundTripsNoIncludeProjection()
-            .GetAwaiter()
-            .GetResult();
-        ProjectPayloadAsyncUsesDirectWriterForCompiledFieldArray()
-            .GetAwaiter()
-            .GetResult();
-        ProjectPayloadAsyncRoundTripsSynchronousIncludeProjection()
-            .GetAwaiter()
-            .GetResult();
-    }
-
-    private static async Task ProjectPayloadAsyncRoundTripsNoIncludeProjection()
+    [Fact]
+    public async Task ProjectPayloadAsyncRoundTripsNoIncludeProjection()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(ItemUsedEvent),
@@ -42,7 +30,8 @@ internal static class ProjectionPayloadWriterRegressionTests
         ProjectionRuntimeTestSupport.AssertEquivalent(projected, roundTripped);
     }
 
-    private static async Task ProjectPayloadAsyncUsesDirectWriterForCompiledFieldArray()
+    [Fact]
+    public async Task ProjectPayloadAsyncUsesDirectWriterForCompiledFieldArray()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(ItemUsedEvent),
@@ -66,7 +55,8 @@ internal static class ProjectionPayloadWriterRegressionTests
         Assert.Equal(100, itemId.Integer);
     }
 
-    private static async Task ProjectPayloadAsyncRoundTripsSynchronousIncludeProjection()
+    [Fact]
+    public async Task ProjectPayloadAsyncRoundTripsSynchronousIncludeProjection()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(ItemUsedEvent),

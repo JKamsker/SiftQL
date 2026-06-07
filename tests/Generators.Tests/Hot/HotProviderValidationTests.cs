@@ -16,20 +16,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderValidationTests
+public sealed class HotProviderValidationTests
 {
-    public static void RunAll()
-    {
-        RejectsProjectedFieldsWithEmptyNames();
-        RejectsFiltersOverTotalNodeLimit();
-        RejectsFiltersWithMissingNodeKind();
-        RejectsFiltersWithMissingValueKind();
-        RejectsFiltersWithInvalidOperator();
-        RejectsFiltersWithInvalidGuidValue();
-        RejectsEventMetadataFieldOnNormalSubject();
-    }
-
-    private static void RejectsEventMetadataFieldOnNormalSubject()
+    [Fact]
+    public void RejectsEventMetadataFieldOnNormalSubject()
     {
         var filter = FilterExpression.Compare(
             "eventType",
@@ -47,7 +37,8 @@ internal static class HotProviderValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "normal subject event metadata emitted no source");
     }
 
-    private static void RejectsProjectedFieldsWithEmptyNames()
+    [Fact]
+    public void RejectsProjectedFieldsWithEmptyNames()
     {
         var projection = EventProjectionExpression.Select(ProjectedEventPaths.FieldPrefix);
         GeneratorRun run = RunGenerator(
@@ -62,7 +53,8 @@ internal static class HotProviderValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "invalid projected field emitted no hot provider source");
     }
 
-    private static void RejectsFiltersOverTotalNodeLimit()
+    [Fact]
+    public void RejectsFiltersOverTotalNodeLimit()
     {
         var children = Enumerable.Range(0, 129)
             .Select(static _ => FilterExpression.Compare(
@@ -83,7 +75,8 @@ internal static class HotProviderValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "oversized filter emitted no hot provider source");
     }
 
-    private static void RejectsFiltersWithMissingNodeKind()
+    [Fact]
+    public void RejectsFiltersWithMissingNodeKind()
     {
         GeneratorRun run = RunGenerator(
             RawDefinitionManifest(
@@ -103,7 +96,8 @@ internal static class HotProviderValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "missing node kind emitted no hot provider source");
     }
 
-    private static void RejectsFiltersWithMissingValueKind()
+    [Fact]
+    public void RejectsFiltersWithMissingValueKind()
     {
         GeneratorRun run = RunGenerator(
             RawDefinitionManifest(
@@ -124,7 +118,8 @@ internal static class HotProviderValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "missing value kind emitted no hot provider source");
     }
 
-    private static void RejectsFiltersWithInvalidOperator()
+    [Fact]
+    public void RejectsFiltersWithInvalidOperator()
     {
         GeneratorRun run = RunGenerator(
             RawDefinitionManifest(
@@ -145,7 +140,8 @@ internal static class HotProviderValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), "invalid operator emitted no hot provider source");
     }
 
-    private static void RejectsFiltersWithInvalidGuidValue()
+    [Fact]
+    public void RejectsFiltersWithInvalidGuidValue()
     {
         GeneratorRun run = RunGenerator(
             RawDefinitionManifest(

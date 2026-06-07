@@ -17,11 +17,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderNullStringLiteralTests
+public sealed class HotProviderNullStringLiteralTests
 {
-    public static void RunAll() => NullStringFilterLiteralDoesNotBecomeEmptyString();
-
-    private static void NullStringFilterLiteralDoesNotBecomeEmptyString()
+    [Fact]
+    public void NullStringFilterLiteralDoesNotBecomeEmptyString()
     {
         const string assemblyName = "Plugin.Hot.NullString";
         var nullString = new FilterValue { Kind = FilterValueKind.String };

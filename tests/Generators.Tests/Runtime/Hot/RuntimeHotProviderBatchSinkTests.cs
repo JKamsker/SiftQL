@@ -3,19 +3,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class RuntimeHotProviderBatchSinkTests
+public sealed class RuntimeHotProviderBatchSinkTests
 {
-    public static void RunAll()
-    {
-        BatchSinkForwardsAndQueuesWhenThresholdIsReached().GetAwaiter().GetResult();
-        BatchSinkWaitsForMinimumEntries().GetAwaiter().GetResult();
-        BatchSinkQueuesDelayedBatchWhenThresholdIsReachedDuringCooldown().GetAwaiter().GetResult();
-        BatchSinkDrainsCooldownBacklogWithoutWaitingForAnotherRecord().GetAwaiter().GetResult();
-        BatchSinkRetriesRequeuedBatchWithoutWaitingForAnotherRecord().GetAwaiter().GetResult();
-        BatchSinkStillQueuesWhenInnerSinkThrows().GetAwaiter().GetResult();
-    }
-
-    private static async Task BatchSinkForwardsAndQueuesWhenThresholdIsReached()
+    [Fact]
+    public async Task BatchSinkForwardsAndQueuesWhenThresholdIsReached()
     {
         var queue = new RuntimeHotProviderBatchTestSupport.RecordingBatchQueue();
         var inner = new RuntimeHotProviderBatchTestSupport.RecordingManifestSink();
@@ -39,7 +30,8 @@ internal static class RuntimeHotProviderBatchSinkTests
         Assert.Contains(batch.Entries, static entry => entry.Kind == "projection");
     }
 
-    private static async Task BatchSinkWaitsForMinimumEntries()
+    [Fact]
+    public async Task BatchSinkWaitsForMinimumEntries()
     {
         var queue = new RuntimeHotProviderBatchTestSupport.RecordingBatchQueue();
         using var sink = new RuntimeHotProviderBatchSink(
@@ -56,7 +48,8 @@ internal static class RuntimeHotProviderBatchSinkTests
         Assert.False(queue.HasBatch);
     }
 
-    private static async Task BatchSinkQueuesDelayedBatchWhenThresholdIsReachedDuringCooldown()
+    [Fact]
+    public async Task BatchSinkQueuesDelayedBatchWhenThresholdIsReachedDuringCooldown()
     {
         var queue = new RuntimeHotProviderBatchTestSupport.RecordingBatchQueue();
         using var sink = new RuntimeHotProviderBatchSink(
@@ -77,7 +70,8 @@ internal static class RuntimeHotProviderBatchSinkTests
         Assert.Equal("projection", delayed.Entries[0].Kind);
     }
 
-    private static async Task BatchSinkDrainsCooldownBacklogWithoutWaitingForAnotherRecord()
+    [Fact]
+    public async Task BatchSinkDrainsCooldownBacklogWithoutWaitingForAnotherRecord()
     {
         var queue = new RuntimeHotProviderBatchTestSupport.RecordingBatchQueue();
         using var sink = new RuntimeHotProviderBatchSink(
@@ -104,7 +98,8 @@ internal static class RuntimeHotProviderBatchSinkTests
         Assert.Equal(2, backlog.Entries.Length);
     }
 
-    private static async Task BatchSinkRetriesRequeuedBatchWithoutWaitingForAnotherRecord()
+    [Fact]
+    public async Task BatchSinkRetriesRequeuedBatchWithoutWaitingForAnotherRecord()
     {
         var queue = new RuntimeHotProviderBatchTestSupport.ThrowOnceBatchQueue();
         using var sink = new RuntimeHotProviderBatchSink(
@@ -123,7 +118,8 @@ internal static class RuntimeHotProviderBatchSinkTests
         Assert.Equal(2, queue.Attempts);
     }
 
-    private static async Task BatchSinkStillQueuesWhenInnerSinkThrows()
+    [Fact]
+    public async Task BatchSinkStillQueuesWhenInnerSinkThrows()
     {
         var queue = new RuntimeHotProviderBatchTestSupport.RecordingBatchQueue();
         using var sink = new RuntimeHotProviderBatchSink(

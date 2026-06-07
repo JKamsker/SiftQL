@@ -6,33 +6,13 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class ProjectionDecimalRegressionTests
+public sealed class ProjectionDecimalRegressionTests
 {
     private const long RoundedInteger = 9_007_199_254_740_992L;
     private const long NeighborInteger = 9_007_199_254_740_993L;
 
-    public static void RunAll()
-    {
-        NonIntegralDecimalProjectionDoesNotUseDoubleCarrier()
-            .GetAwaiter()
-            .GetResult();
-        NonIntegralDecimalFilterValueDoesNotUseDoubleCarrier();
-        IntegralDecimalProjectionKeepsExactIntegerValue()
-            .GetAwaiter()
-            .GetResult();
-        ProjectedDecimalFilterRejectsRoundedNeighbor()
-            .GetAwaiter()
-            .GetResult();
-        UnsignedProjectionValuePreservesLargeUInt64();
-        PayloadProjectionPreservesLargeUInt64()
-            .GetAwaiter()
-            .GetResult();
-        ProjectedUnsignedFilterMatchesLargeUInt64()
-            .GetAwaiter()
-            .GetResult();
-    }
-
-    private static async Task NonIntegralDecimalProjectionDoesNotUseDoubleCarrier()
+    [Fact]
+    public async Task NonIntegralDecimalProjectionDoesNotUseDoubleCarrier()
     {
         const decimal expected = 12_345_678_901_234_567_890.1234m;
         var subject = new DecimalSubject(expected);
@@ -58,7 +38,8 @@ internal static class ProjectionDecimalRegressionTests
         AssertDecimalField(roundTripped, expected);
     }
 
-    private static void NonIntegralDecimalFilterValueDoesNotUseDoubleCarrier()
+    [Fact]
+    public void NonIntegralDecimalFilterValueDoesNotUseDoubleCarrier()
     {
         FilterValue value = FilterValue.FromObject(0.1234567890123456789012345678m);
 
@@ -66,7 +47,8 @@ internal static class ProjectionDecimalRegressionTests
         Assert.Equal(FilterValueKind.Decimal, value.Kind);
     }
 
-    private static async Task IntegralDecimalProjectionKeepsExactIntegerValue()
+    [Fact]
+    public async Task IntegralDecimalProjectionKeepsExactIntegerValue()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(DecimalSubject),
@@ -83,7 +65,8 @@ internal static class ProjectionDecimalRegressionTests
         Assert.Equal(NeighborInteger, value.Integer);
     }
 
-    private static async Task ProjectedDecimalFilterRejectsRoundedNeighbor()
+    [Fact]
+    public async Task ProjectedDecimalFilterRejectsRoundedNeighbor()
     {
         EventPipelineExpression pipeline = EventPipelineExpression.Default
             .AppendProjection(EventProjectionExpression.Select(nameof(DecimalEvent.Amount)))
@@ -105,14 +88,16 @@ internal static class ProjectionDecimalRegressionTests
         Assert.Null(projected);
     }
 
-    private static void UnsignedProjectionValuePreservesLargeUInt64()
+    [Fact]
+    public void UnsignedProjectionValuePreservesLargeUInt64()
     {
         ProjectedEventValue value = ProjectedEventValue.FromScalar(ulong.MaxValue);
 
         AssertUnsigned(value, ulong.MaxValue);
     }
 
-    private static async Task PayloadProjectionPreservesLargeUInt64()
+    [Fact]
+    public async Task PayloadProjectionPreservesLargeUInt64()
     {
         var projection = ProjectionCompiler.Compile<object>(
             typeof(UnsignedSubject),
@@ -131,7 +116,8 @@ internal static class ProjectionDecimalRegressionTests
         AssertUnsigned(projected.Field(nameof(UnsignedSubject.Id)), ulong.MaxValue);
     }
 
-    private static async Task ProjectedUnsignedFilterMatchesLargeUInt64()
+    [Fact]
+    public async Task ProjectedUnsignedFilterMatchesLargeUInt64()
     {
         EventPipelineExpression pipeline = QueryKernel.For<UnsignedEvent>()
             .Select(static ev => ev.Id)

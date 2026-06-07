@@ -7,15 +7,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class EventPipelineRegressionTests
+public sealed class EventPipelineRegressionTests
 {
-    public static void RunAll()
-    {
-        ProjectedArrayFilterCanFeedLaterProjection().GetAwaiter().GetResult();
-        ProjectedContextFilterCanRunAfterContextProjection().GetAwaiter().GetResult();
-    }
-
-    private static async Task ProjectedArrayFilterCanFeedLaterProjection()
+    [Fact]
+    public async Task ProjectedArrayFilterCanFeedLaterProjection()
     {
         EventPipelineExpression pipeline = EventPipelineExpression.Default
             .AppendProjection(EventProjectionExpression.Select(nameof(TokenEvent.Tokens)))
@@ -49,7 +44,8 @@ internal static class EventPipelineRegressionTests
         }
     }
 
-    private static async Task ProjectedContextFilterCanRunAfterContextProjection()
+    [Fact]
+    public async Task ProjectedContextFilterCanRunAfterContextProjection()
     {
         EventPipelineExpression pipeline = EventPipelineExpression.Default
             .AppendProjection(EventProjectionExpression.Default.WithIncludes(

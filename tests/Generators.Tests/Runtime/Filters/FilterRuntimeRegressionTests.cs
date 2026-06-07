@@ -10,20 +10,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class FilterRuntimeRegressionTests
+public sealed class FilterRuntimeRegressionTests
 {
-    public static void RunAll()
-    {
-        CustomSchemaCompileDoesNotPoisonDefaultSchemaCache();
-        RuntimeContainsRejectsOversizedEnumerableEvenWhenFirstItemMatches();
-        ImmediateCompiledMatcherDoesNotTrackKernelVersionForever();
-        HotProviderRegistrationScopeDoesNotPublishBeforeCommit();
-        OversizedFilterValidatesBeforeHotProviderLookup();
-        PrecompiledFilterProviderCannotBypassValidation();
-        ParameterizedPrecompiledFilterProviderCannotBypassValidation();
-    }
-
-    private static void PrecompiledFilterProviderCannotBypassValidation()
+    [Fact]
+    public void PrecompiledFilterProviderCannotBypassValidation()
     {
         using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
         using var registration = PrecompiledTieredProviderRegistry.Register(new AlwaysProvider());
@@ -36,7 +26,8 @@ internal static class FilterRuntimeRegressionTests
             FilterCompiler.Compile(typeof(ItemUsedEvent), invalid, FilterCompilerOptions.Tiered));
     }
 
-    private static void ParameterizedPrecompiledFilterProviderCannotBypassValidation()
+    [Fact]
+    public void ParameterizedPrecompiledFilterProviderCannotBypassValidation()
     {
         using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
         using var registration = PrecompiledTieredProviderRegistry.Register(new ParameterizedProvider());
@@ -49,7 +40,8 @@ internal static class FilterRuntimeRegressionTests
             FilterCompiler.Compile(typeof(ItemUsedEvent), invalid, FilterCompilerOptions.Tiered));
     }
 
-    private static void CustomSchemaCompileDoesNotPoisonDefaultSchemaCache()
+    [Fact]
+    public void CustomSchemaCompileDoesNotPoisonDefaultSchemaCache()
     {
         string fieldName = "Synthetic" + Guid.NewGuid().ToString("N");
         var filter = FilterExpression.Compare(
@@ -69,14 +61,16 @@ internal static class FilterRuntimeRegressionTests
             FilterCompiler.Compile(typeof(ProjectedEvent), filter, FilterCompilerOptions.Immediate));
     }
 
-    private static void RuntimeContainsRejectsOversizedEnumerableEvenWhenFirstItemMatches()
+    [Fact]
+    public void RuntimeContainsRejectsOversizedEnumerableEvenWhenFirstItemMatches()
     {
         Assert.False(FilterValues.Contains(
             OversizedEnumerable(first: 42, count: 257),
             FilterValue.From(42L)));
     }
 
-    private static void ImmediateCompiledMatcherDoesNotTrackKernelVersionForever()
+    [Fact]
+    public void ImmediateCompiledMatcherDoesNotTrackKernelVersionForever()
     {
         CompiledKernel kernel = FilterCompiler.Compile(
             typeof(ItemUsedEvent),
@@ -94,7 +88,8 @@ internal static class FilterRuntimeRegressionTests
         Assert.False((bool)trackVersion.GetValue(matcher)!);
     }
 
-    private static void HotProviderRegistrationScopeDoesNotPublishBeforeCommit()
+    [Fact]
+    public void HotProviderRegistrationScopeDoesNotPublishBeforeCommit()
     {
         using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
         using var manifestScope = HotProviderRegistrationContext.AllowManifest("manifest-hash");
@@ -114,7 +109,8 @@ internal static class FilterRuntimeRegressionTests
             out _));
     }
 
-    private static void OversizedFilterValidatesBeforeHotProviderLookup()
+    [Fact]
+    public void OversizedFilterValidatesBeforeHotProviderLookup()
     {
         using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
         using var registration = PrecompiledTieredProviderRegistry.Register(new ThrowingProvider());

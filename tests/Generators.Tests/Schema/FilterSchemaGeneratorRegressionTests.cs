@@ -6,16 +6,10 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class FilterSchemaGeneratorRegressionTests
+public sealed class FilterSchemaGeneratorRegressionTests
 {
-    public static void RunAll()
-    {
-        UlongBackedEnumDoesNotEmitFastEnumAccessor();
-        SanitizedHelperNameCollisionsStayCompilable();
-        HiddenDerivedPropertyUsesDerivedSchemaField();
-    }
-
-    private static void UlongBackedEnumDoesNotEmitFastEnumAccessor()
+    [Fact]
+    public void UlongBackedEnumDoesNotEmitFastEnumAccessor()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.UnsignedEnum",
@@ -35,7 +29,8 @@ internal static class FilterSchemaGeneratorRegressionTests
         AssertNoCompilationErrors(run, "ulong enum schema provider");
     }
 
-    private static void SanitizedHelperNameCollisionsStayCompilable()
+    [Fact]
+    public void SanitizedHelperNameCollisionsStayCompilable()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.HelperCollision",
@@ -57,7 +52,8 @@ internal static class FilterSchemaGeneratorRegressionTests
         AssertNoCompilationErrors(run, "schema helper collision provider");
     }
 
-    private static void HiddenDerivedPropertyUsesDerivedSchemaField()
+    [Fact]
+    public void HiddenDerivedPropertyUsesDerivedSchemaField()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.HiddenProperty",

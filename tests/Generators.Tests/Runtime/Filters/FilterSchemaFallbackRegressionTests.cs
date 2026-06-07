@@ -3,14 +3,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class FilterSchemaFallbackRegressionTests
+public sealed class FilterSchemaFallbackRegressionTests
 {
-    public static void RunAll()
-    {
-        NullableApprovedValueObjectDoesNotCrashFallbackSchema();
-    }
-
-    private static void NullableApprovedValueObjectDoesNotCrashFallbackSchema()
+    [Fact]
+    public void NullableApprovedValueObjectDoesNotCrashFallbackSchema()
     {
         FilterSchema.RegisterValueObject<MapLocation>();
 

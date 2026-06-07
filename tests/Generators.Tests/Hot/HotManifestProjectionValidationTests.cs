@@ -13,19 +13,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotManifestProjectionValidationTests
+public sealed class HotManifestProjectionValidationTests
 {
-    public static void RunAll()
-    {
-        RejectsMissingProjectionIncludeIntrinsic();
-        RejectsMissingProjectionIncludeResultName();
-        RejectsNonArrayProjectionIncludeArguments();
-        RejectsUnnamedProjectionIncludeArguments();
-        RejectsDuplicateProjectionIncludeArguments();
-        RejectsDuplicateProjectionIncludeResultNames();
-    }
-
-    private static void RejectsMissingProjectionIncludeIntrinsic() =>
+    [Fact]
+    public void RejectsMissingProjectionIncludeIntrinsic() =>
         AssertRejectedInclude("""
             {
               "ResultName": "nearby",
@@ -35,7 +26,8 @@ internal static class HotManifestProjectionValidationTests
             new EventProjectionInclude { ResultName = "nearby", Arguments = [] },
             "missing projection include intrinsic");
 
-    private static void RejectsMissingProjectionIncludeResultName() =>
+    [Fact]
+    public void RejectsMissingProjectionIncludeResultName() =>
         AssertRejectedInclude("""
             {
               "Intrinsic": "server.players.near",
@@ -45,7 +37,8 @@ internal static class HotManifestProjectionValidationTests
             new EventProjectionInclude { Intrinsic = "server.players.near", Arguments = [] },
             "missing projection include result name");
 
-    private static void RejectsNonArrayProjectionIncludeArguments() =>
+    [Fact]
+    public void RejectsNonArrayProjectionIncludeArguments() =>
         AssertRejectedInclude("""
             {
               "Intrinsic": "server.players.near",
@@ -56,7 +49,8 @@ internal static class HotManifestProjectionValidationTests
             new EventProjectionInclude("server.players.near", "nearby"),
             "non-array projection include arguments");
 
-    private static void RejectsUnnamedProjectionIncludeArguments() =>
+    [Fact]
+    public void RejectsUnnamedProjectionIncludeArguments() =>
         AssertRejectedInclude("""
             {
               "Intrinsic": "server.players.near",
@@ -77,7 +71,8 @@ internal static class HotManifestProjectionValidationTests
             },
             "unnamed projection include argument");
 
-    private static void RejectsDuplicateProjectionIncludeArguments() =>
+    [Fact]
+    public void RejectsDuplicateProjectionIncludeArguments() =>
         AssertRejectedInclude("""
             {
               "Intrinsic": "server.players.near",
@@ -100,7 +95,8 @@ internal static class HotManifestProjectionValidationTests
             },
             "duplicate projection include argument");
 
-    private static void RejectsDuplicateProjectionIncludeResultNames() =>
+    [Fact]
+    public void RejectsDuplicateProjectionIncludeResultNames() =>
         AssertRejectedProjection("""
             [
               {

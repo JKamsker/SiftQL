@@ -18,14 +18,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotManifestIdentityRegressionTests
+public sealed class HotManifestIdentityRegressionTests
 {
-    public static void RunAll()
-    {
-        SameNamedManifestsWithSameContentEmitDistinctHints();
-    }
-
-    private static void SameNamedManifestsWithSameContentEmitDistinctHints()
+    [Fact]
+    public void SameNamedManifestsWithSameContentEmitDistinctHints()
     {
         string manifest = ManifestJson();
         GeneratorRun run = RunGenerator(

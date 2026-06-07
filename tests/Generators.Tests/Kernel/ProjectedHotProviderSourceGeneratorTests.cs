@@ -20,15 +20,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class ProjectedHotProviderSourceGeneratorTests
+public sealed class ProjectedHotProviderSourceGeneratorTests
 {
-    public static void RunAll()
-    {
-        GeneratorSupportsProjectedEventDynamicFields();
-        GeneratorDefaultProjectedEventProjectionMatchesRuntime();
-    }
-
-    private static void GeneratorSupportsProjectedEventDynamicFields()
+    [Fact]
+    public async Task GeneratorSupportsProjectedEventDynamicFields()
     {
         var filter = FilterExpression.Compare(
             ProjectedEventPaths.Field(nameof(ItemUsedEvent.ItemId)),
@@ -66,12 +61,10 @@ internal static class ProjectedHotProviderSourceGeneratorTests
             RejectInclude,
             EventPipelineCompilerOptions.Tiered);
 
-        ProjectedEvent? projected = compiled.ProjectAsync(
-                new ItemUsedEvent(Guid.NewGuid(), CharacterId: 1, ItemId: 100, Quantity: 2),
-                new object(),
-                CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new ItemUsedEvent(Guid.NewGuid(), CharacterId: 1, ItemId: 100, Quantity: 2),
+            new object(),
+            CancellationToken.None);
 
         AssertEx.True(projected is not null, "projected hot pipeline matched");
         ProjectedEventField field = projected!.Fields.Single();
@@ -79,7 +72,8 @@ internal static class ProjectedHotProviderSourceGeneratorTests
         AssertEx.Equal(100L, field.Value.Integer, "projected hot field value");
     }
 
-    private static void GeneratorDefaultProjectedEventProjectionMatchesRuntime()
+    [Fact]
+    public async Task GeneratorDefaultProjectedEventProjectionMatchesRuntime()
     {
         EventProjectionExpression projection = EventProjectionExpression.Default;
         GeneratorRun run = RunGenerator(HotManifest(
@@ -113,16 +107,14 @@ internal static class ProjectedHotProviderSourceGeneratorTests
             ProjectionCompilerOptions.Tiered);
         AssertEx.True(!compiled.IsTiered, "default projected hot provider beat tiered fallback");
 
-        ProjectedEvent projected = compiled.ProjectAsync(
-                new ProjectedEvent
-                {
-                    EventType = typeof(ItemUsedEvent).FullName!,
-                    EventName = nameof(ItemUsedEvent),
-                },
-                new object(),
-                CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        ProjectedEvent projected = await compiled.ProjectAsync(
+            new ProjectedEvent
+            {
+                EventType = typeof(ItemUsedEvent).FullName!,
+                EventName = nameof(ItemUsedEvent),
+            },
+            new object(),
+            CancellationToken.None);
 
         AssertEx.Equal(0, projected.Fields.Length, "default projected hot fields match runtime");
     }

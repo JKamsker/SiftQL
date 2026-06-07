@@ -9,19 +9,10 @@ using Xunit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class FilterCompilerCacheRegressionTests
+public sealed class FilterCompilerCacheRegressionTests
 {
-    public static void RunAll()
-    {
-        FilterCacheRefreshesWhenScopedPrecompiledProviderChanges();
-        ImmediateFilterCacheIgnoresHotSinkReferenceIdentity();
-        PipelineCacheRefreshesWhenScopedPrecompiledProviderChanges()
-            .GetAwaiter()
-            .GetResult();
-        ParameterizedPlanCacheSeparatesCustomSchemas();
-    }
-
-    private static void FilterCacheRefreshesWhenScopedPrecompiledProviderChanges()
+    [Fact]
+    public void FilterCacheRefreshesWhenScopedPrecompiledProviderChanges()
     {
         var filter = FilterExpression.Compare(
             nameof(ItemUsedEvent.ItemId),
@@ -48,7 +39,8 @@ internal static class FilterCompilerCacheRegressionTests
         }
     }
 
-    private static void ImmediateFilterCacheIgnoresHotSinkReferenceIdentity()
+    [Fact]
+    public void ImmediateFilterCacheIgnoresHotSinkReferenceIdentity()
     {
         var filter = FilterExpression.Compare(
             nameof(ItemUsedEvent.ItemId),
@@ -66,7 +58,8 @@ internal static class FilterCompilerCacheRegressionTests
         Assert.Same(first, second);
     }
 
-    private static async Task PipelineCacheRefreshesWhenScopedPrecompiledProviderChanges()
+    [Fact]
+    public async Task PipelineCacheRefreshesWhenScopedPrecompiledProviderChanges()
     {
         var pipeline = EventPipelineExpression.Default.AppendProjection(
             EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId)));
@@ -107,7 +100,8 @@ internal static class FilterCompilerCacheRegressionTests
         Assert.Equal(100, afterProjected.Field(nameof(ItemUsedEvent.ItemId)).Integer);
     }
 
-    private static void ParameterizedPlanCacheSeparatesCustomSchemas()
+    [Fact]
+    public void ParameterizedPlanCacheSeparatesCustomSchemas()
     {
         var expression = FilterExpression.Compare(
             "Flag",

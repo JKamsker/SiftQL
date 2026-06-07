@@ -20,16 +20,10 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class HotProviderSourceGeneratorTests
+public sealed class HotProviderSourceGeneratorTests
 {
-    public static void RunAll()
-    {
-        GeneratorEmitsAndRegistersHotProvider();
-        StartupLoaderValidatesAndLoadsGeneratedProvider();
-        GeneratorRejectsStaleGeneratorVersion();
-    }
-
-    private static void GeneratorEmitsAndRegistersHotProvider()
+    [Fact]
+    public async Task GeneratorEmitsAndRegistersHotProvider()
     {
         const string assemblyName = "Plugin.Hot.Loaded";
         var filter = FilterExpression.Compare(
@@ -75,14 +69,15 @@ internal static class HotProviderSourceGeneratorTests
             RejectInclude,
             ProjectionCompilerOptions.Tiered);
         AssertEx.True(!compiledProjection.IsTiered, "hot projection provider beat tiered fallback");
-        ProjectedEvent projected = compiledProjection
-            .ProjectAsync(matching, new object(), CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        ProjectedEvent projected = await compiledProjection.ProjectAsync(
+            matching,
+            new object(),
+            CancellationToken.None);
         AssertEx.Equal(7L, projected.Fields.Single().Value.Integer, "hot projected value");
     }
 
-    private static void GeneratorRejectsStaleGeneratorVersion()
+    [Fact]
+    public void GeneratorRejectsStaleGeneratorVersion()
     {
         string json = """
             {
@@ -102,7 +97,8 @@ internal static class HotProviderSourceGeneratorTests
         AssertEx.Equal(0, run.Result.Results[0].GeneratedSources.Length, "stale manifest emitted no source");
     }
 
-    private static void StartupLoaderValidatesAndLoadsGeneratedProvider()
+    [Fact]
+    public void StartupLoaderValidatesAndLoadsGeneratedProvider()
     {
         string assemblyName = "Plugin.Hot.Loader";
         var filter = FilterExpression.Compare(

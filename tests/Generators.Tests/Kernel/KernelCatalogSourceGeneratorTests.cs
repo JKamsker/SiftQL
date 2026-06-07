@@ -10,23 +10,12 @@ using Microsoft.CodeAnalysis.Emit;
 
 namespace SiftQL.Generators.Tests;
 
-internal static class KernelCatalogSourceGeneratorTests
+public sealed class KernelCatalogSourceGeneratorTests
 {
     private const string KernelHint = "SampleHost.ServerKernel.KernelCatalog.g.cs";
 
-    public static void RunAll()
-    {
-        GeneratorEmitsTypedFacadeAndCompilesPartialExtensions();
-        GeneratorAllowsCatalogWithoutSubjectContract();
-        GeneratorSupportsCustomSubjectContract();
-        GeneratedCatalogRejectsUnknownSubject();
-        GeneratorReportsInvalidCatalogShape();
-        GeneratorReportsInvalidSubjectContract();
-        GeneratorReportsDuplicateAliases();
-        GeneratorCachesCatalogForUnrelatedCompilationChange();
-    }
-
-    private static void GeneratorSupportsCustomSubjectContract()
+    [Fact]
+    public void GeneratorSupportsCustomSubjectContract()
     {
         const string hint = "SampleHost.SharedKernel.KernelCatalog.g.cs";
         GeneratorRun run = RunGenerator(ParseTree("""
@@ -59,7 +48,8 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertNoCompilationErrors(run, "generated kernel catalog with custom subject contract");
     }
 
-    private static void GeneratorAllowsCatalogWithoutSubjectContract()
+    [Fact]
+    public void GeneratorAllowsCatalogWithoutSubjectContract()
     {
         const string hint = "SampleHost.LooseKernel.KernelCatalog.g.cs";
         GeneratorRun run = RunGenerator(ParseTree("""
@@ -81,7 +71,8 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertNoCompilationErrors(run, "generated kernel catalog without subject contract");
     }
 
-    private static void GeneratorEmitsTypedFacadeAndCompilesPartialExtensions()
+    [Fact]
+    public void GeneratorEmitsTypedFacadeAndCompilesPartialExtensions()
     {
         GeneratorRun run = RunGenerator(ParseTree(ValidCatalogSource(includeOtherEvent: false)));
         AssertEx.Equal(1, run.Result.Results[0].GeneratedSources.Length, "only catalog-specific source emitted");
@@ -109,7 +100,8 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertEx.True(!compiled.Matches(zeroQuantity), "zero quantity rejected");
     }
 
-    private static void GeneratedCatalogRejectsUnknownSubject()
+    [Fact]
+    public void GeneratedCatalogRejectsUnknownSubject()
     {
         GeneratorRun run = RunGenerator(ParseTree(ValidCatalogSource(includeOtherEvent: true)));
         AssertNoCompilationErrors(run, "generated kernel catalog with other event");
@@ -130,7 +122,8 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertEx.True(exception is ArgumentException, "unregistered subject rejected by generated facade");
     }
 
-    private static void GeneratorReportsInvalidCatalogShape()
+    [Fact]
+    public void GeneratorReportsInvalidCatalogShape()
     {
         GeneratorRun run = RunGenerator(ParseTree("""
             using SiftQL;
@@ -143,7 +136,8 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertHasDiagnostic(run, "SIFTKERNEL001");
     }
 
-    private static void GeneratorReportsInvalidSubjectContract()
+    [Fact]
+    public void GeneratorReportsInvalidSubjectContract()
     {
         GeneratorRun run = RunGenerator(ParseTree("""
             using SiftQL;
@@ -159,7 +153,8 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertHasDiagnostic(run, "SIFTKERNEL002");
     }
 
-    private static void GeneratorReportsDuplicateAliases()
+    [Fact]
+    public void GeneratorReportsDuplicateAliases()
     {
         GeneratorRun run = RunGenerator(ParseTree("""
             using SiftQL;
@@ -177,7 +172,8 @@ internal static class KernelCatalogSourceGeneratorTests
         AssertHasDiagnostic(run, "SIFTKERNEL004");
     }
 
-    private static void GeneratorCachesCatalogForUnrelatedCompilationChange()
+    [Fact]
+    public void GeneratorCachesCatalogForUnrelatedCompilationChange()
     {
         SyntaxTree catalogTree = ParseTree(ValidCatalogSource(includeOtherEvent: false));
         SyntaxTree unrelatedTree = ParseTree("namespace SampleHost; internal static class Other { public const int Value = 1; }");
