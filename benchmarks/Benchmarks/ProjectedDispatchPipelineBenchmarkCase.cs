@@ -1,4 +1,6 @@
 // removed: game-specific events
+using MessagePack;
+using MessagePack.Resolvers;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -69,7 +71,7 @@ internal sealed class ServerProjectedDispatchPipelineCase : IBenchmarkCase
                 var payload = match.Projection.ProjectPayloadAsync(
                         subject,
                         context,
-                        MessagePack.MessagePackSerializerOptions.Standard,
+                        ProjectedDispatchBenchmarks.MessagePackOptions,
                         CancellationToken.None)
                     .GetAwaiter()
                     .GetResult();
@@ -177,7 +179,7 @@ internal sealed class ClientProjectedDispatchPipelineCase : IBenchmarkCase
                 var payload = match.Projection.ProjectPayloadAsync(
                         subject,
                         context,
-                        MessagePack.MessagePackSerializerOptions.Standard,
+                        ProjectedDispatchBenchmarks.MessagePackOptions,
                         CancellationToken.None)
                     .GetAwaiter()
                     .GetResult();
@@ -229,6 +231,9 @@ internal sealed class ClientProjectedDispatchPipelineCase : IBenchmarkCase
 
 internal static class ProjectedDispatchBenchmarks
 {
+    public static readonly MessagePackSerializerOptions MessagePackOptions =
+        MessagePackSerializerOptions.Standard.WithResolver(ContractlessStandardResolver.Instance);
+
     public static SubscriptionIdBatch[] CreateIdGroups(string prefix, int groupCount, int idsPerGroup)
     {
         var groups = new SubscriptionIdBatch[groupCount];
@@ -266,7 +271,7 @@ internal static class ProjectedDispatchBenchmarks
 
     public static long Dispatch(SubscriptionIdBatch subscriptionIds, string eventType, ProjectedEvent projected)
     {
-        byte[] payload = MessagePack.MessagePackSerializer.Serialize(projected, MessagePack.MessagePackSerializerOptions.Standard);
+        byte[] payload = MessagePackSerializer.Serialize(projected, MessagePackOptions);
         return Dispatch(subscriptionIds, eventType, payload);
     }
 

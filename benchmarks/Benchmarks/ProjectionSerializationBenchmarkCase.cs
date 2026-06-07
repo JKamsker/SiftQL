@@ -3,11 +3,14 @@ using System.Buffers;
 using SiftQL;
 using SiftQL.Projected;
 using MessagePack;
+using MessagePack.Resolvers;
 
 namespace SiftQL.Benchmarks;
 
 internal sealed class ProjectedPayloadSerializationCase : IBenchmarkCase
 {
+    private static readonly MessagePackSerializerOptions s_messagePackOptions =
+        MessagePackSerializerOptions.Standard.WithResolver(ContractlessStandardResolver.Instance);
     private static readonly string s_eventType = typeof(ScalarArrayEvent).FullName ?? nameof(ScalarArrayEvent);
     private readonly ScalarArrayEvent _event = new(
         Guid.NewGuid(),
@@ -35,7 +38,7 @@ internal sealed class ProjectedPayloadSerializationCase : IBenchmarkCase
             MessagePackSerializer.Serialize(
                 buffer,
                 CreateProjectedEvent(item),
-                MessagePackSerializerOptions.Standard);
+                s_messagePackOptions);
             BenchmarkSink.Consume(buffer.WrittenCount);
         }
     }
@@ -71,7 +74,7 @@ internal sealed class ProjectedPayloadSerializationCase : IBenchmarkCase
         FusedProjectedPayloadWriter.Write(buffer, _event, s_eventType);
         var roundTripped = MessagePackSerializer.Deserialize<ProjectedEvent>(
             buffer.WrittenMemory,
-            MessagePackSerializerOptions.Standard);
+            s_messagePackOptions);
 
         if (!roundTripped.TryGetField("SkillId", out ProjectedEventValue skillId) ||
             skillId.Kind != ProjectedEventValueKind.Integer ||

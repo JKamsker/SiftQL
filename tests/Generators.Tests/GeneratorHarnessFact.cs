@@ -24,6 +24,7 @@ public sealed class GeneratorHarnessFact
         KernelCatalogSourceGeneratorTests.RunAll();
         KeywordFilterSchemaSourceGeneratorTests.RunAll();
         ParameterizedHotProviderSourceGeneratorTests.RunAll();
+        ProjectionCompilerRuntimeTests.RunAll();
         ProjectedHotProviderSourceGeneratorTests.RunAll();
         ServerPluginHostExampleTests.RunAll();
     }

@@ -153,7 +153,13 @@ internal static class FilterTypedPredicates
     private static bool CanUseDoubleAccessor(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
-        return type == typeof(float) ||
+        return type == typeof(byte) ||
+            type == typeof(sbyte) ||
+            type == typeof(short) ||
+            type == typeof(ushort) ||
+            type == typeof(int) ||
+            type == typeof(uint) ||
+            type == typeof(float) ||
             type == typeof(double);
     }
 }

@@ -252,7 +252,9 @@ public static class ProjectionCompiler
 
     private static bool IsMetadataField(string name) =>
         string.Equals(name, "eventType", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "eventName", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "eventName", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
 
     private static Exception Error(Func<string, Exception>? errorFactory, string message) =>
         errorFactory?.Invoke(message) ?? new FilterValidationException(message);

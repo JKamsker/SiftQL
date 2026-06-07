@@ -53,10 +53,10 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
             FilterValueKey.From(expression.Value),
             expression.Values.Length == 0
                 ? StructuralKeyArray<FilterValueKey>.Empty
-                : new StructuralKeyArray<FilterValueKey>(expression.Values.Select(FilterValueKey.From)),
+                : StructuralKeyArray<FilterValueKey>.From(expression.Values, FilterValueKey.From),
             expression.Children.Length == 0
                 ? StructuralKeyArray<FilterExpressionKey>.Empty
-                : new StructuralKeyArray<FilterExpressionKey>(expression.Children.Select(From)));
+                : StructuralKeyArray<FilterExpressionKey>.From(expression.Children, From));
 
     public bool Equals(FilterExpressionKey? other) =>
         ReferenceEquals(this, other) ||

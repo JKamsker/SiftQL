@@ -28,8 +28,10 @@ internal sealed class EventPipelineExpressionKey : IEquatable<EventPipelineExpre
         bool includeParameterValues) =>
         new(pipeline.Stages.Length == 0
             ? StructuralKeyArray<EventPipelineStageKey>.Empty
-            : new StructuralKeyArray<EventPipelineStageKey>(
-                pipeline.Stages.Select(stage => EventPipelineStageKey.From(stage, includeParameterValues))));
+            : StructuralKeyArray<EventPipelineStageKey>.From(
+                pipeline.Stages,
+                includeParameterValues,
+                static (stage, includeValues) => EventPipelineStageKey.From(stage, includeValues)));
 
     public bool Equals(EventPipelineExpressionKey? other) =>
         ReferenceEquals(this, other) || (other is not null && Stages.Equals(other.Stages));

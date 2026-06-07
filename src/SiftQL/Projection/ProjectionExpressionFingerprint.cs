@@ -38,10 +38,10 @@ internal sealed class ProjectionExpressionKey : IEquatable<ProjectionExpressionK
         new(
             projection.Fields.Length == 0
                 ? StructuralKeyArray<ProjectionFieldKey>.Empty
-                : new StructuralKeyArray<ProjectionFieldKey>(projection.Fields.Select(ProjectionFieldKey.From)),
+                : StructuralKeyArray<ProjectionFieldKey>.From(projection.Fields, ProjectionFieldKey.From),
             projection.Includes.Length == 0
                 ? StructuralKeyArray<ProjectionIncludeKey>.Empty
-                : new StructuralKeyArray<ProjectionIncludeKey>(projection.Includes.Select(ProjectionIncludeKey.From)));
+                : StructuralKeyArray<ProjectionIncludeKey>.From(projection.Includes, ProjectionIncludeKey.From));
 
     public bool Equals(ProjectionExpressionKey? other) =>
         ReferenceEquals(this, other) ||
