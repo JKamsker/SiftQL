@@ -10,19 +10,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SiftQL.Abstractions\SiftQL.Abstractions.csproj" />
-    <ProjectReference Include="..\SiftQL.Generators\SiftQL.Generators.csproj"
+    <ProjectReference Include="..\Abstractions\Abstractions.csproj" />
+    <ProjectReference Include="..\Generators\Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\SiftQL.Generators\bin\$(Configuration)\netstandard2.0\SiftQL.Generators.dll"
+    <None Include="..\Generators\bin\$(Configuration)\netstandard2.0\SiftQL.Generators.dll"
           Pack="true"
           PackagePath="analyzers/dotnet/cs"
           Visible="false" />
-    <None Include="..\SiftQL.Generators\bin\$(Configuration)\netstandard2.0\System.Text.Json.dll"
+    <None Include="..\Generators\bin\$(Configuration)\netstandard2.0\System.Text.Json.dll"
           Pack="true"
           PackagePath="analyzers/dotnet/cs"
           Visible="false" />

@@ -14,11 +14,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\examples\SiftQL.Examples.ShaRpc.SharedContracts\SiftQL.Examples.ShaRpc.SharedContracts.csproj" />
-    <ProjectReference Include="..\..\examples\SiftQL.Examples.ServerPluginHost\SiftQL.Examples.ServerPluginHost.csproj" />
-    <ProjectReference Include="..\..\src\SiftQL.Generators\SiftQL.Generators.csproj" />
+    <ProjectReference Include="..\..\examples\ShaRpc\SharedContracts\SharedContracts.csproj" />
+    <ProjectReference Include="..\..\examples\ServerPluginHost\ServerPluginHost.csproj" />
+    <ProjectReference Include="..\..\src\Generators\Generators.csproj" />
     <ProjectReference Include="..\..\src\SiftQL\SiftQL.csproj" />
-    <ProjectReference Include="..\..\src\SiftQL.Abstractions\SiftQL.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Abstractions\Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

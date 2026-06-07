@@ -10,11 +10,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SiftQL\SiftQL.csproj" />
-    <ProjectReference Include="..\SiftQL.Examples.ShaRpc.Client\SiftQL.Examples.ShaRpc.Client.csproj"
+    <ProjectReference Include="..\..\..\src\SiftQL\SiftQL.csproj" />
+    <ProjectReference Include="..\Client\Client.csproj"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
-    <ProjectReference Include="..\SiftQL.Examples.ShaRpc.SharedContracts\SiftQL.Examples.ShaRpc.SharedContracts.csproj" />
+    <ProjectReference Include="..\SharedContracts\SharedContracts.csproj" />
   </ItemGroup>
 
 </Project>

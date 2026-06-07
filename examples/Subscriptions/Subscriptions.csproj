@@ -7,7 +7,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SiftQL\SiftQL.csproj" />
-    <ProjectReference Include="..\..\src\SiftQL.Generators\SiftQL.Generators.csproj"
+    <ProjectReference Include="..\..\src\Generators\Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />

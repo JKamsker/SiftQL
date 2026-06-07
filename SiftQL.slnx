@@ -1,23 +1,25 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/SiftQL.Abstractions/SiftQL.Abstractions.csproj" />
+    <Project Path="src/Abstractions/Abstractions.csproj" />
     <Project Path="src/SiftQL/SiftQL.csproj" />
-    <Project Path="src/SiftQL.Generators/SiftQL.Generators.csproj" />
+    <Project Path="src/Generators/Generators.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/SiftQL.Generators.Tests/SiftQL.Generators.Tests.csproj" />
+    <Project Path="tests/Generators.Tests/Generators.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
-    <Project Path="benchmarks/SiftQL.Benchmarks/SiftQL.Benchmarks.csproj" />
+    <Project Path="benchmarks/Benchmarks/Benchmarks.csproj" />
   </Folder>
   <Folder Name="/examples/">
-    <Project Path="examples/SiftQL.Examples.BasicFiltering/SiftQL.Examples.BasicFiltering.csproj" />
-    <Project Path="examples/SiftQL.Examples.Subscriptions/SiftQL.Examples.Subscriptions.csproj" />
-    <Project Path="examples/SiftQL.Examples.Projection/SiftQL.Examples.Projection.csproj" />
-    <Project Path="examples/SiftQL.Examples.RpcQuery/SiftQL.Examples.RpcQuery.csproj" />
-    <Project Path="examples/SiftQL.Examples.ServerPluginHost/SiftQL.Examples.ServerPluginHost.csproj" />
-    <Project Path="examples/SiftQL.Examples.ShaRpc.SharedContracts/SiftQL.Examples.ShaRpc.SharedContracts.csproj" />
-    <Project Path="examples/SiftQL.Examples.ShaRpc.Server/SiftQL.Examples.ShaRpc.Server.csproj" />
-    <Project Path="examples/SiftQL.Examples.ShaRpc.Client/SiftQL.Examples.ShaRpc.Client.csproj" />
+    <Project Path="examples/BasicFiltering/BasicFiltering.csproj" />
+    <Project Path="examples/Subscriptions/Subscriptions.csproj" />
+    <Project Path="examples/Projection/Projection.csproj" />
+    <Project Path="examples/RpcQuery/RpcQuery.csproj" />
+    <Project Path="examples/ServerPluginHost/ServerPluginHost.csproj" />
+  </Folder>
+  <Folder Name="/examples/ShaRpc/">
+    <Project Path="examples/ShaRpc/SharedContracts/SharedContracts.csproj" />
+    <Project Path="examples/ShaRpc/Server/Server.csproj" />
+    <Project Path="examples/ShaRpc/Client/Client.csproj" />
   </Folder>
 </Solution>

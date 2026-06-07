@@ -10,7 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SiftQL.Examples.ShaRpc.SharedContracts\SiftQL.Examples.ShaRpc.SharedContracts.csproj" />
+    <ProjectReference Include="..\SharedContracts\SharedContracts.csproj" />
   </ItemGroup>
 
 </Project>

@@ -66,11 +66,11 @@ public sealed class ClientProcess : IAsyncDisposable
         string examplesDirectory = Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", ".."));
         string path = Path.Combine(
             examplesDirectory,
-            "SiftQL.Examples.ShaRpc.Client",
+            "Client",
             "bin",
             configuration,
             targetFramework,
-            "SiftQL.Examples.ShaRpc.Client.dll");
+            "Client.dll");
         return File.Exists(path)
             ? path
             : throw new FileNotFoundException("Build the ShaRPC client example before running the server.", path);
