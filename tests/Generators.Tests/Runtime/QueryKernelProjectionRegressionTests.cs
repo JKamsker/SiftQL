@@ -11,6 +11,7 @@ internal static class QueryKernelProjectionRegressionTests
     {
         SelectorProjectionAfterProjectedFilterReadsProjectedFields();
         ExplicitProjectedPathIsNotDoublePrefixed();
+        ExplicitProjectedContextPathIsNotRebased();
         UnsupportedProjectedValueMemberIsRejected();
     }
 
@@ -38,6 +39,19 @@ internal static class QueryKernelProjectionRegressionTests
         EventProjectionField field = LastProjection(kernel).Fields.Single();
 
         Assert.Equal(ProjectedEventPaths.Field(nameof(ItemUsedEvent.ItemId)), field.Path);
+    }
+
+    private static void ExplicitProjectedContextPathIsNotRebased()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.ItemId))
+            .WhereProjected(static projected =>
+                projected.Field(nameof(ItemUsedEvent.ItemId)).Integer == 100)
+            .Select(new EventProjectionField(ProjectedEventPaths.Context("tag"), "tag"));
+
+        EventProjectionField field = LastProjection(kernel).Fields.Single();
+
+        Assert.Equal(ProjectedEventPaths.Context("tag"), field.Path);
     }
 
     private static void UnsupportedProjectedValueMemberIsRejected()

@@ -12,7 +12,7 @@ internal sealed class TieredProjectionState<TContext>
     private const int Queued = 1;
     private const int Compiled = 2;
     private const int Failed = 3;
-    private static readonly TimeSpan s_failedRetryDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan s_failedRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly Func<Func<object, ProjectedEventField[]>?> _compileProjectFields;
     private readonly TieredProjectionPromotionPolicy _promotionPolicy;

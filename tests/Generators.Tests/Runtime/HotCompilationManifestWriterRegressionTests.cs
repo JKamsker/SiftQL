@@ -33,6 +33,7 @@ internal static class HotCompilationManifestWriterRegressionTests
         Assert.True(File.Exists(path));
         HotCompilationManifest manifest = JsonSerializer.Deserialize<HotCompilationManifest>(
             File.ReadAllText(path))!;
-        Assert.Single(manifest.Entries);
+        HotCompilationManifestEntry entry = Assert.Single(manifest.Entries);
+        Assert.Equal("filter", entry.Kind);
     }
 }

@@ -1,5 +1,7 @@
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Index;
+using SiftQL.Kernel;
 using SiftQL.Projected;
 using SiftQL.Projection;
 using SiftQL.Values;
@@ -9,9 +11,19 @@ namespace SiftQL.Generators.Tests;
 
 internal static class FilterNumericPrecisionRegressionTests
 {
+    private const long RoundedInteger = 9_007_199_254_740_992L;
+    private const long NeighborInteger = 9_007_199_254_740_993L;
+
     public static void RunAll()
     {
         DecimalLiteralsUseNumericFastPaths();
+        IntegralScalarDecimalDoesNotUseRoundedDoubleFastPath();
+        RoundedIntegerNeighborFiltersUseExactSemantics();
+        NullableValueTypeArraysRemainFilterableThroughFallbackSchema();
+        NumericInRejectsNaNRegardlessOfLookupThreshold();
+        ExactNumericOrderedNumberFallsBackConsistentlyAcrossModes();
+        UnsignedScalarIndexesMatchUnsignedValues();
+        UlongBackedEnumOverflowFallsBackWithoutDroppingCandidate();
         ProjectedDecimalFieldFiltersThroughDynamicSchema();
         ProjectionIncludeRequiredDoubleAcceptsDecimal();
         UnsignedEnumNumericLiteralDoesNotWrapToOutOfRangeValue();
@@ -44,6 +56,137 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.True(compare.Matches(new DecimalFastPathSubject(2.0, [])));
         Assert.True(inFilter.Matches(new DecimalFastPathSubject(1.25, [])));
         Assert.True(contains.Matches(new DecimalFastPathSubject(0, [1.25])));
+    }
+
+    private static void IntegralScalarDecimalDoesNotUseRoundedDoubleFastPath()
+    {
+        var compare = FilterExpression.Compare(
+            nameof(IntegralSubject.Count),
+            FilterOperator.Equal,
+            FilterValue.From(1.0000000000000000000000000001m));
+        var inFilter = FilterExpression.In(
+            nameof(IntegralSubject.Count),
+            [FilterValue.From(1.0000000000000000000000000001m)]);
+
+        AssertFilter(compare, new FilterCase<IntegralSubject>(new(1), false));
+        AssertFilter(inFilter, new FilterCase<IntegralSubject>(new(1), false));
+    }
+
+    private static void RoundedIntegerNeighborFiltersUseExactSemantics()
+    {
+        NumericSubject subject = Subject();
+
+        AssertFilter(
+            FilterExpression.Compare(
+                nameof(NumericSubject.Amount),
+                FilterOperator.Equal,
+                FilterValue.From(RoundedInteger) with { ParameterKey = "p0" }),
+            new FilterCase<NumericSubject>(subject, false));
+        AssertFilter(
+            FilterExpression.In(nameof(NumericSubject.Amount), [FilterValue.From(RoundedInteger)]),
+            new FilterCase<NumericSubject>(subject, false));
+        AssertFilter(
+            FilterExpression.Contains(nameof(NumericSubject.LongIds), FilterValue.From(RoundedInteger)),
+            new FilterCase<NumericSubject>(subject, false));
+        AssertFilter(
+            FilterExpression.Contains(nameof(NumericSubject.Amounts), FilterValue.From(RoundedInteger)),
+            new FilterCase<NumericSubject>(subject, false));
+        AssertFilter(
+            FilterExpression.Compare(
+                nameof(NumericSubject.Amount),
+                FilterOperator.Equal,
+                FilterValue.From((double)RoundedInteger)),
+            new FilterCase<NumericSubject>(subject, false));
+        AssertFilter(
+            FilterExpression.In(nameof(NumericSubject.UnsignedId), [FilterValue.From((double)RoundedInteger)]),
+            new FilterCase<NumericSubject>(subject, false));
+        AssertFilter(
+            FilterExpression.Contains(nameof(NumericSubject.LongIds), FilterValue.From((double)RoundedInteger)),
+            new FilterCase<NumericSubject>(subject, false));
+    }
+
+    private static void NullableValueTypeArraysRemainFilterableThroughFallbackSchema()
+    {
+        var filter = FilterExpression.Contains(
+            nameof(NullableArraySubject.OptionalCounts),
+            FilterValue.Null);
+
+        AssertFilter(
+            filter,
+            new FilterCase<NullableArraySubject>(new([1, null, 3]), true),
+            new FilterCase<NullableArraySubject>(new([1, 2, 3]), false));
+    }
+
+    private static void NumericInRejectsNaNRegardlessOfLookupThreshold()
+    {
+        var subject = new FloatingSubject(double.NaN);
+
+        AssertFilter(
+            FilterExpression.In(
+                nameof(FloatingSubject.Score),
+                [FilterValue.From(1D), FilterValue.From(2D), FilterValue.From(3D), FilterValue.From(4D)]),
+            new FilterCase<FloatingSubject>(subject, false));
+        AssertFilter(
+            FilterExpression.In(
+                nameof(FloatingSubject.Score),
+                [
+                    FilterValue.From(1D),
+                    FilterValue.From(2D),
+                    FilterValue.From(3D),
+                    FilterValue.From(4D),
+                    FilterValue.From(5D),
+                ]),
+            new FilterCase<FloatingSubject>(subject, false));
+    }
+
+    private static void ExactNumericOrderedNumberFallsBackConsistentlyAcrossModes()
+    {
+        var filter = FilterExpression.Compare(
+            nameof(IntegralSubject.Count),
+            FilterOperator.LessThan,
+            FilterValue.From(double.MaxValue));
+
+        AssertFilter(filter, new FilterCase<IntegralSubject>(new(10), true));
+    }
+
+    private static void UnsignedScalarIndexesMatchUnsignedValues()
+    {
+        var small = new FilterSubscriptionIndex<string>(typeof(UIntIndexSubject));
+        small.Add(
+            "small",
+            FilterExpression.Compare(
+                nameof(UIntIndexSubject.Id),
+                FilterOperator.Equal,
+                FilterValue.From(42UL)));
+
+        Assert.Contains("small", small.SnapshotCandidates(new UIntIndexSubject(42U)));
+        Assert.Empty(small.SnapshotCandidates(new UIntIndexSubject(41U)));
+
+        var large = new FilterSubscriptionIndex<string>(typeof(ULongIndexSubject));
+        large.Add(
+            "large",
+            FilterExpression.Compare(
+                nameof(ULongIndexSubject.Id),
+                FilterOperator.Equal,
+                FilterValue.From(ulong.MaxValue)));
+
+        Assert.Contains("large", large.SnapshotCandidates(new ULongIndexSubject(ulong.MaxValue)));
+        Assert.Empty(large.SnapshotCandidates(new ULongIndexSubject(1UL)));
+    }
+
+    private static void UlongBackedEnumOverflowFallsBackWithoutDroppingCandidate()
+    {
+        var filter = FilterExpression.Compare(
+            nameof(BigEnumSubject.Kind),
+            FilterOperator.Equal,
+            FilterValue.From(nameof(BigEnum.Huge)));
+        var index = new FilterSubscriptionIndex<string>(typeof(BigEnumSubject));
+        index.Add("enum", filter);
+
+        var subject = new BigEnumSubject(BigEnum.Huge);
+
+        Assert.Contains("enum", index.SnapshotCandidates(subject));
+        Assert.True(FilterCompiler.Compile(typeof(BigEnumSubject), filter).Matches(subject));
     }
 
     private static void ProjectedDecimalFieldFiltersThroughDynamicSchema()
@@ -94,11 +237,56 @@ internal static class FilterNumericPrecisionRegressionTests
         Assert.False(FilterValues.Compare(10, invalid, FilterOperator.LessThan));
     }
 
+    private static void AssertFilter<TSubject>(
+        FilterExpression filter,
+        params FilterCase<TSubject>[] cases)
+    {
+        CompiledKernel immediate = FilterCompiler.Compile(
+            typeof(TSubject),
+            filter,
+            FilterCompilerOptions.Immediate);
+        CompiledKernel tiered = FilterCompiler.Compile(
+            typeof(TSubject),
+            filter,
+            FilterCompilerOptions.Tiered);
+
+        foreach (FilterCase<TSubject> item in cases)
+        {
+            Assert.Equal(item.Expected, immediate.Matches(item.Subject!));
+            Assert.Equal(item.Expected, tiered.Matches(item.Subject!));
+        }
+    }
+
+    private static NumericSubject Subject() =>
+        new(
+            Amount: NeighborInteger,
+            UnsignedId: (ulong)NeighborInteger,
+            Amounts: [NeighborInteger],
+            LongIds: [NeighborInteger]);
+
     private sealed record DecimalFastPathSubject(double Score, double[] Scores) : IFilterSubject;
+    private sealed record NumericSubject(
+        decimal Amount,
+        ulong UnsignedId,
+        decimal[] Amounts,
+        long[] LongIds) : IFilterSubject;
+
+    private sealed record NullableArraySubject(int?[] OptionalCounts) : IFilterSubject;
+    private sealed record FloatingSubject(double Score) : IFilterSubject;
+    private sealed record IntegralSubject(int Count) : IFilterSubject;
+    private sealed record UIntIndexSubject(uint Id) : IFilterSubject;
+    private sealed record ULongIndexSubject(ulong Id) : IFilterSubject;
+    private sealed record BigEnumSubject(BigEnum Kind) : IFilterSubject;
+    private sealed record FilterCase<TSubject>(TSubject Subject, bool Expected);
 
     private enum HugeKind : ulong
     {
         First = 1,
         Last = ulong.MaxValue,
+    }
+
+    private enum BigEnum : ulong
+    {
+        Huge = ulong.MaxValue,
     }
 }

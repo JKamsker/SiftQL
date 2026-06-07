@@ -15,6 +15,7 @@ internal static class TieredProjectionRegressionTests
         TieredProjectionPayloadMatchesImmediatePayload().GetAwaiter().GetResult();
         HotTieredProjectionPromotesOffThread().GetAwaiter().GetResult();
         HotTieredProjectionWithIncludesPromotesFieldArray().GetAwaiter().GetResult();
+        FailedProjectionRetryDelayMatchesFilterPolicy();
         FailedProjectionPromotionRetriesWhenProviderAppears().GetAwaiter().GetResult();
     }
 
@@ -130,6 +131,18 @@ internal static class TieredProjectionRegressionTests
         Assert.True(projected.TryGetField(nameof(ItemUsedEvent.ItemId), out _));
         Assert.True(projected.TryGetContext("contextValue", out var context));
         Assert.Equal("included", context.String);
+    }
+
+    private static void FailedProjectionRetryDelayMatchesFilterPolicy()
+    {
+        Type stateType = typeof(ProjectionCompiler).Assembly
+            .GetType("SiftQL.Projection.TieredProjectionState`1", throwOnError: true)!
+            .MakeGenericType(typeof(object));
+        var field = stateType.GetField(
+            "s_failedRetryDelay",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        Assert.Equal(TimeSpan.FromSeconds(30), (TimeSpan)field.GetValue(null)!);
     }
 
     private static async Task FailedProjectionPromotionRetriesWhenProviderAppears()
