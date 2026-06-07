@@ -1,6 +1,7 @@
 using MessagePack;
 using MessagePack.Resolvers;
 using SiftQL;
+using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Projected;
 using SiftQL.Projection;
@@ -31,6 +32,21 @@ public sealed class ProjectionCompilerRuntimeTests
             !projected.TryGetField("subjectType", out _) &&
             !projected.TryGetField("subjectName", out _),
             "default projection skips virtual filter metadata fields");
+    }
+
+    [Fact]
+    public void DefaultProjectionChecksExpandedFieldLimit()
+    {
+        FilterSchema schema = ManyFieldSchema();
+
+        Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.CompileWithSchema<object?>(
+                typeof(ManyFieldEvent),
+                EventProjectionExpression.Default,
+                RejectInclude,
+                ProjectionCompilerOptions.Immediate,
+                errorFactory: null,
+                _ => schema));
     }
 
     private static CompiledProjection<object?>.IncludeProjector RejectInclude(
@@ -150,6 +166,24 @@ public sealed class ProjectionCompilerRuntimeTests
         bool Accepted,
         string Name,
         long? OptionalScore);
+
+    private static FilterSchema ManyFieldSchema() =>
+        new(
+            typeof(ManyFieldEvent),
+            Enumerable.Range(0, 65)
+                .Select(static index =>
+                {
+                    string name = "Field" + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    return new FilterField(
+                        name,
+                        typeof(int),
+                        FilterFieldKind.Scalar,
+                        _ => index,
+                        ProjectionAccessor: _ => ProjectedEventValue.FromScalar(index));
+                })
+                .ToArray());
+
+    private sealed record ManyFieldEvent;
 
     private sealed record PlayerSelectedProjectionEvent(Guid EventId, PlayerProjection Player);
 

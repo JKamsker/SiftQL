@@ -173,9 +173,19 @@ public static class PrecompiledTieredProviderRegistry
 
         public void Remove(IPrecompiledTieredProvider provider)
         {
+            bool changed;
             lock (_gate)
-                _providers = _providers.Where(item => !ReferenceEquals(item, provider)).ToArray();
-            IncrementGlobalVersion();
+            {
+                IPrecompiledTieredProvider[] updated = _providers
+                    .Where(item => !ReferenceEquals(item, provider))
+                    .ToArray();
+                changed = updated.Length != _providers.Length;
+                if (changed)
+                    _providers = updated;
+            }
+
+            if (changed)
+                IncrementGlobalVersion();
         }
 
         public void RemoveAssembly(Assembly assembly)
@@ -210,19 +220,37 @@ public static class PrecompiledTieredProviderRegistry
 
     private sealed class Registration(IPrecompiledTieredProvider provider) : IDisposable
     {
+        private int _disposed;
+
         public void Dispose()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
+            bool changed;
             lock (s_gate)
             {
-                s_providers = s_providers.Where(item => !ReferenceEquals(item, provider)).ToArray();
+                IPrecompiledTieredProvider[] updated = s_providers
+                    .Where(item => !ReferenceEquals(item, provider))
+                    .ToArray();
+                changed = updated.Length != s_providers.Length;
+                if (changed)
+                    s_providers = updated;
             }
 
-            IncrementGlobalVersion();
+            if (changed)
+                IncrementGlobalVersion();
         }
     }
 
     private sealed class ScopedRegistration(ProviderScope scope, IPrecompiledTieredProvider provider) : IDisposable
     {
-        public void Dispose() => scope.Remove(provider);
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                scope.Remove(provider);
+        }
     }
 }

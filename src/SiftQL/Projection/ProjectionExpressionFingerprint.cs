@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Runtime.CompilerServices;
 using System.Text;
 using SiftQL;
 using SiftQL.Expressions;
@@ -9,12 +8,10 @@ namespace SiftQL.Projection;
 
 internal static class ProjectionExpressionFingerprint
 {
-    private static readonly ConditionalWeakTable<EventProjectionExpression, ProjectionExpressionKey> s_keys = new();
-
     public static ProjectionExpressionKey CreateKey(EventProjectionExpression projection)
     {
         ArgumentNullException.ThrowIfNull(projection);
-        return s_keys.GetValue(projection, static item => ProjectionExpressionKey.From(item));
+        return ProjectionExpressionKey.From(projection);
     }
 
     public static string Create(EventProjectionExpression projection) =>

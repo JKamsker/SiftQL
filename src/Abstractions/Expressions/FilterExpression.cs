@@ -90,6 +90,9 @@ public sealed record FilterExpression
     {
         ArgumentNullException.ThrowIfNull(children);
         var filtered = children
+            .Select(static child => child ?? throw new ArgumentException(
+                "Composite filters cannot contain null children.",
+                nameof(children)))
             .Where(static child => child.Kind != FilterExpressionKind.Any)
             .ToArray();
 
@@ -109,7 +112,11 @@ public sealed record FilterExpression
             throw new ArgumentException("Filter value lists cannot be empty.", nameof(values));
         }
 
-        return values.ToArray();
+        var items = values.ToArray();
+        if (items.Any(static value => value is null))
+            throw new ArgumentException("Filter value lists cannot contain null values.", nameof(values));
+
+        return items;
     }
 
     private static string RequireField(string field)

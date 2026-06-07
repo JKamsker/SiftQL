@@ -144,17 +144,19 @@ public sealed class FilterValuesCompareTests
     [Fact] public void FilterValues_Compare_UnknownOperator_ReturnsFalse() =>
         Assert.False(FilterValues.Compare(1, FilterValue.From(1L), (FilterOperator)99));
 
-    [Fact] public void FilterValues_Contains_OversizedCollection_ReturnsFalse() =>
-        Assert.False(FilterValues.Contains(new int[257], FilterValue.From(0L)));
+    [Fact] public void FilterValues_Contains_OversizedCollection_Throws() =>
+        Assert.Throws<InvalidOperationException>(() =>
+            FilterValues.Contains(new int[257], FilterValue.From(0L)));
 
     [Fact] public void FilterValues_Contains_Null_ReturnsFalse() =>
         Assert.False(FilterValues.Contains(null, FilterValue.From(1L)));
 
     [Fact]
-    public void FilterValues_Contains_OversizedEnumerable_ReturnsFalse()
+    public void FilterValues_Contains_OversizedEnumerable_Throws()
     {
         static IEnumerable<int> LargeSeq() { for (int i = 0; i < 300; i++) yield return i; }
-        Assert.False(FilterValues.Contains(LargeSeq(), FilterValue.From(299L)));
+        Assert.Throws<InvalidOperationException>(() =>
+            FilterValues.Contains(LargeSeq(), FilterValue.From(299L)));
     }
 
     [Fact] public void FilterValues_In_NullActual_WithNullValue_ReturnsTrue() =>

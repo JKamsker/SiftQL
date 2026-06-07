@@ -6,16 +6,22 @@ namespace SiftQL.Schema;
 
 public sealed class FilterSchema
 {
-    private static readonly ConcurrentDictionary<Type, FilterSchema> s_cache = new();
+    private static readonly ConcurrentDictionary<SchemaCacheKey, FilterSchema> s_cache = new();
     private static readonly ConcurrentDictionary<Assembly, GeneratedFilterSchemaProviderDelegate> s_generatedProviders = new();
     private static readonly ConcurrentDictionary<Type, byte> s_valueObjects = new();
+    private static readonly NullabilityInfoContext s_nullability = new();
+    private static int s_valueObjectVersion;
 
-    public static void RegisterValueObject<T>() => s_valueObjects.TryAdd(typeof(T), 0);
+    public static void RegisterValueObject<T>() => RegisterValueObject(typeof(T));
 
     public static void RegisterValueObject(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
-        s_valueObjects.TryAdd(type, 0);
+        if (!s_valueObjects.TryAdd(type, 0))
+            return;
+
+        Interlocked.Increment(ref s_valueObjectVersion);
+        s_cache.Clear();
     }
 
     private readonly Dictionary<string, FilterField> _fields;
@@ -32,7 +38,8 @@ public sealed class FilterSchema
     public static FilterSchema For(Type subjectType)
     {
         ArgumentNullException.ThrowIfNull(subjectType);
-        return s_cache.GetOrAdd(subjectType, Build);
+        var key = new SchemaCacheKey(subjectType, Volatile.Read(ref s_valueObjectVersion));
+        return s_cache.GetOrAdd(key, static item => Build(item.SubjectType));
     }
 
     internal static FilterSchema BuildUncachedForBenchmarks(Type subjectType)
@@ -124,10 +131,20 @@ public sealed class FilterSchema
             if (s_valueObjects.ContainsKey(scalarType))
             {
                 fields.Add(BuildField(name, scalarType, FilterFieldKind.Object, propertyExpression, parameter));
-                if (Nullable.GetUnderlyingType(propertyType) is null)
+                if (!IsNullableProperty(property))
                     AddProperties(fields, name, scalarType, propertyExpression, parameter, depth + 1);
             }
         }
+    }
+
+    private static bool IsNullableProperty(PropertyInfo property)
+    {
+        Type propertyType = property.PropertyType;
+        if (Nullable.GetUnderlyingType(propertyType) is not null)
+            return true;
+
+        return !propertyType.IsValueType &&
+            s_nullability.Create(property).ReadState == NullabilityState.Nullable;
     }
 
     private static bool ContainsField(IReadOnlyList<FilterField> fields, string name)
@@ -236,4 +253,6 @@ public sealed class FilterSchema
         type == typeof(float) ||
         type == typeof(double) ||
         type == typeof(decimal);
+
+    private readonly record struct SchemaCacheKey(Type SubjectType, int ValueObjectVersion);
 }

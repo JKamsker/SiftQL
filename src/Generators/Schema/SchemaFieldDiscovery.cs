@@ -38,7 +38,7 @@ internal static class SchemaFieldDiscovery
                 continue;
             }
 
-            if (!IsNullable(property.Type) && IsValueObject(valueType) && valueType is INamedTypeSymbol nested)
+            if (IsValueObject(valueType) && valueType is INamedTypeSymbol nested)
             {
                 fields.Add(Field(
                     name,
@@ -47,7 +47,8 @@ internal static class SchemaFieldDiscovery
                     property.Type,
                     GeneratedFieldKind.Object,
                     GeneratedScalarKind.Object));
-                AddProperties(fields, name, access, nested, depth + 1);
+                if (!IsNullable(property.Type))
+                    AddProperties(fields, name, access, nested, depth + 1);
             }
         }
     }
@@ -95,6 +96,7 @@ internal static class SchemaFieldDiscovery
             : type;
 
     private static bool IsNullable(ITypeSymbol type) =>
+        type.NullableAnnotation == NullableAnnotation.Annotated ||
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
 
     private static bool TryCollectionElement(ITypeSymbol type, out ITypeSymbol elementType)

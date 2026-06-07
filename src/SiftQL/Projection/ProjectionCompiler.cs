@@ -148,6 +148,8 @@ public static class ProjectionCompiler
                 .Select(static name => new EventProjectionField(name))
                 .ToArray()
             : projection.Fields;
+        if (requested.Length > MaxFields)
+            throw Error(errorFactory, $"Projection exceeds the {MaxFields} field limit.");
 
         var compiled = new CompiledProjection<TContext>.FieldProjector[requested.Length];
         schemaFields = new FilterField[requested.Length];

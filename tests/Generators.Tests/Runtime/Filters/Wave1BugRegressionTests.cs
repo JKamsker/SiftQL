@@ -114,10 +114,11 @@ public sealed class Wave1BugRegressionTests
     }
 
     [Fact]
-    public void FilterValuesContainsOversizedArrayReturnsFalse()
+    public void FilterValuesContainsOversizedArrayThrows()
     {
         var oversized = new int[257];
-        Assert.False(FilterArrayContains.ContainsInt32(oversized, 0.0));
+        Assert.Throws<InvalidOperationException>(() =>
+            FilterArrayContains.ContainsInt32(oversized, 0.0));
     }
 
     [Fact]

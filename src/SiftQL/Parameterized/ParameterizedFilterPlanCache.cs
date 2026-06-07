@@ -11,6 +11,7 @@ internal static class ParameterizedFilterPlanCache
 {
     private const int MaxCachedPlans = 4096;
     private static readonly ConcurrentDictionary<ParameterizedFilterPlanCacheKey, ParameterizedFilterPlan> s_plans = new();
+    private static int s_planCount;
     private static long s_requests;
     private static long s_hits;
     private static long s_misses;
@@ -32,20 +33,24 @@ internal static class ParameterizedFilterPlanCache
         }
 
         Interlocked.Increment(ref s_misses);
-        if (s_plans.Count >= MaxCachedPlans)
+        if (Volatile.Read(ref s_planCount) >= MaxCachedPlans)
             return ParameterizedFilterPlanBuilder.Build(schema, expression, errorFactory);
-        return s_plans.GetOrAdd(
-            key,
-            static (_, state) => ParameterizedFilterPlanBuilder.Build(
-                state.Schema,
-                state.Expression,
-                state.ErrorFactory),
-            (Schema: schema, Expression: expression, ErrorFactory: errorFactory));
+
+        ParameterizedFilterPlan plan = ParameterizedFilterPlanBuilder.Build(schema, expression, errorFactory);
+        if (s_plans.TryAdd(key, plan))
+        {
+            Interlocked.Increment(ref s_planCount);
+            return plan;
+        }
+
+        return s_plans.TryGetValue(key, out ParameterizedFilterPlan? raced)
+            ? raced
+            : plan;
     }
 
     internal static ParameterizedFilterPlanCacheSnapshot Snapshot =>
         new(
-            s_plans.Count,
+            Volatile.Read(ref s_planCount),
             Interlocked.Read(ref s_requests),
             Interlocked.Read(ref s_hits),
             Interlocked.Read(ref s_misses));
@@ -53,6 +58,7 @@ internal static class ParameterizedFilterPlanCache
     internal static void ClearForTests()
     {
         s_plans.Clear();
+        Volatile.Write(ref s_planCount, 0);
         Interlocked.Exchange(ref s_requests, 0);
         Interlocked.Exchange(ref s_hits, 0);
         Interlocked.Exchange(ref s_misses, 0);

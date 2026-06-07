@@ -91,20 +91,23 @@ public static class FilterValues
         if (actual is not IEnumerable enumerable || actual is string)
             return false;
         if (actual is ICollection collection && collection.Count > MaxRuntimeArrayItems)
-            return false;
+            throw TooManyRuntimeArrayItems();
 
         int seen = 0;
         bool found = false;
         foreach (object? item in enumerable)
         {
             if (++seen > MaxRuntimeArrayItems)
-                return false;
+                throw TooManyRuntimeArrayItems();
             if (!found && AreEqual(item, expected))
                 found = true;
         }
 
         return found;
     }
+
+    private static InvalidOperationException TooManyRuntimeArrayItems() =>
+        new($"Runtime array filters support at most {MaxRuntimeArrayItems} items.");
 
     private static bool AreEqual(object? actual, FilterValue expected)
     {
