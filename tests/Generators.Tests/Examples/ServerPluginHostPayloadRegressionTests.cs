@@ -59,4 +59,52 @@ public sealed class ServerPluginHostPayloadRegressionTests
         Assert.Equal("Game.Events.ItemUsedEvent", message.Payload[nameof(ProjectedEvent.EventType)]);
         Assert.Equal("ItemUsedEvent", message.Payload[nameof(ProjectedEvent.EventName)]);
     }
+
+    [Fact]
+    public void ClientPayloadTreatsNullFieldCollectionsAsEmpty()
+    {
+        var clients = new ClientGateway();
+        clients.Register(1001);
+
+        bool sent = clients.SendToAvatar(
+            1001,
+            "null-fields",
+            new ProjectedEvent
+            {
+                EventType = "Test",
+                EventName = "Test",
+                Fields = null!,
+                Context = null!,
+            });
+
+        Assert.True(sent);
+        ClientMessage message = Assert.Single(clients.Sessions.Single().Messages);
+        Assert.Equal("Test", message.Payload[nameof(ProjectedEvent.EventType)]);
+        Assert.Equal("Test", message.Payload[nameof(ProjectedEvent.EventName)]);
+        Assert.Equal(2, message.Payload.Count);
+    }
+
+    [Fact]
+    public void ClientPayloadSkipsNullFieldEntries()
+    {
+        var clients = new ClientGateway();
+        clients.Register(1001);
+
+        bool sent = clients.SendToAvatar(
+            1001,
+            "null-entries",
+            new ProjectedEvent
+            {
+                EventType = "Test",
+                EventName = "Test",
+                Fields = [null!],
+                Context = [null!],
+            });
+
+        Assert.True(sent);
+        ClientMessage message = Assert.Single(clients.Sessions.Single().Messages);
+        Assert.Equal("Test", message.Payload[nameof(ProjectedEvent.EventType)]);
+        Assert.Equal("Test", message.Payload[nameof(ProjectedEvent.EventName)]);
+        Assert.Equal(2, message.Payload.Count);
+    }
 }
