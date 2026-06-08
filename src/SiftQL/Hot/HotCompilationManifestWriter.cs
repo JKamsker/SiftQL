@@ -208,7 +208,7 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
             return;
         }
 
-        if (manifest?.Entries is null)
+        if (manifest?.Entries is null || !IsCompatibleExistingManifest(manifest))
             return;
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -221,6 +221,15 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
 
         DecayLocked(now);
         TrimLocked();
+    }
+
+    private static bool IsCompatibleExistingManifest(HotCompilationManifest manifest)
+    {
+        var current = new HotCompilationManifest();
+        return string.Equals(manifest.Schema, current.Schema, StringComparison.Ordinal) &&
+            string.Equals(manifest.RuntimeVersion, current.RuntimeVersion, StringComparison.Ordinal) &&
+            string.Equals(manifest.FilterEngineVersion, current.FilterEngineVersion, StringComparison.Ordinal) &&
+            string.Equals(manifest.GeneratorVersion, current.GeneratorVersion, StringComparison.Ordinal);
     }
 
     private void DecayLocked(DateTimeOffset now)
