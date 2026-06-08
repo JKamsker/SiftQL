@@ -57,9 +57,10 @@ internal static class FilterSchemaDiscovery
     public static EquatableArray<GeneratedSchema> SortCurrent(ImmutableArray<GeneratedSchema?> schemas)
     {
         var builder = ImmutableArray.CreateBuilder<GeneratedSchema>(schemas.Length);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (GeneratedSchema? schema in schemas)
         {
-            if (schema is not null)
+            if (schema is not null && seen.Add(schema.MetadataName))
                 builder.Add(schema);
         }
 
@@ -74,7 +75,7 @@ internal static class FilterSchemaDiscovery
     private static GeneratedSchema CreateSchema(INamedTypeSymbol type)
     {
         var fields = ImmutableArray.CreateBuilder<GeneratedField>();
-        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, type, depth: 0);
+        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, string.Empty, type, depth: 0);
         return new GeneratedSchema(
             type.ToDisplayString(s_format),
             type.ToDisplayString(),

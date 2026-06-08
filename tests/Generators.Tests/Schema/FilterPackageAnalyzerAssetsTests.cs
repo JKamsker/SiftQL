@@ -64,9 +64,16 @@ public sealed class FilterPackageAnalyzerAssetsTests
             info.ArgumentList.Add(argument);
 
         using Process process = Process.Start(info) ?? throw new InvalidOperationException("dotnet did not start.");
-        string output = process.StandardOutput.ReadToEnd();
-        string error = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> errorTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(milliseconds: 300_000))
+        {
+            process.Kill(entireProcessTree: true);
+            throw new TimeoutException("dotnet " + string.Join(" ", arguments) + " did not finish within 5 minutes.");
+        }
+
+        string output = outputTask.GetAwaiter().GetResult();
+        string error = errorTask.GetAwaiter().GetResult();
         Assert.True(
             process.ExitCode == 0,
             "dotnet " + string.Join(" ", arguments) + " failed:" + Environment.NewLine + output + error);

@@ -22,6 +22,7 @@ public enum FilterOperator
     GreaterThanOrEqual = 3,
     LessThan = 4,
     LessThanOrEqual = 5,
+    StringContains = 6,
 }
 
 public sealed record FilterExpression
@@ -69,6 +70,9 @@ public sealed record FilterExpression
             Value = value ?? throw new ArgumentNullException(nameof(value)),
         };
 
+    public static FilterExpression StringContains(string field, FilterValue value) =>
+        Compare(field, FilterOperator.StringContains, value);
+
     public static FilterExpression Exists(string field) =>
         new(FilterExpressionKind.Exists) { Field = RequireField(field) };
 
@@ -79,14 +83,12 @@ public sealed record FilterExpression
         };
 
     public static FilterExpression And(params FilterExpression[] children) =>
-        Combine(FilterExpressionKind.And, children);
+        CombineAnd(children);
 
     public static FilterExpression Or(params FilterExpression[] children) =>
-        Combine(FilterExpressionKind.Or, children);
+        CombineOr(children);
 
-    private static FilterExpression Combine(
-        FilterExpressionKind kind,
-        IReadOnlyCollection<FilterExpression> children)
+    private static FilterExpression CombineAnd(IReadOnlyCollection<FilterExpression> children)
     {
         ArgumentNullException.ThrowIfNull(children);
         var filtered = children
@@ -100,7 +102,26 @@ public sealed record FilterExpression
         {
             0 => Any,
             1 => filtered[0],
-            _ => new FilterExpression(kind) { Children = filtered },
+            _ => new FilterExpression(FilterExpressionKind.And) { Children = filtered },
+        };
+    }
+
+    private static FilterExpression CombineOr(IReadOnlyCollection<FilterExpression> children)
+    {
+        ArgumentNullException.ThrowIfNull(children);
+        var filtered = children
+            .Select(static child => child ?? throw new ArgumentException(
+                "Composite filters cannot contain null children.",
+                nameof(children)))
+            .ToArray();
+        if (filtered.Any(static child => child.Kind == FilterExpressionKind.Any))
+            return Any;
+
+        return filtered.Length switch
+        {
+            0 => Any,
+            1 => filtered[0],
+            _ => new FilterExpression(FilterExpressionKind.Or) { Children = filtered },
         };
     }
 

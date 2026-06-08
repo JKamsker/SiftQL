@@ -56,6 +56,8 @@ public static class FilterCompiler
         expression ??= FilterExpression.Any;
         if (expression.Kind == FilterExpressionKind.Any)
             return CompiledKernel.Any;
+        FilterExpressionShapeValidator.Validate(expression, errorFactory);
+        expression = FilterExpressionSnapshot.Clone(expression);
 
         TieredFilterPromotionPolicy policy = options.CreateFilterPromotionPolicy(expression);
         return CompileUncached(
@@ -89,13 +91,18 @@ public static class FilterCompiler
         expression ??= FilterExpression.Any;
         if (expression.Kind == FilterExpressionKind.Any)
             return CompiledKernel.Any;
+        FilterExpressionShapeValidator.Validate(expression, errorFactory);
+        expression = FilterExpressionSnapshot.Clone(expression);
 
         bool hasParameters = FilterExpressionParameters.HasParameters(expression);
         FilterExpressionKey expressionKey = FilterExpressionFingerprint.CreateKey(expression);
         string fingerprint = expressionKey.ToString();
         TieredFilterPromotionPolicy promotionPolicy = options.CreateFilterPromotionPolicy(expression);
 
-        if (hasParameters || PrecompiledTieredProviderRegistry.IsolatedScopeActive)
+        if (hasParameters ||
+            options.Mode == FilterCompilationMode.Tiered ||
+            PrecompiledTieredProviderRegistry.IsolatedScopeActive)
+        {
             return CompileCacheMiss(
                 subjectType,
                 expression,
@@ -106,6 +113,7 @@ public static class FilterCompiler
                 fingerprint,
                 promotionPolicy,
                 cacheKey: null);
+        }
 
         var key = FilterCompilationCacheKey.Create(
             subjectType,
@@ -114,6 +122,7 @@ public static class FilterCompiler
             options.Mode,
             promotionPolicy,
             PrecompiledTieredProviderRegistry.GlobalVersion,
+            FilterSchema.Version,
             HotManifestSinkIdentity.From(options.HotManifestSink));
         if (s_kernelCache.TryGetValue(key, out CompiledKernel? cached))
             return cached;
@@ -179,9 +188,10 @@ public static class FilterCompiler
                 errorFactory);
         }
 
-        if (cacheKey is null || Volatile.Read(ref s_kernelCacheCount) >= MaxCachedKernels)
+        if (cacheKey is null)
             return CompileUncached(schema, expression, options, promotionPolicy, errorFactory);
 
+        EnsureCacheCapacity();
         CompiledKernel compiled = CompileUncached(schema, expression, options, promotionPolicy, errorFactory);
         if (s_kernelCache.TryAdd(cacheKey.Value, compiled))
         {
@@ -192,6 +202,14 @@ public static class FilterCompiler
         return s_kernelCache.TryGetValue(cacheKey.Value, out CompiledKernel? raced)
             ? raced
             : compiled;
+    }
+
+    private static void EnsureCacheCapacity()
+    {
+        if (Volatile.Read(ref s_kernelCacheCount) < MaxCachedKernels)
+            return;
+
+        ClearCache();
     }
 
     private static CompiledKernel CompileUncached(

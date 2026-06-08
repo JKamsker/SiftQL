@@ -19,7 +19,11 @@ public static class ProjectedEventFilterSchema
     {
         var fields = BaseFields();
         for (int i = 0; i < projection.Fields.Length; i++)
-            AddDynamicField(fields, projection.Fields[i].Path);
+        {
+            if (projection.Fields[i] is not null)
+                AddDynamicField(fields, projection.Fields[i].Path);
+        }
+
         return new FilterSchema(typeof(ProjectedEvent), fields.Values.ToArray());
     }
 
@@ -38,6 +42,20 @@ public static class ProjectedEventFilterSchema
                 Access: FilterFieldAccess.ForProperty(nameof(ProjectedEvent.EventType))),
             [nameof(ProjectedEvent.EventName)] = new(
                 nameof(ProjectedEvent.EventName),
+                typeof(string),
+                FilterFieldKind.Scalar,
+                static subject => ((ProjectedEvent)subject).EventName,
+                ProjectionAccessor: static subject => ProjectedEventValue.FromScalar(((ProjectedEvent)subject).EventName),
+                Access: FilterFieldAccess.ForProperty(nameof(ProjectedEvent.EventName))),
+            ["subjectType"] = new(
+                "subjectType",
+                typeof(string),
+                FilterFieldKind.Scalar,
+                static subject => ((ProjectedEvent)subject).EventType,
+                ProjectionAccessor: static subject => ProjectedEventValue.FromScalar(((ProjectedEvent)subject).EventType),
+                Access: FilterFieldAccess.ForProperty(nameof(ProjectedEvent.EventType))),
+            ["subjectName"] = new(
+                "subjectName",
                 typeof(string),
                 FilterFieldKind.Scalar,
                 static subject => ((ProjectedEvent)subject).EventName,
@@ -88,6 +106,7 @@ public static class ProjectedEventFilterSchema
             ProjectedEventValueKind.String => value.String,
             ProjectedEventValueKind.Guid => value.Guid,
             ProjectedEventValueKind.Array => value.Values.Select(ToObject).ToArray(),
+            ProjectedEventValueKind.Object => value,
             _ => null,
         };
 }

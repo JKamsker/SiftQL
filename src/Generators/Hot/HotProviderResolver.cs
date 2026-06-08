@@ -6,6 +6,8 @@ namespace SiftQL.Generators.Hot;
 
 internal static class HotProviderResolver
 {
+    private const int MaxProjectionFields = 64;
+    private const int MaxProjectionIncludes = 8;
     private static readonly SymbolDisplayFormat s_format = SymbolDisplayFormat.FullyQualifiedFormat;
 
     public static HotProviderSource Resolve(
@@ -19,7 +21,7 @@ internal static class HotProviderResolver
         {
             cancellationToken.ThrowIfCancellationRequested();
             HotManifestEntry entry = manifest.Entries[i];
-            INamedTypeSymbol? subject = ResolveSubject(compilation, entry.SubjectType);
+            INamedTypeSymbol? subject = HotSubjectTypeResolver.Resolve(compilation, entry.SubjectType);
             if (subject is null)
             {
                 Add(diagnostics, manifest.Path, $"Hot entry subject '{entry.SubjectType}' cannot be resolved.");
@@ -82,17 +84,10 @@ internal static class HotProviderResolver
             .ThenBy(static entry => entry.SubjectTypeName, StringComparer.Ordinal)
             .ToImmutableArray();
 
-    private static INamedTypeSymbol? ResolveSubject(Compilation compilation, string subjectType)
-    {
-        string metadataName = subjectType.Split(',')[0].Trim();
-        return compilation.GetTypeByMetadataName(metadataName) ??
-            compilation.GetTypeByMetadataName(metadataName.Replace('+', '.'));
-    }
-
     private static EquatableArray<GeneratedField> DiscoverFields(INamedTypeSymbol subject)
     {
         var fields = ImmutableArray.CreateBuilder<GeneratedField>();
-        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, subject, depth: 0);
+        SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, string.Empty, subject, depth: 0);
         return new(fields.ToImmutable());
     }
 
@@ -103,9 +98,27 @@ internal static class HotProviderResolver
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string path)
     {
+        if (projection.Includes.Count > MaxProjectionIncludes)
+        {
+            HotProviderFieldValidator.Unsupported(
+                diagnostics,
+                path,
+                $"Hot projection exceeds the {MaxProjectionIncludes} include limit.");
+            return null;
+        }
+
         EquatableArray<HotProjectionField> requested = projection.Fields.Count == 0
             ? DefaultProjectionFields(fields)
             : projection.Fields;
+        if (requested.Count > MaxProjectionFields)
+        {
+            HotProviderFieldValidator.Unsupported(
+                diagnostics,
+                path,
+                $"Hot projection exceeds the {MaxProjectionFields} field limit.");
+            return null;
+        }
+
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < requested.Count; i++)
         {

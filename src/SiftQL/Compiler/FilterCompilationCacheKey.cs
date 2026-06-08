@@ -16,6 +16,7 @@ internal readonly record struct FilterCompilationCacheKey(
     long PromotionMinimumAgeTicks,
     int PromotionQueueCapacity,
     int PrecompiledProviderVersion,
+    int SchemaVersion,
     HotManifestSinkIdentity HotManifestSink)
 {
     public static FilterCompilationCacheKey Create(
@@ -25,6 +26,7 @@ internal readonly record struct FilterCompilationCacheKey(
         FilterCompilationMode mode,
         TieredFilterPromotionPolicy promotionPolicy,
         int precompiledProviderVersion,
+        int schemaVersion,
         HotManifestSinkIdentity hotManifestSink)
     {
         ArgumentNullException.ThrowIfNull(subjectType);
@@ -38,6 +40,7 @@ internal readonly record struct FilterCompilationCacheKey(
             promotionPolicy.MinimumAge.Ticks,
             promotionPolicy.QueueCapacity,
             precompiledProviderVersion,
+            schemaVersion,
             mode == FilterCompilationMode.Tiered ? hotManifestSink : default);
     }
 }

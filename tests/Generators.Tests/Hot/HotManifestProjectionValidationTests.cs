@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -118,6 +119,28 @@ public sealed class HotManifestProjectionValidationTests
             ]),
             "duplicate projection include result names");
 
+    [Fact]
+    public void RejectsProjectionFieldLimit()
+    {
+        EventProjectionExpression projection = EventProjectionExpression.Default.WithFields(
+            Enumerable.Range(0, 65)
+                .Select(static index => new EventProjectionField("CharacterId", "field" + index))
+                .ToArray());
+
+        AssertRejectedProjectionDefinition(projection, "projection field limit");
+    }
+
+    [Fact]
+    public void RejectsProjectionIncludeLimit()
+    {
+        EventProjectionExpression projection = EventProjectionExpression.Default.WithIncludes(
+            Enumerable.Range(0, 9)
+                .Select(static index => new EventProjectionInclude("include." + index, "result" + index))
+                .ToArray());
+
+        AssertRejectedProjectionDefinition(projection, "projection include limit");
+    }
+
     private static void AssertRejectedInclude(
         string includeJson,
         EventProjectionInclude include,
@@ -139,7 +162,29 @@ public sealed class HotManifestProjectionValidationTests
         AssertEx.Equal(0, HotProviderSourceCount(run), label + " emitted no hot provider source");
     }
 
+    private static void AssertRejectedProjectionDefinition(
+        EventProjectionExpression projection,
+        string label)
+    {
+        GeneratorRun run = RunGenerator(ManifestWithProjection(
+            JsonSerializer.Serialize(projection),
+            ProjectionFingerprint(projection)));
+
+        AssertDiagnostic(run, "FSFHOT009", label);
+        AssertEx.Equal(0, HotProviderSourceCount(run), label + " emitted no hot provider source");
+    }
+
     private static string ManifestWithIncludes(string includesJson, string fingerprint) =>
+        ManifestWithProjection(
+            $$"""
+            {
+              "Fields": [],
+              "Includes": {{includesJson}}
+            }
+            """,
+            fingerprint);
+
+    private static string ManifestWithProjection(string projectionJson, string fingerprint) =>
         $$"""
         {
           "Schema": "siftql.hot.v1",
@@ -150,10 +195,7 @@ public sealed class HotManifestProjectionValidationTests
               "Kind": "projection",
               "SubjectType": "Plugin.Events.PluginOwnedEvent, Plugin.Hot.ProjectionValidation",
               "Fingerprint": "{{fingerprint}}",
-              "Definition": {
-                "Fields": [],
-                "Includes": {{includesJson}}
-              }
+              "Definition": {{projectionJson}}
             }
           ]
         }

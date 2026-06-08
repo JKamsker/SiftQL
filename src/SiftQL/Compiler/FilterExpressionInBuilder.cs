@@ -21,7 +21,8 @@ internal static class FilterExpressionInBuilder
         if (type == typeof(string))
             return BuildStringIn(actual, values);
         if (type.IsEnum)
-            return values.Any(static value => value.Kind == FilterValueKind.String) ||
+            return values.Any(static value => value.Kind is FilterValueKind.String or
+                    FilterValueKind.UnsignedInteger) ||
                 Enum.GetUnderlyingType(type) == typeof(ulong)
                 ? null
                 : BuildEnumIn(actual, values);
@@ -49,11 +50,19 @@ internal static class FilterExpressionInBuilder
                 Expression.Constant(hasNull));
     }
 
-    private static Expression BuildNumberIn(Expression actual, FilterValue[] values)
+    private static Expression? BuildNumberIn(Expression actual, FilterValue[] values)
     {
         Type type = Nullable.GetUnderlyingType(actual.Type) ?? actual.Type;
         if (FilterNumeric.IsExactNumeric(type))
             return BuildExactNumberIn(actual, values);
+
+        if (values.Any(static value => value.Kind == FilterValueKind.Decimal))
+            return null;
+        if (IsFloating(type) &&
+            values.Any(static value => value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
+        {
+            return null;
+        }
 
         if (values.All(static value => value.Kind is FilterValueKind.Integer or FilterValueKind.Null))
         {
@@ -94,7 +103,6 @@ internal static class FilterExpressionInBuilder
             {
                 FilterValueKind.Integer => value.Integer,
                 FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-                FilterValueKind.Decimal => (double)value.Decimal,
                 _ => value.Number,
             })
             .Where(static value => !double.IsNaN(value))
@@ -155,7 +163,7 @@ internal static class FilterExpressionInBuilder
     {
         bool hasNull = HasNull(values);
         string[] expected = values
-            .Where(static value => value.Kind == FilterValueKind.String)
+            .Where(static value => value.Kind == FilterValueKind.String && value.String is not null)
             .Select(static value => value.String!)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -223,5 +231,8 @@ internal static class FilterExpressionInBuilder
 
     private static bool HasNull(IEnumerable<FilterValue> values) =>
         values.Any(static value => value.Kind == FilterValueKind.Null);
+
+    private static bool IsFloating(Type type) =>
+        type == typeof(float) || type == typeof(double);
 
 }

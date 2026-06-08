@@ -98,6 +98,61 @@ public sealed class HotProviderSourceGeneratorTests
     }
 
     [Fact]
+    public void GeneratorResolvesClosedGenericSubjectFromAssemblyQualifiedManifest()
+    {
+        const string assemblyName = "Plugin.Hot.Generic";
+        var filter = FilterExpression.Compare(
+            "ItemId",
+            FilterOperator.Equal,
+            FilterValue.From(7L));
+        string fingerprint = Fingerprint(filter);
+        string subjectType = "Plugin.Events.GenericEvent`1[[" +
+            typeof(int).AssemblyQualifiedName +
+            "]], " +
+            assemblyName;
+        var manifest = new HotCompilationManifest
+        {
+            RuntimeVersion = "10.0.0",
+            Entries =
+            [
+                new HotCompilationManifestEntry
+                {
+                    Key = "filter|" + subjectType + "|" + fingerprint,
+                    Kind = "filter",
+                    SubjectType = subjectType,
+                    Fingerprint = fingerprint,
+                    Definition = JsonSerializer.SerializeToElement(filter),
+                },
+            ],
+        };
+        GeneratorRun run = RunGenerator(
+            assemblyName,
+            new InMemoryAdditionalText("generic.siftql-hot.json", JsonSerializer.Serialize(manifest)),
+            CSharpSyntaxTree.ParseText("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record GenericEvent<T>(
+                    Guid EventId,
+                    long ItemId) : IFilterSubject;
+                """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)));
+
+        Diagnostic[] diagnostics = run.Diagnostics
+            .Where(static item => item.Id == "FSFHOT009")
+            .ToArray();
+
+        AssertEx.Equal(0, diagnostics.Length, "closed generic subject resolved");
+        AssertEx.Equal(
+            1,
+            run.Result.Results[0].GeneratedSources.Count(static item =>
+                item.HintName.StartsWith("GeneratedHotTieredProvider_", StringComparison.Ordinal)),
+            "closed generic provider source emitted");
+        AssertNoCompilationErrors(run, "closed generic hot provider");
+    }
+
+    [Fact]
     public void StartupLoaderValidatesAndLoadsGeneratedProvider()
     {
         string assemblyName = "Plugin.Hot.Loader";

@@ -35,6 +35,13 @@ public sealed class FilterExpressionCostTests
     }
 
     [Fact]
+    public void Cost_Compare_StringContains_IsEight()
+    {
+        var expr = FilterExpression.StringContains("Name", FilterValue.From("ell"));
+        Assert.Equal(8, FilterExpressionCost.Estimate(expr));
+    }
+
+    [Fact]
     public void Cost_Exists_IsOne()
     {
         var expr = FilterExpression.Exists("ItemId");

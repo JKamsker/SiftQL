@@ -12,6 +12,9 @@ internal static class FilterExpressionScalarBuilder
     private static readonly MethodInfo s_stringEquals = typeof(string).GetMethod(
         nameof(string.Equals),
         [typeof(string), typeof(string), typeof(StringComparison)])!;
+    private static readonly MethodInfo s_stringContains = typeof(string).GetMethod(
+        nameof(string.Contains),
+        [typeof(string), typeof(StringComparison)])!;
 
     public static Expression? BuildCompare(
         Expression actual,
@@ -22,7 +25,12 @@ internal static class FilterExpressionScalarBuilder
         if (value.Kind == FilterValueKind.Null)
         {
             Expression isNull = FilterExpressionNull.IsNull(actual);
-            return op == FilterOperator.Equal ? isNull : Expression.Not(isNull);
+            return op switch
+            {
+                FilterOperator.Equal => isNull,
+                FilterOperator.NotEqual => Expression.Not(isNull),
+                _ => Expression.Constant(false),
+            };
         }
 
         if (type == typeof(string))
@@ -43,15 +51,30 @@ internal static class FilterExpressionScalarBuilder
 
     private static Expression BuildStringCompare(Expression actual, FilterValue value, FilterOperator op)
     {
+        if (value.String is null)
+            return Expression.Constant(op == FilterOperator.NotEqual);
+
         var equals = Expression.Call(
             s_stringEquals,
             actual,
             Expression.Constant(value.String, typeof(string)),
             Expression.Constant(StringComparison.Ordinal));
-        return op == FilterOperator.Equal ? equals : Expression.Not(equals);
+        if (op == FilterOperator.Equal)
+            return equals;
+        if (op == FilterOperator.NotEqual)
+            return Expression.Not(equals);
+        if (op != FilterOperator.StringContains)
+            return Expression.Constant(false);
+
+        var contains = Expression.Call(
+            actual,
+            s_stringContains,
+            Expression.Constant(value.String, typeof(string)),
+            Expression.Constant(StringComparison.Ordinal));
+        return Expression.AndAlso(Expression.NotEqual(actual, Expression.Constant(null, typeof(string))), contains);
     }
 
-    private static Expression BuildNumberCompare(Expression actual, FilterValue value, FilterOperator op)
+    private static Expression? BuildNumberCompare(Expression actual, FilterValue value, FilterOperator op)
     {
         Type type = Nullable.GetUnderlyingType(actual.Type) ?? actual.Type;
         if (value.Kind == FilterValueKind.Integer)
@@ -110,11 +133,18 @@ internal static class FilterExpressionScalarBuilder
                 static item => Expression.Convert(item, typeof(decimal)));
         }
 
+        if (value.Kind == FilterValueKind.Decimal)
+            return null;
+        if (IsFloating(type) &&
+            value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger)
+        {
+            return null;
+        }
+
         double expected = value.Kind switch
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return BuildValueCompare(
@@ -256,5 +286,8 @@ internal static class FilterExpressionScalarBuilder
             _ => Expression.Constant(false),
         };
     }
+
+    private static bool IsFloating(Type type) =>
+        type == typeof(float) || type == typeof(double);
 
 }

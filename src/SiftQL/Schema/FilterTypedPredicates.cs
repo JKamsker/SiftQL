@@ -1,5 +1,6 @@
 using SiftQL;
 using SiftQL.Expressions;
+using SiftQL.Values;
 
 namespace SiftQL.Schema;
 
@@ -52,9 +53,12 @@ internal static class FilterTypedPredicates
         FilterOperator op)
     {
         if (value.Kind == FilterValueKind.Null)
-            return op == FilterOperator.Equal
-                ? subject => !getter(subject).HasValue
-                : subject => getter(subject).HasValue;
+            return op switch
+            {
+                FilterOperator.Equal => subject => !getter(subject).HasValue,
+                FilterOperator.NotEqual => subject => getter(subject).HasValue,
+                _ => static _ => false,
+            };
 
         bool expected = value.Boolean;
         return op == FilterOperator.Equal
@@ -68,15 +72,22 @@ internal static class FilterTypedPredicates
         FilterOperator op)
     {
         if (value.Kind == FilterValueKind.Null)
-            return op == FilterOperator.Equal
-                ? subject => !getter(subject).HasValue
-                : subject => getter(subject).HasValue;
+            return op switch
+            {
+                FilterOperator.Equal => subject => !getter(subject).HasValue,
+                FilterOperator.NotEqual => subject => getter(subject).HasValue,
+                _ => static _ => false,
+            };
+
+        if (value.Kind == FilterValueKind.Decimal)
+            return subject => FilterValues.Compare(getter(subject), value, op);
+        if (value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger)
+            return subject => FilterValues.Compare(getter(subject), value, op);
 
         double expected = value.Kind switch
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return op switch
@@ -96,10 +107,23 @@ internal static class FilterTypedPredicates
         FilterValue value,
         FilterOperator op)
     {
-        string? expected = value.Kind == FilterValueKind.Null ? null : value.String;
-        return op == FilterOperator.Equal
-            ? subject => string.Equals(getter(subject), expected, StringComparison.Ordinal)
-            : subject => !string.Equals(getter(subject), expected, StringComparison.Ordinal);
+        if (value.Kind == FilterValueKind.Null)
+            return op == FilterOperator.Equal
+                ? subject => getter(subject) is null
+                : subject => getter(subject) is not null;
+        if (value.String is null)
+            return op == FilterOperator.NotEqual
+                ? static _ => true
+                : static _ => false;
+
+        string expected = value.String;
+        return op switch
+        {
+            FilterOperator.Equal => subject => string.Equals(getter(subject), expected, StringComparison.Ordinal),
+            FilterOperator.NotEqual => subject => !string.Equals(getter(subject), expected, StringComparison.Ordinal),
+            FilterOperator.StringContains => subject => getter(subject)?.Contains(expected, StringComparison.Ordinal) == true,
+            _ => static _ => false,
+        };
     }
 
     private static Func<object, bool> CompileGuidCompare(
@@ -108,9 +132,12 @@ internal static class FilterTypedPredicates
         FilterOperator op)
     {
         if (value.Kind == FilterValueKind.Null)
-            return op == FilterOperator.Equal
-                ? subject => !getter(subject).HasValue
-                : subject => getter(subject).HasValue;
+            return op switch
+            {
+                FilterOperator.Equal => subject => !getter(subject).HasValue,
+                FilterOperator.NotEqual => subject => getter(subject).HasValue,
+                _ => static _ => false,
+            };
 
         Guid expected = value.Guid;
         return op == FilterOperator.Equal
@@ -136,7 +163,16 @@ internal static class FilterTypedPredicates
         => FilterTypedInCompiler.CompileBoolean(getter, values);
 
     private static Func<object, bool> CompileNumberIn(Func<object, double?> getter, FilterValue[] values)
-        => FilterTypedInCompiler.CompileNumber(getter, values);
+    {
+        if (values.Any(static value => value.Kind is FilterValueKind.Integer or
+                FilterValueKind.UnsignedInteger or
+                FilterValueKind.Decimal))
+        {
+            return subject => FilterValues.In(getter(subject), values);
+        }
+
+        return FilterTypedInCompiler.CompileNumber(getter, values);
+    }
 
     private static Func<object, bool> CompileStringIn(Func<object, string?> getter, FilterValue[] values)
         => FilterTypedInCompiler.CompileString(getter, values);
@@ -146,7 +182,8 @@ internal static class FilterTypedPredicates
 
     private static Func<object, bool>? CompileEnumIn(Func<object, long?> getter, FilterValue[] values)
     {
-        if (values.Any(static value => value.Kind == FilterValueKind.String))
+        if (values.Any(static value => value.Kind is FilterValueKind.String or
+                FilterValueKind.UnsignedInteger))
             return null;
         return FilterTypedInCompiler.CompileEnum(getter, values);
     }

@@ -49,6 +49,44 @@ public sealed class ProjectionCompilerRuntimeTests
                 _ => schema));
     }
 
+    [Fact]
+    public void ProjectionWithNullFieldArrayThrowsValidationException()
+    {
+        var projection = EventProjectionExpression.Default with { Fields = null! };
+
+        Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.Compile<object?>(
+                typeof(DefaultProjectionEvent),
+                projection,
+                RejectInclude));
+    }
+
+    [Fact]
+    public void ProjectionWithNullIncludeArrayThrowsValidationException()
+    {
+        var projection = EventProjectionExpression.Default with { Includes = null! };
+
+        Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.Compile<object?>(
+                typeof(DefaultProjectionEvent),
+                projection,
+                RejectInclude));
+    }
+
+    [Fact]
+    public void PipelineProjectionWithNullFieldArrayThrowsValidationException()
+    {
+        var projection = EventProjectionExpression.Default with { Fields = null! };
+        var pipeline = EventPipelineExpression.Default.AppendProjection(projection);
+
+        Assert.Throws<FilterValidationException>(() =>
+            EventPipelineCompiler.Compile<object?>(
+                typeof(DefaultProjectionEvent),
+                pipeline,
+                RejectInclude,
+                EventPipelineCompilerOptions.Immediate));
+    }
+
     private static CompiledProjection<object?>.IncludeProjector RejectInclude(
         FilterSchema schema,
         EventProjectionInclude include)
@@ -140,6 +178,34 @@ public sealed class ProjectionCompilerRuntimeTests
         AssertEx.Equal(4L, RequiredField(items.Values[0], "Quantity").Integer, "first item keeps quantity");
     }
 
+    [Fact]
+    public async Task NestedProjectionWritesNullWhenParentIsNull()
+    {
+        FilterSchema.RegisterValueObject<NestedProjectionLocation>();
+        var projection = ProjectionCompiler.Compile<object?>(
+            typeof(NestedProjectionEvent),
+            EventProjectionExpression.Select("Location.Country", "Location.Temperature"),
+            RejectInclude);
+        var ev = new NestedProjectionEvent(null!);
+        MessagePackSerializerOptions options =
+            MessagePackSerializerOptions.Standard.WithResolver(ContractlessStandardResolver.Instance);
+
+        ProjectedEvent materialized = await projection.ProjectAsync(ev, null, CancellationToken.None);
+        ReadOnlyMemory<byte> payload = await projection.ProjectPayloadAsync(
+            ev,
+            null,
+            options,
+            CancellationToken.None);
+        ProjectedEvent roundTripped = MessagePackSerializer.Deserialize<ProjectedEvent>(
+            payload,
+            options);
+
+        AssertProjectedField(materialized, "Location.Country", ProjectedEventValueKind.Null);
+        AssertProjectedField(materialized, "Location.Temperature", ProjectedEventValueKind.Null);
+        AssertProjectedField(roundTripped, "Location.Country", ProjectedEventValueKind.Null);
+        AssertProjectedField(roundTripped, "Location.Temperature", ProjectedEventValueKind.Null);
+    }
+
     private static ProjectedEventValue RequiredField(ProjectedEventValue value, string name)
     {
         for (int i = 0; i < value.Fields.Length; i++)
@@ -196,4 +262,8 @@ public sealed class ProjectionCompilerRuntimeTests
         long ItemId,
         string Name,
         int Quantity);
+
+    private sealed record NestedProjectionEvent(NestedProjectionLocation Location);
+
+    private sealed record NestedProjectionLocation(string Country, int Temperature);
 }

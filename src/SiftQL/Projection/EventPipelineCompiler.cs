@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -31,9 +29,11 @@ public static class EventPipelineCompiler
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(compileInclude);
         ArgumentNullException.ThrowIfNull(options);
-        EventPipelineExpression normalized = Normalize(pipeline);
+        EventPipelineExpression normalized = Snapshot(
+            EventPipelineNormalizer.Normalize(subjectType, pipeline, errorFactory));
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
-        if (HasParameters(normalized) ||
+        if (HasInvalidProjectionShape(normalized) ||
+            HasParameters(normalized) ||
             PrecompiledTieredProviderRegistry.IsolatedScopeActive)
         {
             return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
@@ -45,13 +45,13 @@ public static class EventPipelineCompiler
             EventPipelineExpressionKey.From(normalized),
             includeCompilerKey,
             PrecompiledTieredProviderRegistry.GlobalVersion,
+            FilterSchema.Version,
             FilterCompilerOptionsCacheKey.From(options.FilterOptions),
             ProjectionCompilerOptionsCacheKey.From(options.ProjectionOptions));
         if (s_cache.TryGetValue(key, out object? cached))
             return (CompiledEventPipeline<TContext>)cached;
-        if (Volatile.Read(ref s_cacheCount) >= MaxCachedPipelines)
-            return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
 
+        EnsureCacheCapacity();
         var compiled = CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
         if (s_cache.TryAdd(key, compiled))
         {
@@ -64,9 +64,17 @@ public static class EventPipelineCompiler
             : compiled;
     }
 
+    private static void EnsureCacheCapacity()
+    {
+        if (Volatile.Read(ref s_cacheCount) < MaxCachedPipelines)
+            return;
+
+        ClearCache();
+    }
+
     public static FilterExpression SourceFilter(EventPipelineExpression? pipeline)
     {
-        EventPipelineExpression normalized = Normalize(pipeline);
+        EventPipelineExpression normalized = EventPipelineNormalizer.Normalize(typeof(object), pipeline);
         var filters = new List<FilterExpression>();
         for (int i = 0; i < normalized.Stages.Length; i++)
         {
@@ -82,7 +90,10 @@ public static class EventPipelineCompiler
 
     public static EventPipelineExpression ProjectionDispatchPipeline(EventPipelineExpression? pipeline)
     {
-        EventPipelineExpression normalized = Normalize(pipeline);
+        Type subjectType = ReferencesProjectedFields(pipeline)
+            ? typeof(ProjectedEvent)
+            : typeof(object);
+        EventPipelineExpression normalized = EventPipelineNormalizer.Normalize(subjectType, pipeline);
         int projectionIndex = Array.FindIndex(
             normalized.Stages,
             static stage => stage.Kind == EventPipelineStageKind.Projection);
@@ -94,6 +105,42 @@ public static class EventPipelineCompiler
         return normalized with { Stages = stages };
     }
 
+    private static bool ReferencesProjectedFields(EventPipelineExpression? pipeline)
+    {
+        if (pipeline?.Stages is null)
+            return false;
+
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            EventPipelineStage? stage = pipeline.Stages[i];
+            if (stage?.Kind == EventPipelineStageKind.Filter &&
+                ReferencesProjectedFields(stage.Filter))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReferencesProjectedFields(FilterExpression? expression)
+    {
+        if (expression is null)
+            return false;
+        if (ProjectedEventPaths.TrySplit(expression.Field, out _, out _))
+            return true;
+        if (expression.Children is null)
+            return false;
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (ReferencesProjectedFields(expression.Children[i]))
+                return true;
+        }
+
+        return false;
+    }
+
     private static CompiledEventPipeline<TContext> CompileUncached<TContext>(
         Type subjectType,
         EventPipelineExpression pipeline,
@@ -103,7 +150,7 @@ public static class EventPipelineCompiler
         Func<string, Exception>? errorFactory)
     {
         var stages = new List<PipelineStage<TContext>>();
-        bool projected = false;
+        bool projected = subjectType == typeof(ProjectedEvent);
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {
             EventPipelineStage stage = pipeline.Stages[i];
@@ -180,13 +227,15 @@ public static class EventPipelineCompiler
             $"Projection include '{include.Intrinsic}' cannot run after a projected stage.");
     }
 
-    private static EventPipelineExpression Normalize(EventPipelineExpression? pipeline)
-    {
-        pipeline ??= EventPipelineExpression.Default;
-        return pipeline.HasProjection
-            ? pipeline
-            : pipeline.AppendProjection(EventProjectionExpression.Default);
-    }
+    private static EventPipelineExpression Snapshot(EventPipelineExpression pipeline) =>
+        pipeline with
+        {
+            Stages = pipeline.Stages
+                .Select(static stage => stage.Kind == EventPipelineStageKind.Filter
+                    ? stage with { Filter = FilterExpressionSnapshot.Clone(stage.Filter) }
+                    : stage with { Projection = ProjectionExpressionSnapshot.Clone(stage.Projection) })
+                .ToArray(),
+        };
 
     private static bool HasParameters(EventPipelineExpression pipeline)
     {
@@ -209,56 +258,34 @@ public static class EventPipelineCompiler
         return false;
     }
 
+    private static bool HasInvalidProjectionShape(EventPipelineExpression pipeline)
+    {
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            EventPipelineStage stage = pipeline.Stages[i];
+            if (stage.Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            if (stage.Projection.Fields is null || stage.Projection.Includes is null)
+                return true;
+            if (stage.Projection.Fields.Any(static field => field is null))
+                return true;
+            if (stage.Projection.Includes.Any(static include =>
+                    include is null ||
+                    include.Arguments is null ||
+                    include.Arguments.Any(static argument => argument is null)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void ClearCache()
     {
         s_cache.Clear();
         Volatile.Write(ref s_cacheCount, 0);
     }
 
-    private readonly record struct EventPipelineCacheKey(
-        Type ContextType,
-        Type SubjectType,
-        EventPipelineExpressionKey Pipeline,
-        IncludeCompilerKey IncludeCompiler,
-        int PrecompiledProviderVersion,
-        FilterCompilerOptionsCacheKey FilterOptions,
-        ProjectionCompilerOptionsCacheKey ProjectionOptions);
-
-    private readonly struct IncludeCompilerKey : IEquatable<IncludeCompilerKey>
-    {
-        private readonly MethodInfo _method;
-        private readonly object? _target;
-        private readonly int _hashCode;
-
-        private IncludeCompilerKey(MethodInfo method, object? target)
-        {
-            _method = method;
-            _target = target;
-            _hashCode = HashCode.Combine(method, target is null ? 0 : RuntimeHelpers.GetHashCode(target));
-        }
-
-        public static IncludeCompilerKey From(Delegate includeCompiler) =>
-            new(includeCompiler.Method, includeCompiler.Target);
-
-        public bool Equals(IncludeCompilerKey other) =>
-            _method == other._method && ReferenceEquals(_target, other._target);
-
-        public override bool Equals(object? obj) =>
-            obj is IncludeCompilerKey other && Equals(other);
-
-        public override int GetHashCode() => _hashCode;
-
-        public override string ToString()
-        {
-            string target = _target is null
-                ? "static"
-                : RuntimeHelpers.GetHashCode(_target).ToString("X8", System.Globalization.CultureInfo.InvariantCulture);
-            return string.Concat(
-                _method.Module.ModuleVersionId.ToString("N"),
-                ":",
-                _method.MetadataToken.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ":",
-                target);
-        }
-    }
 }

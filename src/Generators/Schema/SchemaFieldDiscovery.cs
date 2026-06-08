@@ -11,6 +11,7 @@ internal static class SchemaFieldDiscovery
         ImmutableArray<GeneratedField>.Builder fields,
         string prefix,
         string accessPrefix,
+        string safeAccessPrefix,
         INamedTypeSymbol owner,
         int depth)
     {
@@ -23,18 +24,47 @@ internal static class SchemaFieldDiscovery
                 continue;
 
             string name = string.IsNullOrEmpty(prefix) ? property.Name : prefix + "." + property.Name;
+            if (IsReservedTopLevelField(name) || ContainsField(fields, name))
+                continue;
+
             string access = string.IsNullOrEmpty(accessPrefix) ? property.Name : accessPrefix + "." + property.Name;
+            string ownerAccess = string.IsNullOrEmpty(safeAccessPrefix)
+                ? "((" + owner.ToDisplayString(s_format) + ")subject)"
+                : safeAccessPrefix;
+            string safeAccess = SafeAccess(
+                ownerAccess,
+                root: string.IsNullOrEmpty(safeAccessPrefix),
+                owner,
+                property);
+            bool accessCanReturnNull = IsNullable(property.Type) ||
+                safeAccess.Contains("?.", StringComparison.Ordinal);
             ITypeSymbol valueType = UnwrapNullable(property.Type);
             if (TryScalar(valueType, out GeneratedScalarKind scalarKind))
             {
-                fields.Add(Field(name, access, valueType, property.Type, GeneratedFieldKind.Scalar, scalarKind));
+                fields.Add(Field(
+                    name,
+                    access,
+                    safeAccess,
+                    valueType,
+                    property.Type,
+                    GeneratedFieldKind.Scalar,
+                    scalarKind,
+                    accessCanReturnNull));
                 continue;
             }
 
             if (TryCollectionElement(property.Type, out ITypeSymbol? elementType) &&
                 TryScalar(elementType, out scalarKind))
             {
-                fields.Add(Field(name, access, elementType, property.Type, GeneratedFieldKind.Array, scalarKind));
+                fields.Add(Field(
+                    name,
+                    access,
+                    safeAccess,
+                    elementType,
+                    property.Type,
+                    GeneratedFieldKind.Array,
+                    scalarKind,
+                    accessCanReturnNull));
                 continue;
             }
 
@@ -43,12 +73,14 @@ internal static class SchemaFieldDiscovery
                 fields.Add(Field(
                     name,
                     access,
+                    safeAccess,
                     valueType,
                     property.Type,
                     GeneratedFieldKind.Object,
-                    GeneratedScalarKind.Object));
+                    GeneratedScalarKind.Object,
+                    accessCanReturnNull));
                 if (!IsNullable(property.Type))
-                    AddProperties(fields, name, access, nested, depth + 1);
+                    AddProperties(fields, name, access, safeAccess, nested, depth + 1);
             }
         }
     }
@@ -62,33 +94,65 @@ internal static class SchemaFieldDiscovery
     private static GeneratedField Field(
         string name,
         string access,
+        string safeAccess,
         ITypeSymbol valueType,
         ITypeSymbol propertyType,
         GeneratedFieldKind fieldKind,
-        GeneratedScalarKind scalarKind) =>
+        GeneratedScalarKind scalarKind,
+        bool accessCanReturnNull) =>
         new(
             name,
             access,
+            safeAccess,
             valueType.ToDisplayString(s_format),
             propertyType.ToDisplayString(s_format),
             fieldKind,
             scalarKind,
             IsNullable(propertyType),
+            accessCanReturnNull,
             EmitsScalarAccessor(valueType, scalarKind),
             ArrayContainsMethod(propertyType, scalarKind));
 
+    private static string SafeAccess(
+        string ownerAccess,
+        bool root,
+        INamedTypeSymbol owner,
+        IPropertySymbol property)
+    {
+        string escaped = CSharpIdentifier.EscapePath(property.Name);
+        if (!SymbolEqualityComparer.Default.Equals(property.ContainingType, owner))
+        {
+            string cast = "((" + property.ContainingType.ToDisplayString(s_format) + ")(" +
+                ownerAccess + "))";
+            return cast + (!root && CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
+        }
+
+        return ownerAccess + (!root && CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
+    }
+
     private static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
         for (INamedTypeSymbol? current = owner; current is not null; current = current.BaseType)
         {
             foreach (IPropertySymbol property in current.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (seen.Add(property.Name))
-                    yield return property;
-            }
+                yield return property;
         }
     }
+
+    private static bool ContainsField(ImmutableArray<GeneratedField>.Builder fields, string name)
+    {
+        for (int i = 0; i < fields.Count; i++)
+        {
+            if (string.Equals(fields[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsReservedTopLevelField(string name) =>
+        string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
 
     private static ITypeSymbol UnwrapNullable(ITypeSymbol type) =>
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
@@ -97,6 +161,10 @@ internal static class SchemaFieldDiscovery
 
     private static bool IsNullable(ITypeSymbol type) =>
         type.NullableAnnotation == NullableAnnotation.Annotated ||
+        type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+
+    private static bool CanBeNullAtRuntime(ITypeSymbol type) =>
+        !type.IsValueType ||
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
 
     private static bool TryCollectionElement(ITypeSymbol type, out ITypeSymbol elementType)

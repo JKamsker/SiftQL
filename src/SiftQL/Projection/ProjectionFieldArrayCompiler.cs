@@ -55,16 +55,13 @@ internal static class ProjectionFieldArrayCompiler
         if (field.Kind != FilterFieldKind.Scalar)
             return null;
 
-        if (field.Access is null && field.ProjectionAccessor is not null)
+        if (field.ProjectionAccessor is not null)
             return BuildProjectionAccessorExpression(subject, field.ProjectionAccessor);
         if (field.Access is null)
             return null;
 
-        if (field.Access.PropertyPath?.Contains('.') == true && field.ProjectionAccessor is not null)
-            return BuildProjectionAccessorExpression(subject, field.ProjectionAccessor);
-
         var value = field.Access.PropertyPath is { } path
-            ? BuildPropertyExpression(subject, path)
+            ? FilterFieldAccessExpression.Build(subject, path)
             : BuildConstantExpression(field);
         return value is null ? null : ProjectionValueExpression.TryBuild(field.ValueType, value);
     }
@@ -75,23 +72,6 @@ internal static class ProjectionFieldArrayCompiler
         Expression.Invoke(
             Expression.Constant(accessor),
             Expression.Convert(subject, typeof(object)));
-
-    private static Expression? BuildPropertyExpression(Expression subject, string propertyPath)
-    {
-        Expression current = subject;
-        foreach (string part in propertyPath.Split('.'))
-        {
-            var property = current.Type.GetProperty(
-                part,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
-            if (property?.GetMethod is null || property.GetMethod.GetParameters().Length != 0)
-                return null;
-
-            current = Expression.Property(current, property);
-        }
-
-        return current;
-    }
 
     private static Expression BuildConstantExpression(FilterField field)
     {

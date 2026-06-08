@@ -17,6 +17,8 @@ public static class QueryKernel
 
 public sealed record QueryKernel<TSubject>
 {
+    private FilterExpression _filter = FilterExpression.Any;
+    private EventProjectionExpression _projection = EventProjectionExpression.Default;
     private EventPipelineExpression _pipeline = EventPipelineExpression.Default;
 
     public QueryKernel()
@@ -43,14 +45,40 @@ public sealed record QueryKernel<TSubject>
         Pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
     }
 
-    public FilterExpression Filter { get; init; } = FilterExpression.Any;
-    public EventProjectionExpression Projection { get; init; } = EventProjectionExpression.Default;
+    public FilterExpression Filter
+    {
+        get => _filter;
+        init
+        {
+            _filter = value ?? throw new ArgumentNullException(nameof(value));
+            _pipeline = EventPipelineExpression.Default;
+        }
+    }
+
+    public EventProjectionExpression Projection
+    {
+        get => _projection;
+        init
+        {
+            _projection = value ?? throw new ArgumentNullException(nameof(value));
+            _pipeline = EventPipelineExpression.Default;
+        }
+    }
+
     public EventPipelineExpression Pipeline
     {
         get => _pipeline.IsDefault
             ? EventPipelineExpression.From(Filter, Projection)
             : _pipeline;
-        init => _pipeline = value ?? throw new ArgumentNullException(nameof(value));
+        init
+        {
+            _pipeline = value ?? throw new ArgumentNullException(nameof(value));
+            if (_pipeline.IsDefault)
+                return;
+
+            _filter = QueryKernelPipelineState.SourceFilter(_pipeline);
+            _projection = QueryKernelPipelineState.LastProjectionOrDefault(_pipeline);
+        }
     }
 
     public QueryKernel<TSubject> WithSourceFilter(FilterExpression filter)
@@ -83,7 +111,9 @@ public sealed record QueryKernel<TSubject>
         var translated = KernelParameterKeyRewriter.Rebase(
             KernelExpressionTranslator.Translate(predicate),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
-        EventPipelineExpression pipeline = EnsureProjection(Pipeline).AppendFilter(translated);
+        EventPipelineExpression pipeline = SourceIsProjected()
+            ? Pipeline.AppendFilter(translated)
+            : EnsureProjection(Pipeline).AppendFilter(translated);
         return new QueryKernel<TSubject>(Filter, Projection, pipeline);
     }
 
@@ -101,12 +131,11 @@ public sealed record QueryKernel<TSubject>
             EventProjectionSelectorTranslator.Translate(selector),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
         translated = ProjectedFieldProjection(translated);
+        EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(translated);
         return new QueryKernel<TSubject>(
             Filter,
-            Projection
-                .WithFields(translated.Fields)
-                .WithIncludes(translated.Includes),
-            Pipeline.AppendOrMergeLastProjection(translated));
+            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
+            pipeline);
     }
 
     public QueryKernel<TSubject> Select(params string[] fields)
@@ -119,10 +148,11 @@ public sealed record QueryKernel<TSubject>
     {
         ArgumentNullException.ThrowIfNull(fields);
         EventProjectionExpression projection = ProjectedFieldProjection(fields);
+        EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(projection);
         return new QueryKernel<TSubject>(
             Filter,
-            Projection.WithFields(fields),
-            Pipeline.AppendOrMergeLastProjection(projection));
+            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
+            pipeline);
     }
 
     public QueryKernel<TSubject> Include(params EventProjectionInclude[] includes)
@@ -131,10 +161,11 @@ public sealed record QueryKernel<TSubject>
         var projection = KernelParameterKeyRewriter.Rebase(
             EventProjectionExpression.Default.WithIncludes(includes),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
+        EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(projection);
         return new QueryKernel<TSubject>(
             Filter,
-            Projection.WithIncludes(projection.Includes),
-            Pipeline.AppendOrMergeLastProjection(projection));
+            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
+            pipeline);
     }
 
     private static EventPipelineExpression EnsureProjection(EventPipelineExpression pipeline) =>
@@ -148,7 +179,7 @@ public sealed record QueryKernel<TSubject>
             return EventProjectionExpression.Default.WithFields(fields);
 
         return EventProjectionExpression.Default.WithFields(
-            fields.Select(static field => ProjectedField(field)).ToArray());
+            fields.Select(ProjectedField).ToArray());
     }
 
     private EventProjectionExpression ProjectedFieldProjection(EventProjectionExpression projection)
@@ -159,18 +190,39 @@ public sealed record QueryKernel<TSubject>
         return projection with
         {
             Fields = projection.Fields
-                .Select(static field => ProjectedField(field))
+                .Select(ProjectedField)
                 .ToArray(),
         };
     }
 
-    private static EventProjectionField ProjectedField(EventProjectionField field) =>
-        ProjectedEventPaths.TrySplit(field.Path, out _, out _)
-            ? field
-            : new EventProjectionField(ProjectedEventPaths.Field(field.Path), field.Name);
+    private EventProjectionField ProjectedField(EventProjectionField field)
+    {
+        if (ProjectedEventPaths.TrySplit(field.Path, out _, out _))
+            return field;
+
+        return new EventProjectionField(
+            ProjectedEventPaths.Field(ProjectedFieldName(field.Path)),
+            field.Name);
+    }
+
+    private string ProjectedFieldName(string sourcePath)
+    {
+        EventProjectionExpression previous = QueryKernelPipelineState.LastProjectionOrDefault(Pipeline);
+        for (int i = previous.Fields.Length - 1; i >= 0; i--)
+        {
+            EventProjectionField field = previous.Fields[i];
+            if (string.Equals(field.Path, sourcePath, StringComparison.OrdinalIgnoreCase))
+                return field.Name;
+        }
+
+        return sourcePath;
+    }
 
     private bool ProjectionWillReadProjectedEvent() =>
         ProjectionDomain(Pipeline);
+
+    private static bool SourceIsProjected() =>
+        typeof(TSubject) == typeof(ProjectedEvent);
 
     private static bool ProjectionDomain(EventPipelineExpression pipeline)
     {

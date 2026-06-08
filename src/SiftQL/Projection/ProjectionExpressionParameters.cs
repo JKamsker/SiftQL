@@ -11,10 +11,12 @@ internal static class ProjectionExpressionParameters
     {
         for (int i = 0; i < projection.Includes.Length; i++)
         {
-            EventProjectionArgument[] arguments = projection.Includes[i].Arguments;
+            if (projection.Includes[i]?.Arguments is not { } arguments)
+                continue;
+
             for (int j = 0; j < arguments.Length; j++)
             {
-                if (!string.IsNullOrWhiteSpace(arguments[j].Value?.ParameterKey))
+                if (!string.IsNullOrWhiteSpace(arguments[j]?.Value?.ParameterKey))
                     return true;
             }
         }
@@ -28,6 +30,9 @@ internal static class ProjectionExpressionParameters
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < projection.Includes.Length; i++)
         {
+            if (projection.Includes[i] is null)
+                continue;
+
             foreach (EventProjectionArgument argument in CanonicalArguments(projection.Includes[i]))
             {
                 string? key = argument.Value?.ParameterKey;
@@ -46,10 +51,12 @@ internal static class ProjectionExpressionParameters
         var values = new Dictionary<string, FilterValue>(StringComparer.Ordinal);
         for (int i = 0; i < projection.Includes.Length; i++)
         {
-            EventProjectionArgument[] arguments = projection.Includes[i].Arguments;
+            if (projection.Includes[i]?.Arguments is not { } arguments)
+                continue;
+
             for (int j = 0; j < arguments.Length; j++)
             {
-                FilterValue? value = arguments[j].Value;
+                FilterValue? value = arguments[j]?.Value;
                 if (value is not null && !string.IsNullOrWhiteSpace(value.ParameterKey))
                     AddValue(values, value);
             }
@@ -68,7 +75,9 @@ internal static class ProjectionExpressionParameters
 
     private static IEnumerable<EventProjectionArgument> CanonicalArguments(
         EventProjectionInclude include) =>
-        include.Arguments.OrderBy(static item => item.Name, StringComparer.Ordinal);
+        (include.Arguments ?? [])
+            .Where(static item => item is not null)
+            .OrderBy(static item => item.Name, StringComparer.Ordinal);
 
     private static void AddValue(
         Dictionary<string, FilterValue> values,

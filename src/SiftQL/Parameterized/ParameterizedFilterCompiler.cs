@@ -22,7 +22,7 @@ internal static class ParameterizedFilterCompiler
         if (options.Mode != FilterCompilationMode.Tiered)
             return new CompiledKernel(plan.Bind(expression), isBroad);
 
-        Func<object, bool> interpreted = FilterInterpretedCompiler.Compile(schema, expression, errorFactory);
+        KernelPredicate interpreted = plan.Bind(expression);
         Action<TieredKernelSnapshot>? recordHot = options.HotManifestSink is null
             ? null
             : snapshot => options.HotManifestSink.RecordHotFilter(
@@ -32,7 +32,7 @@ internal static class ParameterizedFilterCompiler
                 snapshot.Matches);
         CompiledKernel? kernel = null;
         var state = new TieredKernelState(
-            interpreted,
+            interpreted.ObjectPredicate,
             () => CompilePromoted(schema, expression, plan, errorFactory),
             promotionPolicy,
             recordHot,

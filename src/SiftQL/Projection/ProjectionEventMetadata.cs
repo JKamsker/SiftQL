@@ -7,7 +7,9 @@ internal readonly struct ProjectionEventMetadata(Type eventMetadataType)
 {
     private readonly string _eventType = eventMetadataType.FullName ?? eventMetadataType.Name;
     private readonly string _eventName = eventMetadataType.Name;
-    private readonly bool _dynamic = eventMetadataType.IsInterface || eventMetadataType.IsAbstract;
+    private readonly bool _dynamic = eventMetadataType == typeof(ProjectedEvent) ||
+        eventMetadataType.IsInterface ||
+        eventMetadataType.IsAbstract;
 
     public string EventType(object subject) =>
         DynamicMetadata(subject) is { } projected

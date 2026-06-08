@@ -18,7 +18,7 @@ internal static class ProjectionPayloadWriterCompiler
         }
 
         var subject = Expression.Parameter(typeof(object), "subject");
-        Expression? access = BuildPropertyExpression(Expression.Convert(subject, subjectType), path);
+        Expression? access = FilterFieldAccessExpression.Build(Expression.Convert(subject, subjectType), path);
         if (access is null)
             return null;
 
@@ -52,25 +52,6 @@ internal static class ProjectionPayloadWriterCompiler
                 : Guid(projectedName, CompileRequired<Guid>(access, subject));
 
         return null;
-    }
-
-    private static Expression? BuildPropertyExpression(Expression subject, string propertyPath)
-    {
-        Expression current = subject;
-        foreach (string part in propertyPath.Split('.'))
-        {
-            var property = current.Type.GetProperty(
-                part,
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.Public |
-                System.Reflection.BindingFlags.IgnoreCase);
-            if (property?.GetMethod is null || property.GetMethod.GetParameters().Length != 0)
-                return null;
-
-            current = Expression.Property(current, property);
-        }
-
-        return current;
     }
 
     private static Func<object, T> CompileRequired<T>(

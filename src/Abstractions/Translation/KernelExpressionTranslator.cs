@@ -16,10 +16,7 @@ internal static class KernelExpressionTranslator
         return Translate(predicate.Body, predicate.Parameters[0], ref parameterIndex);
     }
 
-    private static FilterExpression Translate(
-        Expression expression,
-        ParameterExpression parameter,
-        ref int parameterIndex)
+    private static FilterExpression Translate(Expression expression, ParameterExpression parameter, ref int parameterIndex)
     {
         expression = StripConvert(expression);
         return expression.NodeType switch
@@ -98,7 +95,13 @@ internal static class KernelExpressionTranslator
         {
             if (TryGetFieldPath(expression.Object, parameter, out string? field))
             {
-                return FilterExpression.Contains(field, ToValue(expression.Arguments[0], parameter, ref parameterIndex));
+                if (expression.Object.Type == typeof(string) && expression.Arguments.Count != 1)
+                    throw Unsupported(expression);
+
+                FilterValue value = ToValue(expression.Arguments[0], parameter, ref parameterIndex);
+                return expression.Object.Type == typeof(string)
+                    ? FilterExpression.StringContains(field, value)
+                    : FilterExpression.Contains(field, value);
             }
 
             return FilterExpression.In(
@@ -163,8 +166,7 @@ internal static class KernelExpressionTranslator
             parameter,
             NextParameterKey(ref parameterIndex));
 
-    private static string NextParameterKey(ref int parameterIndex) =>
-        "p" + parameterIndex++;
+    private static string NextParameterKey(ref int parameterIndex) => "p" + parameterIndex++;
 
     private static string RequireField(Expression expression, ParameterExpression parameter) =>
         TryGetFieldPath(expression, parameter, out string? field)
@@ -270,19 +272,15 @@ internal static class KernelExpressionTranslator
         return expression;
     }
 
-    private static bool IsKernelIn(MethodInfo method) =>
-        method.Name == nameof(QueryKernelPredicates.In) &&
-        (method.DeclaringType == typeof(QueryKernelPredicates) ||
-            method.DeclaringType == typeof(QueryKernelPredicates));
+    private static bool IsKernelIn(MethodInfo method) => IsKernelPredicate(method, nameof(QueryKernelPredicates.In));
 
-    private static bool IsKernelExists(MethodInfo method) =>
-        method.Name == nameof(QueryKernelPredicates.Exists) &&
-        (method.DeclaringType == typeof(QueryKernelPredicates) ||
-            method.DeclaringType == typeof(QueryKernelPredicates));
+    private static bool IsKernelExists(MethodInfo method) => IsKernelPredicate(method, nameof(QueryKernelPredicates.Exists));
 
-    private static bool IsContains(MethodInfo method) =>
-        method.Name == nameof(Enumerable.Contains) ||
-        method.Name == "Contains";
+    private static bool IsKernelPredicate(MethodInfo method, string name) =>
+        method.Name == name &&
+        method.DeclaringType == typeof(QueryKernelPredicates);
+
+    private static bool IsContains(MethodInfo method) => method.Name is nameof(Enumerable.Contains) or "Contains";
 
     private static bool IsImplicitConversion(MethodCallExpression expression) =>
         expression.Method.Name == "op_Implicit" &&
@@ -297,7 +295,5 @@ internal static class KernelExpressionTranslator
             FilterOperator.LessThanOrEqual => FilterOperator.GreaterThanOrEqual,
             _ => op,
         };
-
-    private static KernelExpressionException Unsupported(Expression expression) =>
-        new($"Unsupported server kernel expression '{expression}'.");
+    private static KernelExpressionException Unsupported(Expression expression) => new($"Unsupported server kernel expression '{expression}'.");
 }

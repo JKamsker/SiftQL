@@ -5,6 +5,8 @@ namespace SiftQL.Generators.Hot;
 
 internal static class HotProviderFilterValidator
 {
+    private const int StringContainsOperator = 6;
+
     public static bool Validate(
         HotFilterNode node,
         EquatableArray<GeneratedField> fields,
@@ -53,10 +55,22 @@ internal static class HotProviderFilterValidator
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string path)
     {
-        if (!RequireField(fields, projectedEvent, node.Field, scalar: true, path, diagnostics))
+        if (!TryRequireField(
+                fields,
+                projectedEvent,
+                node.Field,
+                scalar: true,
+                path,
+                diagnostics,
+                out GeneratedScalarKind scalarKind,
+                out bool projectedDynamic))
+        {
             return false;
-        return node.Value is not null ||
-            Unsupported(diagnostics, path, "Hot compare filters require a value.");
+        }
+        if (node.Value is null)
+            return Unsupported(diagnostics, path, "Hot compare filters require a value.");
+
+        return ValidateComparison(scalarKind, projectedDynamic, node.Operator, node.Value, diagnostics, path);
     }
 
     private static bool ValidateIn(
@@ -66,12 +80,30 @@ internal static class HotProviderFilterValidator
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string path)
     {
-        if (!RequireField(fields, projectedEvent, node.Field, scalar: true, path, diagnostics))
+        if (!TryRequireField(
+                fields,
+                projectedEvent,
+                node.Field,
+                scalar: true,
+                path,
+                diagnostics,
+                out GeneratedScalarKind scalarKind,
+                out bool projectedDynamic))
+        {
             return false;
+        }
         if (node.Values.Count == 0)
             return Unsupported(diagnostics, path, "Hot in filters require at least one value.");
-        return node.Values.Count <= 128 ||
-            Unsupported(diagnostics, path, "Hot in filters cannot contain more than 128 values.");
+        if (node.Values.Count > 128)
+            return Unsupported(diagnostics, path, "Hot in filters cannot contain more than 128 values.");
+
+        for (int i = 0; i < node.Values.Count; i++)
+        {
+            if (!ValidateValue(scalarKind, projectedDynamic, node.Values[i], diagnostics, path))
+                return false;
+        }
+
+        return true;
     }
 
     private static bool ValidateContains(
@@ -81,10 +113,22 @@ internal static class HotProviderFilterValidator
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string path)
     {
-        if (!RequireField(fields, projectedEvent, node.Field, scalar: false, path, diagnostics))
+        if (!TryRequireField(
+                fields,
+                projectedEvent,
+                node.Field,
+                scalar: false,
+                path,
+                diagnostics,
+                out GeneratedScalarKind scalarKind,
+                out bool projectedDynamic))
+        {
             return false;
-        return node.Value is not null ||
-            Unsupported(diagnostics, path, "Hot contains filters require a value.");
+        }
+        if (node.Value is null)
+            return Unsupported(diagnostics, path, "Hot contains filters require a value.");
+
+        return ValidateValue(scalarKind, projectedDynamic, node.Value, diagnostics, path);
     }
 
     private static bool ValidateNot(
@@ -129,6 +173,95 @@ internal static class HotProviderFilterValidator
         string path,
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics) =>
         HotProviderFieldValidator.RequireField(fields, projectedEvent, name, scalar, path, diagnostics);
+
+    private static bool TryRequireField(
+        EquatableArray<GeneratedField> fields,
+        bool projectedEvent,
+        string name,
+        bool? scalar,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        out GeneratedScalarKind scalarKind,
+        out bool projectedDynamic)
+    {
+        scalarKind = GeneratedScalarKind.Object;
+        projectedDynamic = false;
+        if (!RequireField(fields, projectedEvent, name, scalar, path, diagnostics))
+            return false;
+
+        GeneratedField? field = fields.Items.FirstOrDefault(
+            item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (field is not null)
+        {
+            scalarKind = field.ScalarKind;
+            return true;
+        }
+
+        if (HotProviderFieldValidator.IsMetadataField(name))
+        {
+            scalarKind = GeneratedScalarKind.String;
+            return true;
+        }
+
+        projectedDynamic = true;
+        return true;
+    }
+
+    private static bool ValidateComparison(
+        GeneratedScalarKind scalarKind,
+        bool projectedDynamic,
+        int op,
+        HotFilterValue value,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        string path)
+    {
+        if (!ValidateValue(scalarKind, projectedDynamic, value, diagnostics, path))
+            return false;
+        if (op == StringContainsOperator)
+        {
+            return value.Kind == HotFilterValueKind.String &&
+                (projectedDynamic || scalarKind == GeneratedScalarKind.String) ||
+                Unsupported(diagnostics, path, "Hot string contains filters require a string field and value.");
+        }
+
+        if (op is 0 or 1)
+            return true;
+        if (projectedDynamic && IsNumeric(value.Kind))
+            return true;
+        return scalarKind == GeneratedScalarKind.Number ||
+            Unsupported(diagnostics, path, "Hot ordered comparisons require a numeric field.");
+    }
+
+    private static bool ValidateValue(
+        GeneratedScalarKind scalarKind,
+        bool projectedDynamic,
+        HotFilterValue value,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        string path)
+    {
+        if (value.Kind == HotFilterValueKind.Null || projectedDynamic)
+            return true;
+
+        bool valid = scalarKind switch
+        {
+            GeneratedScalarKind.Boolean => value.Kind == HotFilterValueKind.Boolean,
+            GeneratedScalarKind.Number => IsNumeric(value.Kind),
+            GeneratedScalarKind.String => value.Kind == HotFilterValueKind.String,
+            GeneratedScalarKind.Guid => value.Kind == HotFilterValueKind.Guid,
+            GeneratedScalarKind.Enum => value.Kind is HotFilterValueKind.String or
+                HotFilterValueKind.Integer or
+                HotFilterValueKind.UnsignedInteger,
+            _ => false,
+        };
+        return valid ||
+            Unsupported(diagnostics, path, $"Hot filter value '{value.Kind}' is not compatible with the field.");
+    }
+
+    private static bool IsNumeric(HotFilterValueKind kind) =>
+        kind is HotFilterValueKind.Integer or
+            HotFilterValueKind.UnsignedInteger or
+            HotFilterValueKind.Number or
+            HotFilterValueKind.Decimal;
 
     private static bool Unsupported(
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,

@@ -1,6 +1,9 @@
 using System.Collections.Immutable;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using SiftQL.Generators;
 using SiftQL.Generators.Schema;
+using SiftQL.Schema;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -79,6 +82,74 @@ public sealed class FilterSchemaGeneratorRegressionTests
     }
 
     [Fact]
+    public void UnreadableHiddenDerivedPropertyUsesReadableBaseSchemaField()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.HiddenUnreadableProperty",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public class BaseEvent
+                {
+                    public Guid EventId { get; } = Guid.Empty;
+                    public string Code { get; } = "base";
+                }
+
+                public sealed class DerivedEvent : BaseEvent, IFilterSubject
+                {
+                    public new int Code { set { } }
+                }
+                """));
+
+        AssertNoCompilationErrors(run, "hidden unreadable property schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "hidden unreadable property schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type eventType = assembly.GetType("Plugin.Events.DerivedEvent", throwOnError: true)!;
+        object ev = Activator.CreateInstance(eventType)!;
+
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        AssertEx.True(schema.TryGetField("Code", out var field), "base Code field is registered");
+        AssertEx.Equal("base", field.Getter(ev), "base Code getter is used");
+    }
+
+    [Fact]
+    public void GeneratedSchemaHonorsRuntimeRegisteredNonRecordValueObject()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.RegisteredClassValueObject",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed class Location
+                {
+                    public long MapId { get; init; }
+                }
+
+                public sealed record MovedEvent(
+                    Guid EventId,
+                    Location Location) : IFilterSubject;
+                """));
+
+        AssertNoCompilationErrors(run, "registered class value object schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "registered class value object schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type locationType = assembly.GetType("Plugin.Events.Location", throwOnError: true)!;
+        Type eventType = assembly.GetType("Plugin.Events.MovedEvent", throwOnError: true)!;
+
+        FilterSchema.RegisterValueObject(locationType);
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        AssertEx.True(schema.TryGetField("Location.MapId", out _), "registered non-record value object is expanded");
+    }
+
+    [Fact]
     public void NullableReferenceValueObjectDoesNotEmitUnsafeNestedFields()
     {
         GeneratorRun run = RunGenerator(
@@ -102,6 +173,70 @@ public sealed class FilterSchemaGeneratorRegressionTests
         AssertNoCompilationErrors(run, "nullable reference value object schema provider");
     }
 
+    [Fact]
+    public void PartialFilterSubjectIsGeneratedOnce()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.PartialSubject",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed partial class PartialEvent : IFilterSubject
+                {
+                    public Guid EventId { get; } = Guid.Empty;
+                }
+
+                public sealed partial class PartialEvent : IFilterSubject
+                {
+                    public long CharacterId { get; } = 42;
+                }
+                """));
+        string source = HotSource(run, "GeneratedCurrentFilterSchemaProvider.g.cs");
+
+        AssertEx.Equal(
+            1,
+            CountOccurrences(source, "subjectType == typeof(global::Plugin.Events.PartialEvent)"),
+            "partial subject has one generated type branch");
+        AssertNoCompilationErrors(run, "partial subject schema provider");
+    }
+
+    [Fact]
+    public void GeneratedSchemaSkipsCaseInsensitiveDuplicateFieldsAndMetadataCollisions()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.FieldCollision",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed class CollisionEvent : IFilterSubject
+                {
+                    public Guid EventId { get; } = Guid.Empty;
+                    public string subjectType { get; } = "payload";
+                    public string SubjectName { get; } = "payload";
+                    public int Id { get; } = 1;
+                    public int ID { get; } = 2;
+                }
+                """));
+        AssertNoCompilationErrors(run, "field collision schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "field collision schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type eventType = assembly.GetType("Plugin.Events.CollisionEvent", throwOnError: true)!;
+
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        AssertEx.True(schema.TryGetField("subjectType", out _), "schema keeps virtual subject type");
+        AssertEx.Equal(
+            1,
+            schema.FieldNames.Count(static name => string.Equals(name, "Id", StringComparison.OrdinalIgnoreCase)),
+            "schema keeps one case-insensitive Id field");
+    }
+
     private static GeneratorRun RunGenerator(string assemblyName, params SyntaxTree[] trees)
     {
         CSharpCompilation compilation = GeneratorTestCompilation.Create(assemblyName, trees);
@@ -120,6 +255,27 @@ public sealed class FilterSchemaGeneratorRegressionTests
 
     private static string HotSource(GeneratorRun run, string hintName) =>
         run.Result.Results[0].GeneratedSources.Single(source => source.HintName == hintName).SourceText.ToString();
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
+    }
+
+    private static Assembly EmitAndLoad(Compilation output, string label)
+    {
+        using var pe = new MemoryStream();
+        var emit = output.Emit(pe);
+        AssertEx.True(emit.Success, label + " emitted: " + string.Join(" | ", emit.Diagnostics));
+        return Assembly.Load(pe.ToArray());
+    }
 
     private static void AssertNoCompilationErrors(GeneratorRun run, string label)
     {

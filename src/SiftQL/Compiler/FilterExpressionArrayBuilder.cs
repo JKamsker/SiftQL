@@ -37,7 +37,8 @@ internal static class FilterExpressionArrayBuilder
                 value.Boolean,
                 nameof(FilterArrayContains.ContainsBoolean),
                 out expected),
-            FilterValueKind.String when elementType == typeof(string) => SetExpected(
+            FilterValueKind.String when elementType == typeof(string) &&
+                value.String is not null => SetExpected(
                 value.String,
                 nameof(FilterArrayContains.ContainsString),
                 out expected),
@@ -70,11 +71,22 @@ internal static class FilterExpressionArrayBuilder
         if (TryExactNumberContains(type, value, out expected, out string? exactMethod))
             return exactMethod;
 
+        if (value.Kind == FilterValueKind.Decimal)
+        {
+            expected = null;
+            return null;
+        }
+        if (IsFloating(type) &&
+            value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger)
+        {
+            expected = null;
+            return null;
+        }
+
         expected = value.Kind switch
         {
             FilterValueKind.Integer => (double)value.Integer,
             FilterValueKind.UnsignedInteger => (double)value.UnsignedInteger,
-            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return type == typeof(float) ? nameof(FilterArrayContains.ContainsSingle) :
@@ -165,4 +177,7 @@ internal static class FilterExpressionArrayBuilder
         type == typeof(long) ? nameof(FilterArrayContains.ContainsInt64Value) :
         type == typeof(ulong) ? nameof(FilterArrayContains.ContainsUInt64Value) :
         null;
+
+    private static bool IsFloating(Type type) =>
+        type == typeof(float) || type == typeof(double);
 }

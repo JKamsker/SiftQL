@@ -1,4 +1,3 @@
-using System.Globalization;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -31,8 +30,15 @@ public static class ProjectionCompiler
         EventProjectionExpression? projection,
         Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> compileInclude,
         ProjectionCompilerOptions options,
-        Func<string, Exception>? errorFactory = null) =>
-        CompileWithSchema(subjectType, projection, compileInclude, options, errorFactory, FilterSchema.For);
+        Func<string, Exception>? errorFactory = null)
+    {
+        EventProjectionExpression normalized = ProjectionExpressionSnapshot.Clone(
+            projection ?? EventProjectionExpression.Default);
+        Func<Type, FilterSchema> schemaFactory = subjectType == typeof(ProjectedEvent)
+            ? _ => ProjectedEventFilterSchema.ForProjection(normalized)
+            : FilterSchema.For;
+        return CompileWithSchema(subjectType, normalized, compileInclude, options, errorFactory, schemaFactory);
+    }
 
     internal static CompiledProjection<TContext> CompileWithSchema<TContext>(
         Type subjectType,
@@ -47,6 +53,8 @@ public static class ProjectionCompiler
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(schemaFactory);
         projection ??= EventProjectionExpression.Default;
+        projection = ProjectionExpressionSnapshot.Clone(projection);
+        ValidateShape(projection, errorFactory);
         if (projection.Fields.Length > MaxFields)
             throw Error(errorFactory, $"Projection exceeds the {MaxFields} field limit.");
         if (projection.Includes.Length > MaxIncludes)
@@ -76,7 +84,7 @@ public static class ProjectionCompiler
         if (hasPrecompiled)
         {
             return new CompiledProjection<TContext>(
-                BuildKey(fields, projection.Includes),
+                ProjectionCompilerKeyBuilder.Build(fields, projection.Includes),
                 subjectType,
                 eventMetadataType ?? subjectType,
                 fields,
@@ -109,7 +117,7 @@ public static class ProjectionCompiler
                 projectFields => compiledProjection!.PromoteProjectFields(projectFields))
             : null;
         compiledProjection = new CompiledProjection<TContext>(
-            BuildKey(fields, projection.Includes),
+            ProjectionCompilerKeyBuilder.Build(fields, projection.Includes),
             subjectType,
             eventMetadataType ?? subjectType,
             fields,
@@ -119,6 +127,16 @@ public static class ProjectionCompiler
         return compiledProjection;
 
         string Fingerprint() => fingerprint ??= projectionKey.ToString();
+    }
+
+    private static void ValidateShape(
+        EventProjectionExpression projection,
+        Func<string, Exception>? errorFactory)
+    {
+        if (projection.Fields is null)
+            throw Error(errorFactory, "Projection fields cannot be null.");
+        if (projection.Includes is null)
+            throw Error(errorFactory, "Projection includes cannot be null.");
     }
 
     private static bool TryGetPrecompiledProjection(
@@ -177,10 +195,12 @@ public static class ProjectionCompiler
                 schemaField.ProjectionAccessor ??
                     (subject => ProjectedEventValue.FromScalar(schemaField.Getter(subject))))
             {
-                WritePayload = ProjectionPayloadWriterCompiler.TryCompile(
-                    schema.SubjectType,
-                    field.Name,
-                    schemaField),
+                WritePayload = schemaField.ProjectionAccessor is null
+                    ? ProjectionPayloadWriterCompiler.TryCompile(
+                        schema.SubjectType,
+                        field.Name,
+                        schemaField)
+                    : null,
             };
         }
 
@@ -225,42 +245,6 @@ public static class ProjectionCompiler
                 throw Error(errorFactory, $"Projection include '{include.Intrinsic}' argument '{argument.Name}' is duplicated.");
         }
     }
-
-    private static string BuildKey<TContext>(
-        IReadOnlyList<CompiledProjection<TContext>.FieldProjector> fields,
-        IReadOnlyList<EventProjectionInclude> includes)
-    {
-        string fieldKey = string.Concat(fields.Select(FieldKey));
-        string includeKey = string.Concat(includes.Select(IncludeKey));
-        return string.Concat("F", CountPart(fields.Count), fieldKey, "I", CountPart(includes.Count), includeKey);
-    }
-
-    private static string FieldKey<TContext>(CompiledProjection<TContext>.FieldProjector field) =>
-        string.Concat("f", KeyPart(field.Path), KeyPart(field.Name));
-
-    private static string IncludeKey(EventProjectionInclude include)
-    {
-        string args = string.Concat(include.Arguments
-            .OrderBy(static arg => arg.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(ArgumentKey));
-        return string.Concat(
-            "i",
-            KeyPart(include.Intrinsic),
-            KeyPart(include.ResultName),
-            CountPart(include.Arguments.Length),
-            args);
-    }
-
-    private static string ArgumentKey(EventProjectionArgument argument) =>
-        string.Concat("a", KeyPart(argument.Name), KeyPart(FilterValueKey.From(argument.Value).ToString()));
-
-    private static string CountPart(int count) =>
-        count.ToString(CultureInfo.InvariantCulture) + ":";
-
-    private static string KeyPart(string? value) =>
-        value is null
-            ? "-1:"
-            : string.Concat(value.Length.ToString(CultureInfo.InvariantCulture), ":", value);
 
     private static bool IsDefaultProjectionField(FilterSchema schema, string name) =>
         !IsMetadataField(name) &&

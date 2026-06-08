@@ -20,9 +20,11 @@ internal static class FilterTypedArrayPredicates
                     FilterValueKind.UnsignedInteger or
                     FilterValueKind.Number or
                     FilterValueKind.Decimal) &&
+                CanUseDoubleExpected(value) &&
                 !RequiresExactNumeric(field.ValueType) =>
                 CompileNumberContains(array.NumberContains!, value),
-            FilterScalarKind.String when value.Kind == FilterValueKind.String =>
+            FilterScalarKind.String when value.Kind == FilterValueKind.String &&
+                value.String is not null =>
                 CompileStringContains(array.TextContains!, value.String),
             FilterScalarKind.Guid when value.Kind == FilterValueKind.Guid =>
                 CompileGuidContains(array.GuidContains!, value.Guid),
@@ -43,7 +45,6 @@ internal static class FilterTypedArrayPredicates
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return subject => contains(subject, expected);
@@ -62,8 +63,17 @@ internal static class FilterTypedArrayPredicates
     private static bool RequiresExactNumeric(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
-        return type == typeof(long) ||
+        return type == typeof(byte) ||
+            type == typeof(sbyte) ||
+            type == typeof(short) ||
+            type == typeof(ushort) ||
+            type == typeof(int) ||
+            type == typeof(uint) ||
+            type == typeof(long) ||
             type == typeof(ulong) ||
             type == typeof(decimal);
     }
+
+    private static bool CanUseDoubleExpected(FilterValue value) =>
+        value.Kind == FilterValueKind.Number;
 }

@@ -161,9 +161,8 @@ public static class FilterArrayContains
     public static bool ContainsSingle(float[]? items, double expected)
     {
         if (!CanSearch(items)) return false;
-        float expectedFloat = (float)expected;
         for (int i = 0; i < items.Length; i++)
-            if (items[i] == expectedFloat) return true;
+            if (items[i] == expected) return true;
         return false;
     }
 

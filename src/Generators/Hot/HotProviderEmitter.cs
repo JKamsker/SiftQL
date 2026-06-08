@@ -30,10 +30,10 @@ internal static class HotProviderEmitter
         HotProviderLookupEmitter.Emit(source, provider);
         for (int i = 0; i < provider.Entries.Count; i++)
             EmitEntry(source, provider.Entries[i], i);
-        EmitHelpers(source);
+        HotProviderRuntimeEmitter.EmitHelpers(source);
         source.AppendLine("}");
         source.AppendLine();
-        EmitRegistration(source, provider.ProviderName, provider.ManifestHash);
+        HotProviderRuntimeEmitter.EmitRegistration(source, provider.ProviderName, provider.ManifestHash);
         return source.ToString();
     }
 
@@ -92,8 +92,8 @@ internal static class HotProviderEmitter
             HotFilterNodeKind.Contains => "FilterValues.Contains(" + Field(members, entry, node, index, ref fields) +
                 ".Getter(subject), " + Value(members, node.Value!, parameters, index, ref values) + ")",
             HotFilterNodeKind.Not => "!(" + FilterExpression(members, entry, node.Children[0], parameters, index, ref fields, ref values) + ")",
-            HotFilterNodeKind.And => Composite(members, entry, node, parameters, index, " && ", ref fields, ref values),
-            HotFilterNodeKind.Or => Composite(members, entry, node, parameters, index, " || ", ref fields, ref values),
+            HotFilterNodeKind.And => Composite(members, entry, node, parameters, index, " && ", and: true, ref fields, ref values),
+            HotFilterNodeKind.Or => Composite(members, entry, node, parameters, index, " || ", and: false, ref fields, ref values),
             _ => "false",
         };
     }
@@ -105,13 +105,39 @@ internal static class HotProviderEmitter
         HotFilterParameterMap parameters,
         int index,
         string op,
+        bool and,
         ref int fields,
         ref int values)
     {
-        var parts = new string[node.Children.Count];
+        HotFilterNode[] children = and && node.Children.Count > 1
+            ? node.Children.Items.OrderBy(EstimateCost).ToArray()
+            : node.Children.Items.ToArray();
+        var parts = new string[children.Length];
         for (int i = 0; i < parts.Length; i++)
-            parts[i] = FilterExpression(members, entry, node.Children[i], parameters, index, ref fields, ref values);
+            parts[i] = FilterExpression(members, entry, children[i], parameters, index, ref fields, ref values);
         return "(" + string.Join(op, parts) + ")";
+    }
+
+    private static int EstimateCost(HotFilterNode node) =>
+        node.Kind switch
+        {
+            HotFilterNodeKind.Any => 0,
+            HotFilterNodeKind.Compare => node.Operator == 0 ? 1 : 2,
+            HotFilterNodeKind.Exists => 1,
+            HotFilterNodeKind.In => 4 + Math.Min(node.Values.Count, 16),
+            HotFilterNodeKind.Contains => 32,
+            HotFilterNodeKind.Not => 8 + ChildrenCost(node),
+            HotFilterNodeKind.And => ChildrenCost(node),
+            HotFilterNodeKind.Or => 16 + ChildrenCost(node),
+            _ => 64,
+        };
+
+    private static int ChildrenCost(HotFilterNode node)
+    {
+        int cost = 0;
+        for (int i = 0; i < node.Children.Count; i++)
+            cost += EstimateCost(node.Children[i]);
+        return cost;
     }
 
     private static string Field(
@@ -261,37 +287,6 @@ internal static class HotProviderEmitter
             source.Append(")");
         }
         source.Append(" }");
-    }
-
-    private static void EmitHelpers(StringBuilder source)
-    {
-        source.AppendLine("    private static FilterField RequireField(Type subjectType, string fieldName) =>");
-        source.AppendLine("        subjectType == typeof(ProjectedEvent) && ProjectedEventPaths.TrySplit(fieldName, out _, out _)");
-        source.AppendLine("            ? ProjectedEventFilterSchema.CreateField(fieldName)");
-        source.AppendLine("            : FilterSchema.For(subjectType).TryGetField(fieldName, out var field)");
-        source.AppendLine("            ? field");
-        source.AppendLine("            : throw new InvalidOperationException($\"Hot provider field '{fieldName}' is unavailable for {subjectType.FullName}.\");");
-        source.AppendLine();
-        source.AppendLine("    private static ProjectedEventValue Project(FilterField field, object subject) =>");
-        source.AppendLine("        field.ProjectionAccessor is null");
-        source.AppendLine("            ? ProjectedEventValue.FromScalar(field.Getter(subject))");
-        source.AppendLine("            : field.ProjectionAccessor(subject);");
-        source.AppendLine();
-        source.AppendLine("    private static FilterValue Parameter(IReadOnlyList<FilterValue> parameters, int index) =>");
-        source.AppendLine("        parameters[index];");
-        source.AppendLine();
-    }
-
-    private static void EmitRegistration(StringBuilder source, string providerName, string manifestHash)
-    {
-        source.AppendLine("internal static class " + providerName + "Registration");
-        source.AppendLine("{");
-        source.AppendLine("    [ModuleInitializer]");
-        source.Append("    internal static void Register() => HotProviderRegistrationContext.RegisterFactory(static () => new ");
-        source.Append(providerName).Append("(), ");
-        AppendLiteral(source, manifestHash);
-        source.AppendLine(");");
-        source.AppendLine("}");
     }
 
     private static void AppendLiteral(StringBuilder source, string value)

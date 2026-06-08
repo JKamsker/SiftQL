@@ -10,6 +10,8 @@ namespace SiftQL.Values;
 public static class FilterValues
 {
     private const int MaxRuntimeArrayItems = 256;
+    private const string TooManyRuntimeArrayItemsMessage =
+        "Runtime array filters support at most 256 items.";
 
     public static void ValidateComparison(
         FilterField field,
@@ -18,6 +20,17 @@ public static class FilterValues
         Func<string, Exception>? errorFactory = null)
     {
         ValidateValue(field, value, errorFactory);
+        if (op == FilterOperator.StringContains)
+        {
+            if (value.Kind == FilterValueKind.String &&
+                (field.ValueType == typeof(string) || IsProjectedDynamic(field.ValueType)))
+            {
+                return;
+            }
+
+            throw Error(errorFactory, $"Filter field '{field.Name}' does not support string contains.");
+        }
+
         if (op is FilterOperator.Equal or FilterOperator.NotEqual)
             return;
 
@@ -50,7 +63,9 @@ public static class FilterValues
 
         Type type = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
         bool valid =
-            type.IsEnum && value.Kind is (FilterValueKind.String or FilterValueKind.Integer) ||
+            type.IsEnum && value.Kind is (FilterValueKind.String or
+                FilterValueKind.Integer or
+                FilterValueKind.UnsignedInteger) ||
             type == typeof(bool) && value.Kind == FilterValueKind.Boolean ||
             FilterNumeric.IsNumeric(type) && value.Kind is (FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
@@ -72,6 +87,7 @@ public static class FilterValues
             FilterOperator.GreaterThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison >= 0,
             FilterOperator.LessThan => TryCompareOrdered(actual, expected, out int comparison) && comparison < 0,
             FilterOperator.LessThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison <= 0,
+            FilterOperator.StringContains => ContainsString(actual, expected),
             _ => false,
         };
 
@@ -93,21 +109,37 @@ public static class FilterValues
         if (actual is ICollection collection && collection.Count > MaxRuntimeArrayItems)
             throw TooManyRuntimeArrayItems();
 
-        int seen = 0;
-        bool found = false;
-        foreach (object? item in enumerable)
+        bool matched = false;
+        try
         {
-            if (++seen > MaxRuntimeArrayItems)
-                throw TooManyRuntimeArrayItems();
-            if (!found && AreEqual(item, expected))
-                found = true;
+            int seen = 0;
+            foreach (object? item in enumerable)
+            {
+                if (actual is not ICollection && ++seen > MaxRuntimeArrayItems)
+                    throw TooManyRuntimeArrayItems();
+                if (!matched && AreEqual(item, expected))
+                    matched = true;
+            }
+        }
+        catch (Exception ex) when (matched && !IsTooManyRuntimeArrayItems(ex))
+        {
+            return true;
         }
 
-        return found;
+        return matched;
     }
 
+    private static bool ContainsString(object? actual, FilterValue expected) =>
+        actual is string text &&
+        expected.Kind == FilterValueKind.String &&
+        expected.String is string substring &&
+        text.Contains(substring, StringComparison.Ordinal);
+
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
-        new($"Runtime array filters support at most {MaxRuntimeArrayItems} items.");
+        new(TooManyRuntimeArrayItemsMessage);
+
+    private static bool IsTooManyRuntimeArrayItems(Exception ex) =>
+        ex is InvalidOperationException { Message: TooManyRuntimeArrayItemsMessage };
 
     private static bool AreEqual(object? actual, FilterValue expected)
     {
@@ -118,9 +150,10 @@ public static class FilterValues
         {
             return expected.Kind switch
             {
-                FilterValueKind.String =>
-                    string.Equals(actual.ToString(), expected.String, StringComparison.Ordinal),
+                FilterValueKind.String => IsEnumStringEqual(actual, expected.String),
                 FilterValueKind.Integer => IsEnumIntegerEqual(actual, expected.Integer),
+                FilterValueKind.UnsignedInteger =>
+                    IsEnumUnsignedIntegerEqual(actual, expected.UnsignedInteger),
                 _ => false,
             };
         }
@@ -193,6 +226,17 @@ public static class FilterValues
     private static bool IsProjectedDynamic(Type type) =>
         type == typeof(ProjectedEventValue);
 
+    private static bool IsEnumStringEqual(object actual, string? expected)
+    {
+        if (expected is null ||
+            !Enum.TryParse(actual.GetType(), expected, ignoreCase: false, out object? parsed))
+        {
+            return false;
+        }
+
+        return actual.Equals(parsed);
+    }
+
     private static bool IsEnumIntegerEqual(object actual, long expected)
     {
         Type underlying = Enum.GetUnderlyingType(actual.GetType());
@@ -211,6 +255,28 @@ public static class FilterValues
             TypeCode.Int16 => (short)value == expected,
             TypeCode.Int32 => (int)value == expected,
             TypeCode.Int64 => (long)value == expected,
+            _ => false,
+        };
+    }
+
+    private static bool IsEnumUnsignedIntegerEqual(object actual, ulong expected)
+    {
+        Type underlying = Enum.GetUnderlyingType(actual.GetType());
+        object value = Convert.ChangeType(
+            actual,
+            underlying,
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        return Type.GetTypeCode(underlying) switch
+        {
+            TypeCode.Byte => (byte)value == expected,
+            TypeCode.UInt16 => (ushort)value == expected,
+            TypeCode.UInt32 => (uint)value == expected,
+            TypeCode.UInt64 => (ulong)value == expected,
+            TypeCode.SByte => (sbyte)value >= 0 && (ulong)(sbyte)value == expected,
+            TypeCode.Int16 => (short)value >= 0 && (ulong)(short)value == expected,
+            TypeCode.Int32 => (int)value >= 0 && (ulong)(int)value == expected,
+            TypeCode.Int64 => (long)value >= 0 && (ulong)(long)value == expected,
             _ => false,
         };
     }

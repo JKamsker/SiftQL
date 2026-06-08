@@ -54,8 +54,13 @@ var index = new TypedFilterSubscriptionIndex<Subscription, SensorReading>();
 index.Add(alertSub, FilterExpression.Compare(
     "temperature", FilterOperator.GreaterThan, FilterValue.From(80.0)));
 
-// Find all subscriptions that match a given event
-var matches = index.SnapshotCandidates(reading);
+// Find subscriptions whose full filter matches a given event
+var matches = index.SnapshotMatches(reading);
+
+// Or use SnapshotCandidates when you only need the fast index candidates.
+// Candidate lookup can include false positives for unindexed filters or
+// filters that were narrowed by one equality condition.
+var candidates = index.SnapshotCandidates(reading);
 ```
 
 ### Serialization

@@ -17,19 +17,20 @@ internal static class TieredFilterKernelFactory
         ITieredHotManifestSink? hotManifestSink,
         Func<string, Exception>? errorFactory)
     {
-        Func<object, bool> interpreted = FilterInterpretedCompiler.Compile(schema, expression, errorFactory);
-        string fingerprint = FilterExpressionFingerprint.Create(expression);
+        FilterExpression expressionSnapshot = FilterExpressionSnapshot.Clone(expression);
+        Func<object, bool> interpreted = FilterInterpretedCompiler.Compile(schema, expressionSnapshot, errorFactory);
+        string fingerprint = FilterExpressionFingerprint.Create(expressionSnapshot);
         Func<KernelPredicate?> compilePromoted = () =>
             PrecompiledTieredProviderRegistry.TryGetFilter(schema.SubjectType, fingerprint, out var hot)
                 ? KernelPredicate.FromObject(hot!)
-                : FilterExpressionCompiler.TryCompilePredicate(schema, expression, errorFactory);
+                : FilterExpressionCompiler.TryCompilePredicate(schema, expressionSnapshot, errorFactory);
         Action<TieredKernelSnapshot>? recordHot = hotManifestSink is null
             ? null
-            : snapshot => hotManifestSink.RecordHotFilter(
+            : report => hotManifestSink.RecordHotFilter(
                 schema.SubjectType,
-                expression,
-                snapshot.Evaluations,
-                snapshot.Matches);
+                expressionSnapshot,
+                report.Evaluations,
+                report.Matches);
         CompiledKernel? kernel = null;
         var state = new TieredKernelState(
             interpreted,

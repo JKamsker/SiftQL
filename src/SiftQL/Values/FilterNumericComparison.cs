@@ -4,12 +4,17 @@ namespace SiftQL.Values;
 
 internal static class FilterNumericComparison
 {
+    private const double LongMaxExclusive = 9_223_372_036_854_775_808D;
+    private const double ULongMaxExclusive = 18_446_744_073_709_551_616D;
+
     public static bool AreIntegerEqual(object actual, long expected)
     {
         if (TryInteger(actual, out long signed, out ulong unsigned, out bool isUnsigned))
             return isUnsigned
                 ? expected >= 0 && unsigned == (ulong)expected
                 : signed == expected;
+        if (TryCompareFloatingToSigned(actual, expected, out int comparison))
+            return comparison == 0;
         return actual is decimal decimalValue
             ? decimalValue == expected
             : TryNumber(actual, out double number) && number == expected;
@@ -19,6 +24,8 @@ internal static class FilterNumericComparison
     {
         if (TryInteger(actual, out long signed, out ulong unsigned, out bool isUnsigned))
             return isUnsigned ? unsigned == expected : signed >= 0 && (ulong)signed == expected;
+        if (TryCompareFloatingToUnsigned(actual, expected, out int comparison))
+            return comparison == 0;
         return actual is decimal decimalValue
             ? decimalValue >= 0 && decimalValue == expected
             : TryNumber(actual, out double number) && number == expected;
@@ -61,6 +68,9 @@ internal static class FilterNumericComparison
             return true;
         }
 
+        if (TryCompareFloatingToSigned(actual, expected, out comparison))
+            return true;
+
         comparison = 0;
         return false;
     }
@@ -80,6 +90,9 @@ internal static class FilterNumericComparison
             comparison = decimalValue.CompareTo(expected);
             return true;
         }
+
+        if (TryCompareFloatingToUnsigned(actual, expected, out comparison))
+            return true;
 
         comparison = 0;
         return false;
@@ -174,4 +187,80 @@ internal static class FilterNumericComparison
 
     private static int CompareSignedToUnsigned(long actual, ulong expected) =>
         actual < 0 ? -1 : ((ulong)actual).CompareTo(expected);
+
+    private static bool TryCompareFloatingToSigned(
+        object? actual,
+        long expected,
+        out int comparison) =>
+        actual switch
+        {
+            float item => TryCompareDoubleToSigned(item, expected, out comparison),
+            double item => TryCompareDoubleToSigned(item, expected, out comparison),
+            _ => False(out comparison),
+        };
+
+    private static bool TryCompareFloatingToUnsigned(
+        object? actual,
+        ulong expected,
+        out int comparison) =>
+        actual switch
+        {
+            float item => TryCompareDoubleToUnsigned(item, expected, out comparison),
+            double item => TryCompareDoubleToUnsigned(item, expected, out comparison),
+            _ => False(out comparison),
+        };
+
+    private static bool TryCompareDoubleToSigned(
+        double actual,
+        long expected,
+        out int comparison)
+    {
+        if (double.IsNaN(actual))
+            return False(out comparison);
+        if (actual < long.MinValue)
+            return Compared(-1, out comparison);
+        if (actual >= LongMaxExclusive)
+            return Compared(1, out comparison);
+
+        double roundedExpected = expected;
+        if (actual < roundedExpected)
+            return Compared(-1, out comparison);
+        if (actual > roundedExpected)
+            return Compared(1, out comparison);
+
+        return Compared(((long)actual).CompareTo(expected), out comparison);
+    }
+
+    private static bool TryCompareDoubleToUnsigned(
+        double actual,
+        ulong expected,
+        out int comparison)
+    {
+        if (double.IsNaN(actual))
+            return False(out comparison);
+        if (actual < 0D)
+            return Compared(-1, out comparison);
+        if (actual >= ULongMaxExclusive)
+            return Compared(1, out comparison);
+
+        double roundedExpected = expected;
+        if (actual < roundedExpected)
+            return Compared(-1, out comparison);
+        if (actual > roundedExpected)
+            return Compared(1, out comparison);
+
+        return Compared(((ulong)actual).CompareTo(expected), out comparison);
+    }
+
+    private static bool Compared(int result, out int comparison)
+    {
+        comparison = result;
+        return true;
+    }
+
+    private static bool False(out int comparison)
+    {
+        comparison = 0;
+        return false;
+    }
 }
