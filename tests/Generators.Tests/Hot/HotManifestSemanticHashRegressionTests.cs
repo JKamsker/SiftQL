@@ -55,11 +55,60 @@ public sealed class HotManifestSemanticHashRegressionTests
             HotManifestSemanticHash.Compute(onePointTen));
     }
 
+    [Fact]
+    public void SemanticHashDistinguishesProjectionArgumentNegativeZeroDefinition()
+    {
+        string positiveZero = Manifest(ProjectionEntry("""
+            {
+                "Fields": [],
+                "Includes": [
+                    {
+                        "Intrinsic": "test.window",
+                        "ResultName": "window",
+                        "Arguments": [
+                            {
+                                "Name": "offset",
+                                "Value": { "Kind": 3, "Number": 0.0 }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """));
+        string negativeZero = Manifest(ProjectionEntry("""
+            {
+                "Fields": [],
+                "Includes": [
+                    {
+                        "Intrinsic": "test.window",
+                        "ResultName": "window",
+                        "Arguments": [
+                            {
+                                "Name": "offset",
+                                "Value": { "Kind": 3, "Number": -0.0 }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """));
+
+        Assert.NotEqual(
+            HotManifestSemanticHash.Compute(positiveZero),
+            HotManifestSemanticHash.Compute(negativeZero));
+    }
+
     private static string Entry(string definition) =>
+        Entry("filter", definition);
+
+    private static string ProjectionEntry(string definition) =>
+        Entry("projection", definition);
+
+    private static string Entry(string kind, string definition) =>
         $$"""
         {
-            "Key": "filter|Subject|fingerprint",
-            "Kind": "filter",
+            "Key": "{{kind}}|Subject|fingerprint",
+            "Kind": "{{kind}}",
             "SubjectType": "Subject",
             "Fingerprint": "fingerprint",
             "Definition": {{definition}}
