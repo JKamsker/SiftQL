@@ -74,6 +74,35 @@ public sealed class ParameterizedHotProviderSourceGeneratorTests
         AssertEx.Equal(5L, projected.Context.Single().Value.Integer, "runtime include kept bound parameter");
     }
 
+    [Fact]
+    public void LoaderAcceptsParameterizedProviderWhenObservedValuesChange()
+    {
+        const string assemblyName = "Plugin.Hot.ParameterizedSkew";
+        string generatorManifest = HotManifestJson(
+            assemblyName,
+            ItemIdFilter(7),
+            Projection(limit: 3));
+        string runtimeManifest = HotManifestJson(
+            assemblyName,
+            ItemIdFilter(9),
+            Projection(limit: 5));
+        GeneratorRun run = RunGenerator(
+            assemblyName,
+            new InMemoryAdditionalText("parameterized.siftql-hot.json", generatorManifest),
+            PluginEventTree());
+
+        AssertEx.Equal(0, run.Diagnostics.Length, "parameterized generator diagnostics");
+        AssertNoCompilationErrors(run, "parameterized hot provider");
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using LoadedHotProvider loaded = HotProviderTestLoader.Load(
+            run.OutputCompilation,
+            assemblyName,
+            runtimeManifest,
+            "parameterized hot provider with observed value skew");
+
+        Assert.NotNull(loaded.Assembly.GetType("Plugin.Events.PluginOwnedEvent", throwOnError: true));
+    }
+
     private static FilterExpression ItemIdFilter(long itemId) =>
         FilterExpression.Compare(
             "ItemId",

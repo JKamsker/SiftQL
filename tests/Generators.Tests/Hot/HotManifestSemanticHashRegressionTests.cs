@@ -56,6 +56,97 @@ public sealed class HotManifestSemanticHashRegressionTests
     }
 
     [Fact]
+    public void SemanticHashIgnoresRuntimeVersion()
+    {
+        string entry = Entry("""
+            {
+                "Kind": 4,
+                "Field": "ItemId",
+                "Operator": 0,
+                "Value": { "Kind": 2, "Integer": 100 },
+                "Values": [],
+                "Children": []
+            }
+            """);
+
+        Assert.Equal(
+            HotManifestSemanticHash.Compute(Manifest(entry, runtimeVersion: "10.0.0")),
+            HotManifestSemanticHash.Compute(Manifest(entry, runtimeVersion: "11.0.0")));
+    }
+
+    [Fact]
+    public void SemanticHashIgnoresParameterizedFilterLiteralValues()
+    {
+        string seven = Manifest(Entry("""
+            {
+                "Kind": 4,
+                "Field": "ItemId",
+                "Operator": 0,
+                "Value": { "Kind": 2, "ParameterKey": "p0", "Integer": 7 },
+                "Values": [],
+                "Children": []
+            }
+            """));
+        string nine = Manifest(Entry("""
+            {
+                "Kind": 4,
+                "Field": "ItemId",
+                "Operator": 0,
+                "Value": { "Kind": 2, "ParameterKey": "p0", "Integer": 9 },
+                "Values": [],
+                "Children": []
+            }
+            """));
+
+        Assert.Equal(
+            HotManifestSemanticHash.Compute(seven),
+            HotManifestSemanticHash.Compute(nine));
+    }
+
+    [Fact]
+    public void SemanticHashIgnoresParameterizedProjectionArgumentLiteralValues()
+    {
+        string three = Manifest(ProjectionEntry("""
+            {
+                "Fields": [],
+                "Includes": [
+                    {
+                        "Intrinsic": "test.limit",
+                        "ResultName": "limit",
+                        "Arguments": [
+                            {
+                                "Name": "limit",
+                                "Value": { "Kind": 2, "ParameterKey": "p0", "Integer": 3 }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """));
+        string five = Manifest(ProjectionEntry("""
+            {
+                "Fields": [],
+                "Includes": [
+                    {
+                        "Intrinsic": "test.limit",
+                        "ResultName": "limit",
+                        "Arguments": [
+                            {
+                                "Name": "limit",
+                                "Value": { "Kind": 2, "ParameterKey": "p0", "Integer": 5 }
+                            }
+                        ]
+                    }
+                ]
+            }
+            """));
+
+        Assert.Equal(
+            HotManifestSemanticHash.Compute(three),
+            HotManifestSemanticHash.Compute(five));
+    }
+
+    [Fact]
     public void SemanticHashDistinguishesProjectionArgumentNegativeZeroDefinition()
     {
         string positiveZero = Manifest(ProjectionEntry("""
@@ -115,11 +206,11 @@ public sealed class HotManifestSemanticHashRegressionTests
         }
         """;
 
-    private static string Manifest(string entries) =>
+    private static string Manifest(string entries, string runtimeVersion = "10.0.0") =>
         $$"""
         {
             "Schema": "siftql.hot.v1",
-            "RuntimeVersion": "10.0.0",
+            "RuntimeVersion": "{{runtimeVersion}}",
             "FilterEngineVersion": "tiered-v1",
             "GeneratorVersion": "hot-sourcegen-v1",
             "Entries": [{{entries}}]

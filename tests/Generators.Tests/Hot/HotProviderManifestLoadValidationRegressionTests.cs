@@ -75,6 +75,44 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         Assert.True(result.Loaded, result.Message);
     }
 
+    [Fact]
+    public void LoaderAcceptsRuntimeVersionSkewWhenExactRuntimeVersionIsNotRequired()
+    {
+        const string assemblyName = "Plugin.Hot.RuntimeSkew";
+        FilterExpression filter = FilterExpression.Compare("Value", FilterOperator.Equal, FilterValue.From(7L));
+        string subjectType = "Plugin.Events.RuntimeSkewEvent, " + assemblyName;
+        string fingerprint = FilterExpressionFingerprint.Create(filter);
+        string generatorManifest = ManifestJson(
+            assemblyName,
+            "filter",
+            subjectType,
+            fingerprint,
+            filter,
+            runtimeVersion: "10.0.0");
+        string runtimeManifest = ManifestJson(
+            assemblyName,
+            "filter",
+            subjectType,
+            fingerprint,
+            filter,
+            runtimeVersion: "11.0.0");
+        Compilation output = RunGenerator(
+            assemblyName,
+            new InMemoryAdditionalText("runtime-skew.siftql-hot.json", generatorManifest),
+            Source("""
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record RuntimeSkewEvent(long Value) : IFilterSubject;
+                """));
+
+        using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using HotTieredProviderLoadResult result = Load(output, assemblyName, runtimeManifest);
+
+        Assert.True(result.Loaded, result.Message);
+    }
+
     private static Compilation RunGenerator(
         string assemblyName,
         AdditionalText manifest,
@@ -119,12 +157,13 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         string kind,
         string subjectType,
         string fingerprint,
-        FilterExpression filter)
+        FilterExpression filter,
+        string runtimeVersion = "10.0.0")
     {
         _ = assemblyName;
         return JsonSerializer.Serialize(new HotCompilationManifest
         {
-            RuntimeVersion = "10.0.0",
+            RuntimeVersion = runtimeVersion,
             Entries =
             [
                 new HotCompilationManifestEntry
