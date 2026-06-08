@@ -90,6 +90,29 @@ public sealed class QueryKernelProjectedRegressionTests
     }
 
     [Fact]
+    public async Task ProjectedFilterReadsFlatDottedProjectionField()
+    {
+        FilterSchema.RegisterValueObject(typeof(PlayerDetails));
+        EventPipelineExpression pipeline = QueryKernel.For<PlayerNestedEvent>()
+            .Select("Player.Id")
+            .WhereProjected(static ev => ev.Field("Player.Id").Integer == 42)
+            .Pipeline;
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(PlayerNestedEvent),
+            pipeline,
+            RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new PlayerNestedEvent(new PlayerDetails(42), 2),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(42, projected!.Field("Player.Id").Integer);
+    }
+
+    [Fact]
     public async Task ProjectedSelectorRebasesNestedObjectFieldThroughAlias()
     {
         FilterSchema.RegisterValueObject(typeof(PlayerDetails));
