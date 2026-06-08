@@ -89,10 +89,8 @@ public sealed class RemoteServerService(
         ArgumentNullException.ThrowIfNull(record);
         if (_client is null)
             throw new InvalidOperationException("No remote client is attached.");
-        if (!_subscriptions.TryGetValue(typeof(TRecord), out List<Subscription>? subscriptions))
-            return;
 
-        foreach (Subscription subscription in subscriptions)
+        foreach (Subscription subscription in SubscriptionsFor(record))
         {
             ProjectedEvent? projected = await subscription.Pipeline
                 .ProjectAsync(record, context: null, cancellationToken)
@@ -103,6 +101,19 @@ public sealed class RemoteServerService(
             await _client.DispatchAsync(
                 new SubscriptionDispatch(subscription.Id, subscription.Subject, projected),
                 cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private IEnumerable<Subscription> SubscriptionsFor(object record)
+    {
+        Type recordType = record.GetType();
+        foreach ((Type subjectType, List<Subscription> subscriptions) in _subscriptions)
+        {
+            if (!subjectType.IsAssignableFrom(recordType))
+                continue;
+
+            foreach (Subscription subscription in subscriptions)
+                yield return subscription;
         }
     }
 

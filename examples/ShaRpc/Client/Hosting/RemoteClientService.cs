@@ -1,5 +1,6 @@
 using SiftQL.Examples.ShaRpc.SharedContracts.Contracts;
 using SiftQL.Examples.ShaRpc.SharedContracts.Domain;
+using SiftQL.Projected;
 
 namespace SiftQL.Examples.ShaRpc.Client.Hosting;
 
@@ -31,7 +32,14 @@ public sealed class RemoteClientService : IRemoteClient
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dispatch);
-        long clientId = dispatch.Payload.Field("Session").Integer;
+        if (!dispatch.Payload.TryGetField("Session", out ProjectedEventValue session) ||
+            session.Kind != ProjectedEventValueKind.Integer)
+        {
+            throw new InvalidOperationException(
+                "Subscription dispatch payload must include an integer Session field.");
+        }
+
+        long clientId = session.Integer;
         await Server.SendToClientAsync(
             new ClientDelivery(clientId, "inventory.notice", dispatch.Payload),
             cancellationToken).ConfigureAwait(false);

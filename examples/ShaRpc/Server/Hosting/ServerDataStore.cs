@@ -16,8 +16,16 @@ public sealed class ServerDataStore
     public IReadOnlyList<object> Rows(Type subjectType)
     {
         ArgumentNullException.ThrowIfNull(subjectType);
-        return _rows.TryGetValue(subjectType, out List<object>? rows)
-            ? rows
-            : [];
+        var matches = new List<object>();
+        foreach (List<object> rows in _rows.Values)
+        {
+            foreach (object row in rows)
+            {
+                if (subjectType.IsInstanceOfType(row))
+                    matches.Add(row);
+            }
+        }
+
+        return matches;
     }
 }
