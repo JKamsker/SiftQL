@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using SiftQL.Compiler;
 
 namespace SiftQL.Schema;
@@ -74,6 +75,15 @@ public sealed class FilterSchema
     }
 
     private static bool TryCreateRegistered(Type subjectType, out FilterSchema? schema)
+    {
+        if (TryCreateRegisteredCore(subjectType, out schema))
+            return true;
+
+        RuntimeHelpers.RunModuleConstructor(subjectType.Assembly.ManifestModule.ModuleHandle);
+        return TryCreateRegisteredCore(subjectType, out schema);
+    }
+
+    private static bool TryCreateRegisteredCore(Type subjectType, out FilterSchema? schema)
     {
         if (s_generatedProviders.TryGetValue(subjectType.Assembly, out var provider) &&
             provider(subjectType, out schema))
