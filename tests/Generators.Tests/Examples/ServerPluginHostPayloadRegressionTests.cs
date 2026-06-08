@@ -107,4 +107,36 @@ public sealed class ServerPluginHostPayloadRegressionTests
         Assert.Equal("Test", message.Payload[nameof(ProjectedEvent.EventName)]);
         Assert.Equal(2, message.Payload.Count);
     }
+
+    [Fact]
+    public void ClientPayloadSkipsNullNestedObjectEntries()
+    {
+        var clients = new ClientGateway();
+        clients.Register(1001);
+
+        bool sent = clients.SendToAvatar(
+            1001,
+            "nested-null-entries",
+            new ProjectedEvent
+            {
+                EventType = "Test",
+                EventName = "Test",
+                Fields =
+                [
+                    new ProjectedEventField(
+                        "Nested",
+                        ProjectedEventValue.FromFields(
+                        [
+                            null!,
+                            new ProjectedEventField("Name", ProjectedEventValue.FromScalar("ok")),
+                        ])),
+                ],
+            });
+
+        Assert.True(sent);
+        ClientMessage message = Assert.Single(clients.Sessions.Single().Messages);
+        var nested = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(message.Payload["Nested"]);
+        Assert.Equal("ok", nested["Name"]);
+        Assert.Single(nested);
+    }
 }
