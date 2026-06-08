@@ -3,7 +3,6 @@ using SiftQL.Expressions;
 using SiftQL.Projected;
 using SiftQL.Projection;
 using SiftQL.Schema;
-using SiftQL.Translation;
 
 namespace SiftQL.Generators.Tests;
 
@@ -108,11 +107,27 @@ public sealed class ProjectionFourthPassRegressionTests
     }
 
     [Fact]
-    public void ProjectedStringContainsIsRejectedInsteadOfAlwaysFalse()
+    public async Task ProjectedStringContainsMatchesSubstring()
     {
-        Assert.Throws<KernelExpressionException>(() =>
-            QueryKernel.For<ProjectedEvent>()
-                .WhereProjected(static ev => ev.Field("Name").String!.Contains("alp")));
+        QueryKernel<ProjectedEvent> kernel = QueryKernel.For<ProjectedEvent>()
+            .WhereProjected(static ev => ev.Field("Name").String!.Contains("alp"));
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            kernel.Pipeline,
+            RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? matched = await compiled.ProjectAsync(
+            ProjectedName("alphabet"),
+            new object(),
+            CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(
+            ProjectedName("beta"),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(matched);
+        Assert.Null(rejected);
     }
 
     [Fact]
@@ -194,6 +209,17 @@ public sealed class ProjectionFourthPassRegressionTests
                 FilterExpression.Exists(ProjectedEventPaths.Field("ItemId"))),
             RejectInclude,
             EventPipelineCompilerOptions.Immediate);
+
+    private static ProjectedEvent ProjectedName(string name) =>
+        new()
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Fields =
+            [
+                new ProjectedEventField("Name", ProjectedEventValue.FromScalar(name)),
+            ],
+        };
 
     private static CompiledProjection<object> CompileLimitProjection(FilterValue value) =>
         ProjectionCompiler.Compile<object>(
