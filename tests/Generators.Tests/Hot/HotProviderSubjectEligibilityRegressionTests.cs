@@ -68,6 +68,60 @@ public sealed class HotProviderSubjectEligibilityRegressionTests
     }
 
     [Fact]
+    public void RejectsNestedFieldWhenContainingTypeBlocksGeneratedSchema()
+    {
+        var filter = FilterExpression.Compare(
+            "Location.MapId",
+            FilterOperator.Equal,
+            FilterValue.From(42L));
+        GeneratorRun run = RunGenerator(
+            Manifest("Plugin.Events.Container+MovedEvent, Plugin.Hot.SubjectEligibility", filter),
+            """
+            using System;
+            using SiftQL;
+
+            namespace Plugin.Events;
+
+            internal static class Container
+            {
+                public sealed record Location(long MapId);
+
+                public sealed record MovedEvent(Guid EventId, Location Location) : IFilterSubject;
+            }
+            """);
+
+        Assert.Contains(run.Diagnostics, static diagnostic => diagnostic.Id == "FSFHOT009");
+        Assert.Equal(0, HotProviderSourceCount(run));
+    }
+
+    [Fact]
+    public void RejectsTopLevelObjectFieldWhenRuntimeSchemaCannotMatch()
+    {
+        var filter = FilterExpression.Exists("Location");
+        string subjectType = "Plugin.Events.GenericEvent`1[[" +
+            typeof(int).AssemblyQualifiedName +
+            "]], Plugin.Hot.SubjectEligibility";
+
+        GeneratorRun run = RunGenerator(
+            Manifest(subjectType, filter),
+            """
+            using System;
+            using SiftQL;
+
+            namespace Plugin.Events;
+
+            public sealed record Location(long MapId);
+
+            public sealed record GenericEvent<T>(
+                Guid EventId,
+                Location Location) : IFilterSubject;
+            """);
+
+        Assert.Contains(run.Diagnostics, static diagnostic => diagnostic.Id == "FSFHOT009");
+        Assert.Equal(0, HotProviderSourceCount(run));
+    }
+
+    [Fact]
     public void RejectsReservedMetadataPropertyCollisions()
     {
         var filter = FilterExpression.Compare(

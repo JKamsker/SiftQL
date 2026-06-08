@@ -72,8 +72,13 @@ public static class PrecompiledTieredProviderRegistry
         IPrecompiledTieredProvider[] providers = Providers();
         for (int i = providers.Length - 1; i >= 0; i--)
         {
-            if (providers[i].TryGetFilter(subjectType, fingerprint, out predicate))
-                return predicate is not null;
+            if (!providers[i].TryGetFilter(subjectType, fingerprint, out predicate) ||
+                predicate is null)
+            {
+                continue;
+            }
+
+            return true;
         }
 
         predicate = null;
@@ -111,8 +116,13 @@ public static class PrecompiledTieredProviderRegistry
         IPrecompiledTieredProvider[] providers = Providers();
         for (int i = providers.Length - 1; i >= 0; i--)
         {
-            if (providers[i].TryGetProjection(subjectType, fingerprint, out projectFields))
-                return projectFields is not null;
+            if (!providers[i].TryGetProjection(subjectType, fingerprint, out projectFields) ||
+                projectFields is null)
+            {
+                continue;
+            }
+
+            return true;
         }
 
         projectFields = null;

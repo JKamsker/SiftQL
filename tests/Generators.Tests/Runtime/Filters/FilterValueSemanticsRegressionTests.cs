@@ -29,10 +29,25 @@ public sealed class FilterValueSemanticsRegressionTests
         Assert.True(matched);
     }
 
+    [Fact]
+    public void ContainsLazyEnumerableDoesNotRejectItemsAfterFirstMatch()
+    {
+        bool matched = FilterValues.Contains(MatchingThenTooLong(), FilterValue.From(42L));
+
+        Assert.True(matched);
+    }
+
     private static IEnumerable<int> MatchingThenThrow()
     {
         yield return 42;
         throw new InvalidOperationException("enumerated after match");
+    }
+
+    private static IEnumerable<int> MatchingThenTooLong()
+    {
+        yield return 42;
+        for (int i = 0; i < 256; i++)
+            yield return i;
     }
 
     private enum BigEnum : ulong

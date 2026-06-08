@@ -12,6 +12,7 @@ public sealed class RemoteServerService(
     ClientMessageSink clients) : IRemoteServer
 {
     private readonly Dictionary<Type, List<Subscription>> _subscriptions = [];
+    private readonly HashSet<string> _subscriptionIds = new(StringComparer.Ordinal);
     private IRemoteClient? _client;
 
     public void Attach(IRemoteClient client) =>
@@ -56,16 +57,28 @@ public sealed class RemoteServerService(
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.SubscriptionId);
         Type subjectType = ResolveSubject(request.Subject);
         var subscription = new Subscription(
             request.SubscriptionId,
             subjectType.Name,
             Compile(subjectType, request.Pipeline));
+        if (!_subscriptionIds.Add(request.SubscriptionId))
+            throw new InvalidOperationException(
+                $"Subscription id '{request.SubscriptionId}' is already registered.");
 
         if (!_subscriptions.TryGetValue(subjectType, out List<Subscription>? subscriptions))
         {
-            subscriptions = [];
-            _subscriptions.Add(subjectType, subscriptions);
+            try
+            {
+                subscriptions = [];
+                _subscriptions.Add(subjectType, subscriptions);
+            }
+            catch
+            {
+                _subscriptionIds.Remove(request.SubscriptionId);
+                throw;
+            }
         }
 
         subscriptions.Add(subscription);

@@ -199,8 +199,12 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
         HotCompilationManifest? manifest;
         try
         {
+            string json = File.ReadAllText(_path);
+            if (!HotCompilationManifestCompatibility.HasRequiredFields(json))
+                return;
+
             manifest = JsonSerializer.Deserialize<HotCompilationManifest>(
-                File.ReadAllText(_path),
+                json,
                 s_json);
         }
         catch (Exception ex) when (ex is IOException or JsonException)

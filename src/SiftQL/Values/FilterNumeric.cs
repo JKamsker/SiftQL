@@ -44,6 +44,9 @@ internal static class FilterNumeric
         try
         {
             number = (decimal)value;
+            if (number == 0m && value != 0D)
+                return false;
+
             return true;
         }
         catch (OverflowException)

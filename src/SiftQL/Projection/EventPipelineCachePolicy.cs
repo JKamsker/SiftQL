@@ -1,9 +1,10 @@
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Hot;
 
 namespace SiftQL.Projection;
 
-internal static class EventPipelineCompilerCachePolicy
+internal static class EventPipelineCachePolicy
 {
     public static EventPipelineExpression Snapshot(EventPipelineExpression pipeline) =>
         pipeline with
@@ -15,7 +16,15 @@ internal static class EventPipelineCompilerCachePolicy
                 .ToArray(),
         };
 
-    public static bool HasParameters(EventPipelineExpression pipeline)
+    public static bool ShouldBypassCache(
+        EventPipelineExpression pipeline,
+        EventPipelineCompilerOptions options) =>
+        HasInvalidProjectionShape(pipeline) ||
+        HasParameters(pipeline) ||
+        HasTieredOptions(options) ||
+        PrecompiledTieredProviderRegistry.IsolatedScopeActive;
+
+    private static bool HasParameters(EventPipelineExpression pipeline)
     {
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {
@@ -36,11 +45,11 @@ internal static class EventPipelineCompilerCachePolicy
         return false;
     }
 
-    public static bool HasTieredOptions(EventPipelineCompilerOptions options) =>
+    private static bool HasTieredOptions(EventPipelineCompilerOptions options) =>
         options.FilterOptions.Mode == FilterCompilationMode.Tiered ||
         options.ProjectionOptions.Mode == ProjectionCompilationMode.Tiered;
 
-    public static bool HasInvalidProjectionShape(EventPipelineExpression pipeline)
+    private static bool HasInvalidProjectionShape(EventPipelineExpression pipeline)
     {
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {

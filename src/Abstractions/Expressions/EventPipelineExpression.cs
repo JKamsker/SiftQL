@@ -90,14 +90,38 @@ public sealed record EventPipelineExpression
         stages[^1] = new EventPipelineStage
         {
             Kind = EventPipelineStageKind.Projection,
-            Projection = previous with
-            {
-                Fields = [.. previous.Fields, .. projection.Fields],
-                Includes = [.. previous.Includes, .. projection.Includes],
-            },
+            Projection = MergeProjection(previous, projection),
         };
         return this with { Stages = stages };
     }
+
+    public EventPipelineExpression AppendOrMergeSourceProjection(EventProjectionExpression projection)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        int projectionIndex = Array.FindIndex(
+            Stages,
+            static stage => stage.Kind == EventPipelineStageKind.Projection);
+        if (projectionIndex < 0)
+            return AppendProjection(projection);
+
+        var stages = Stages.ToArray();
+        EventProjectionExpression previous = stages[projectionIndex].Projection;
+        stages[projectionIndex] = new EventPipelineStage
+        {
+            Kind = EventPipelineStageKind.Projection,
+            Projection = MergeProjection(previous, projection),
+        };
+        return this with { Stages = stages };
+    }
+
+    private static EventProjectionExpression MergeProjection(
+        EventProjectionExpression previous,
+        EventProjectionExpression projection) =>
+        previous with
+        {
+            Fields = [.. previous.Fields, .. projection.Fields],
+            Includes = [.. previous.Includes, .. projection.Includes],
+        };
 
     public static EventPipelineExpression From(
         FilterExpression? filter,

@@ -41,13 +41,10 @@ public static class EventPipelineCompiler
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(compileInclude);
         ArgumentNullException.ThrowIfNull(options);
-        EventPipelineExpression normalized = EventPipelineCompilerCachePolicy.Snapshot(
+        EventPipelineExpression normalized = EventPipelineCachePolicy.Snapshot(
             EventPipelineNormalizer.Normalize(subjectType, pipeline, errorFactory));
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
-        if (EventPipelineCompilerCachePolicy.HasInvalidProjectionShape(normalized) ||
-            EventPipelineCompilerCachePolicy.HasParameters(normalized) ||
-            EventPipelineCompilerCachePolicy.HasTieredOptions(options) ||
-            PrecompiledTieredProviderRegistry.IsolatedScopeActive)
+        if (EventPipelineCachePolicy.ShouldBypassCache(normalized, options))
         {
             return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
         }

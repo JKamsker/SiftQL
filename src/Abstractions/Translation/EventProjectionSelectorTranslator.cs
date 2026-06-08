@@ -83,7 +83,13 @@ internal static class EventProjectionSelectorTranslator
         while (current is MemberExpression member)
         {
             names.Push(member.Member.Name);
-            current = StripConvert(member.Expression!);
+            if (member.Expression is null)
+            {
+                field = string.Empty;
+                return false;
+            }
+
+            current = StripConvert(member.Expression);
         }
 
         if (current == subject && names.Count > 0)

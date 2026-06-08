@@ -1,6 +1,8 @@
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Projected;
+using SiftQL.Projection;
 using SiftQL.Schema;
 
 namespace SiftQL.Index;
@@ -199,12 +201,22 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     {
         FilterExpressionShapeValidator.Validate(expression);
         FilterExpression snapshot = FilterExpressionSnapshot.Clone(expression);
-        FilterIndexKey? key = FilterIndexExtractor.Extract(schema, snapshot);
+        FilterSchema entrySchema = schema.SubjectType == typeof(ProjectedEvent)
+            ? ProjectedEventFilterSchema.ForFilter(snapshot)
+            : schema;
+        FilterIndexKey? key = FilterIndexExtractor.Extract(entrySchema, snapshot);
         return new SubscriptionEntry<TSubscription>(
             subscription,
             snapshot,
             key,
-            FilterCompiler.Compile(schema.SubjectType, snapshot, FilterCompilerOptions.Immediate));
+            entrySchema.SubjectType == typeof(ProjectedEvent)
+                ? FilterCompiler.CompileWithSchema(
+                    typeof(ProjectedEvent),
+                    snapshot,
+                    FilterCompilerOptions.Immediate,
+                    errorFactory: null,
+                    _ => entrySchema)
+                : FilterCompiler.Compile(schema.SubjectType, snapshot, FilterCompilerOptions.Immediate));
     }
 
     private void AddEntry(SubscriptionEntry<TSubscription> entry)
