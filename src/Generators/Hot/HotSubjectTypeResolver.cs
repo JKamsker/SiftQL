@@ -7,25 +7,35 @@ internal static class HotSubjectTypeResolver
 {
     public static INamedTypeSymbol? Resolve(Compilation compilation, string subjectType) =>
         TryParse(subjectType, out SubjectTypeSpec spec)
-            ? Resolve(compilation, spec)
+            ? ResolveType(compilation, spec) as INamedTypeSymbol
             : null;
 
-    private static INamedTypeSymbol? Resolve(Compilation compilation, SubjectTypeSpec spec)
+    private static ITypeSymbol? ResolveType(Compilation compilation, SubjectTypeSpec spec)
     {
         INamedTypeSymbol? type = ResolveMetadataName(compilation, spec.MetadataName);
-        if (type is null || spec.TypeArguments.Length == 0)
-            return type;
+        if (type is null)
+            return null;
 
         var arguments = new ITypeSymbol[spec.TypeArguments.Length];
         for (int i = 0; i < arguments.Length; i++)
         {
-            INamedTypeSymbol? argument = Resolve(compilation, spec.TypeArguments[i]);
+            ITypeSymbol? argument = ResolveType(compilation, spec.TypeArguments[i]);
             if (argument is null)
                 return null;
             arguments[i] = argument;
         }
 
-        return type.Arity == arguments.Length ? type.Construct(arguments) : null;
+        ITypeSymbol resolved;
+        if (arguments.Length == 0)
+            resolved = type;
+        else if (type.Arity == arguments.Length)
+            resolved = type.Construct(arguments);
+        else
+            return null;
+
+        return spec.ArrayRank == 0
+            ? resolved
+            : compilation.CreateArrayTypeSymbol(resolved, spec.ArrayRank);
     }
 
     private static INamedTypeSymbol? ResolveMetadataName(Compilation compilation, string metadataName) =>
@@ -64,10 +74,11 @@ internal static class HotSubjectTypeResolver
     private static bool TryParse(string text, out SubjectTypeSpec spec)
     {
         string typeName = TopLevelTypeName(text.Trim());
+        int arrayRank = ConsumeArrayRank(ref typeName);
         int bracket = typeName.IndexOf('[');
         if (bracket < 0)
         {
-            spec = new SubjectTypeSpec(typeName, ImmutableArray<SubjectTypeSpec>.Empty);
+            spec = new SubjectTypeSpec(typeName, ImmutableArray<SubjectTypeSpec>.Empty, arrayRank);
             return !string.IsNullOrWhiteSpace(spec.MetadataName);
         }
 
@@ -80,8 +91,28 @@ internal static class HotSubjectTypeResolver
             return false;
         }
 
-        spec = new SubjectTypeSpec(metadataName, arguments.ToImmutable());
+        spec = new SubjectTypeSpec(metadataName, arguments.ToImmutable(), arrayRank);
         return true;
+    }
+
+    private static int ConsumeArrayRank(ref string typeName)
+    {
+        if (!typeName.EndsWith("]", StringComparison.Ordinal))
+            return 0;
+
+        int open = typeName.LastIndexOf('[');
+        if (open < 0)
+            return 0;
+
+        string rankText = typeName.Substring(open + 1, typeName.Length - open - 2);
+        for (int i = 0; i < rankText.Length; i++)
+        {
+            if (rankText[i] != ',')
+                return 0;
+        }
+
+        typeName = typeName.Substring(0, open);
+        return rankText.Length + 1;
     }
 
     private static string TopLevelTypeName(string text)
@@ -185,5 +216,6 @@ internal static class HotSubjectTypeResolver
 
     private readonly record struct SubjectTypeSpec(
         string MetadataName,
-        ImmutableArray<SubjectTypeSpec> TypeArguments);
+        ImmutableArray<SubjectTypeSpec> TypeArguments,
+        int ArrayRank);
 }
