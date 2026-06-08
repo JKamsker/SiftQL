@@ -264,15 +264,16 @@ public static class ProjectionCompiler
     }
 
     private static bool IsDefaultProjectionField(FilterSchema schema, string name) =>
-        !IsMetadataField(name) &&
+        !IsVirtualMetadataField(schema.SubjectType, name) &&
         schema.TryGetField(name, out FilterField field) &&
         field.Kind != FilterFieldKind.Object;
 
-    private static bool IsMetadataField(string name) =>
-        string.Equals(name, "eventType", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "eventName", StringComparison.OrdinalIgnoreCase) ||
+    private static bool IsVirtualMetadataField(Type subjectType, string name) =>
         string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase) ||
+        subjectType == typeof(ProjectedEvent) &&
+        (string.Equals(name, "eventType", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, "eventName", StringComparison.OrdinalIgnoreCase));
 
     private static Exception Error(Func<string, Exception>? errorFactory, string message) =>
         errorFactory?.Invoke(message) ?? new FilterValidationException(message);

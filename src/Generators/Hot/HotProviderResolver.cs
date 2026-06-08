@@ -111,7 +111,7 @@ internal static class HotProviderResolver
         }
 
         EquatableArray<HotProjectionField> requested = projection.Fields.Count == 0
-            ? DefaultProjectionFields(fields)
+            ? DefaultProjectionFields(fields, projectedEvent)
             : projection.Fields;
         if (requested.Count > MaxProjectionFields)
         {
@@ -160,13 +160,22 @@ internal static class HotProviderResolver
             diagnostics);
     }
 
-    private static EquatableArray<HotProjectionField> DefaultProjectionFields(EquatableArray<GeneratedField> fields) =>
+    private static EquatableArray<HotProjectionField> DefaultProjectionFields(
+        EquatableArray<GeneratedField> fields,
+        bool projectedEvent) =>
         new(fields.Items
-            .Where(static field => field.FieldKind is GeneratedFieldKind.Scalar or GeneratedFieldKind.Array &&
-                !HotProviderFieldValidator.IsMetadataField(field.Name))
+            .Where(field => field.FieldKind is GeneratedFieldKind.Scalar or GeneratedFieldKind.Array &&
+                !IsDefaultProjectionMetadataField(projectedEvent, field.Name))
             .OrderBy(static field => field.Name, StringComparer.OrdinalIgnoreCase)
             .Select(static field => new HotProjectionField(field.Name, field.Name))
             .ToImmutableArray());
+
+    private static bool IsDefaultProjectionMetadataField(bool projectedEvent, string name) =>
+        name.Equals("subjectType", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("subjectName", StringComparison.OrdinalIgnoreCase) ||
+        projectedEvent &&
+        (name.Equals("eventType", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("eventName", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsProjectedEvent(INamedTypeSymbol subject) =>
         subject.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ==
