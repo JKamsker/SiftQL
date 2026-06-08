@@ -13,6 +13,7 @@ public sealed class RemoteServerService(
 {
     private readonly Dictionary<Type, List<Subscription>> _subscriptions = [];
     private readonly HashSet<string> _subscriptionIds = new(StringComparer.Ordinal);
+    private readonly object _subscriptionGate = new();
     private readonly ServerLookupContext _queryContext = queryContext ?? new ServerLookupContext();
     private IRemoteClient? _client;
 
@@ -64,25 +65,22 @@ public sealed class RemoteServerService(
             request.SubscriptionId,
             subjectType.Name,
             Compile(subjectType, request.Pipeline));
-        if (!_subscriptionIds.Add(request.SubscriptionId))
-            throw new InvalidOperationException(
-                $"Subscription id '{request.SubscriptionId}' is already registered.");
 
-        if (!_subscriptions.TryGetValue(subjectType, out List<Subscription>? subscriptions))
+        lock (_subscriptionGate)
         {
-            try
+            if (!_subscriptionIds.Add(request.SubscriptionId))
+                throw new InvalidOperationException(
+                    $"Subscription id '{request.SubscriptionId}' is already registered.");
+
+            if (!_subscriptions.TryGetValue(subjectType, out List<Subscription>? subscriptions))
             {
                 subscriptions = [];
                 _subscriptions.Add(subjectType, subscriptions);
             }
-            catch
-            {
-                _subscriptionIds.Remove(request.SubscriptionId);
-                throw;
-            }
+
+            subscriptions.Add(subscription);
         }
 
-        subscriptions.Add(subscription);
         return Task.CompletedTask;
     }
 
@@ -118,17 +116,22 @@ public sealed class RemoteServerService(
         }
     }
 
-    private IEnumerable<Subscription> SubscriptionsFor(object record)
+    private Subscription[] SubscriptionsFor(object record)
     {
         Type recordType = record.GetType();
-        foreach ((Type subjectType, List<Subscription> subscriptions) in _subscriptions)
+        var matches = new List<Subscription>();
+        lock (_subscriptionGate)
         {
-            if (!subjectType.IsAssignableFrom(recordType))
-                continue;
+            foreach ((Type subjectType, List<Subscription> subscriptions) in _subscriptions)
+            {
+                if (!subjectType.IsAssignableFrom(recordType))
+                    continue;
 
-            foreach (Subscription subscription in subscriptions)
-                yield return subscription;
+                matches.AddRange(subscriptions);
+            }
         }
+
+        return matches.ToArray();
     }
 
     private static Type ResolveSubject(string subject)
