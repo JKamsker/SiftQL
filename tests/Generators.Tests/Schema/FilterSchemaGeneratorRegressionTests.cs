@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using SiftQL.Compiler;
 using SiftQL.Generators;
 using SiftQL.Generators.Schema;
 using SiftQL.Schema;
@@ -204,7 +205,33 @@ public sealed class FilterSchemaGeneratorRegressionTests
     }
 
     [Fact]
-    public void GeneratedSchemaSkipsCaseInsensitiveDuplicateFieldsAndMetadataCollisions()
+    public void GeneratedSchemaRejectsMetadataFieldCollisions()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.MetadataFieldCollision",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed class CollisionEvent : IFilterSubject
+                {
+                    public Guid EventId { get; } = Guid.Empty;
+                    public string subjectType { get; } = "payload";
+                    public string SubjectName { get; } = "payload";
+                }
+                """));
+        AssertNoCompilationErrors(run, "metadata field collision schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "metadata field collision schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type eventType = assembly.GetType("Plugin.Events.CollisionEvent", throwOnError: true)!;
+
+        Assert.Throws<FilterValidationException>(() => FilterSchema.For(eventType));
+    }
+
+    [Fact]
+    public void GeneratedSchemaSkipsCaseInsensitiveDuplicateFields()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.FieldCollision",
@@ -217,8 +244,6 @@ public sealed class FilterSchemaGeneratorRegressionTests
                 public sealed class CollisionEvent : IFilterSubject
                 {
                     public Guid EventId { get; } = Guid.Empty;
-                    public string subjectType { get; } = "payload";
-                    public string SubjectName { get; } = "payload";
                     public int Id { get; } = 1;
                     public int ID { get; } = 2;
                 }
