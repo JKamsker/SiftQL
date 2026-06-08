@@ -11,6 +11,7 @@ public sealed class InMemoryServerPluginHost
 {
     private readonly ClientGateway _clients;
     private readonly ServerDataStore _serverData;
+    private readonly HashSet<string> _pluginIds = new(StringComparer.Ordinal);
     private readonly List<StartupHandler> _startupHandlers = [];
     private readonly Dictionary<Type, List<ISubscription>> _subscriptions = [];
 
@@ -28,7 +29,21 @@ public sealed class InMemoryServerPluginHost
     public void Register(IServerPlugin plugin)
     {
         ArgumentNullException.ThrowIfNull(plugin);
-        plugin.Configure(new PluginRegistration(plugin.Id, this));
+        string pluginId = plugin.Id;
+        if (string.IsNullOrWhiteSpace(pluginId))
+            throw new ArgumentException("Plugin id is required.", nameof(plugin));
+        if (!_pluginIds.Add(pluginId))
+            throw new InvalidOperationException($"Plugin id '{pluginId}' is already registered.");
+
+        try
+        {
+            plugin.Configure(new PluginRegistration(pluginId, this));
+        }
+        catch
+        {
+            _pluginIds.Remove(pluginId);
+            throw;
+        }
     }
 
     public void RegisterStartup(
