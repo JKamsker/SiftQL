@@ -15,7 +15,7 @@ public static class HotProviderRegistrationContext
         HotProviderRegistrationScope? scope = s_scope.Value;
         return scope is null
             ? PrecompiledTieredProviderRegistry.Register(provider)
-            : scope.Add(provider);
+            : scope.Add(provider, manifestHash);
     }
 
     public static IDisposable RegisterFactory(
@@ -26,6 +26,10 @@ public static class HotProviderRegistrationContext
         ArgumentException.ThrowIfNullOrWhiteSpace(manifestHash);
         if (!IsAllowed(manifestHash))
             return NullRegistration.Instance;
+
+        HotProviderRegistrationScope? scope = s_scope.Value;
+        if (scope is not null)
+            return scope.AddFactory(providerFactory, manifestHash);
 
         return Register(providerFactory(), manifestHash);
     }
@@ -53,12 +57,13 @@ public static class HotProviderRegistrationContext
     {
         private readonly List<PendingRegistration> _pending = [];
         private readonly List<IDisposable> _registrations = [];
+        private readonly HashSet<string> _acceptedManifestHashes = new(StringComparer.OrdinalIgnoreCase);
         private bool _committed;
         private bool _disposed;
 
-        public IDisposable Add(IPrecompiledTieredProvider provider)
+        public IDisposable Add(IPrecompiledTieredProvider provider, string manifestHash)
         {
-            if (_disposed)
+            if (_disposed || !AcceptManifestHash(manifestHash))
                 return NullRegistration.Instance;
 
             var registration = new PendingRegistration(this, provider);
@@ -66,15 +71,29 @@ public static class HotProviderRegistrationContext
             return registration;
         }
 
-        public void Commit()
+        public IDisposable AddFactory(
+            Func<IPrecompiledTieredProvider> providerFactory,
+            string manifestHash)
+        {
+            if (_disposed || !AcceptManifestHash(manifestHash))
+                return NullRegistration.Instance;
+
+            var registration = new PendingRegistration(this, providerFactory());
+            _pending.Add(registration);
+            return registration;
+        }
+
+        public int Commit()
         {
             if (_disposed || _committed)
-                return;
+                return 0;
 
+            int committed = 0;
             for (int i = 0; i < _pending.Count; i++)
-                _pending[i].Commit();
+                committed += _pending[i].Commit() ? 1 : 0;
             _pending.Clear();
             _committed = true;
+            return committed;
         }
 
         public void Dispose()
@@ -102,6 +121,9 @@ public static class HotProviderRegistrationContext
         private void AddCommitted(IDisposable registration) =>
             _registrations.Add(registration);
 
+        private bool AcceptManifestHash(string manifestHash) =>
+            _acceptedManifestHashes.Add(manifestHash);
+
         private sealed class PendingRegistration(
             HotProviderRegistrationScope owner,
             IPrecompiledTieredProvider provider) : IDisposable
@@ -109,14 +131,15 @@ public static class HotProviderRegistrationContext
             private IDisposable? _committed;
             private bool _disposed;
 
-            public void Commit()
+            public bool Commit()
             {
                 if (_disposed || _committed is not null)
-                    return;
+                    return false;
 
                 IDisposable registration = PrecompiledTieredProviderRegistry.Register(provider);
                 _committed = registration;
                 owner.AddCommitted(registration);
+                return true;
             }
 
             public void Dispose()

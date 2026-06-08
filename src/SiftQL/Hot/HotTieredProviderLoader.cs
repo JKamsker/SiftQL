@@ -51,7 +51,13 @@ public static class HotTieredProviderLoader
                 assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
                 using var registrationScope = HotProviderRegistrationContext.AllowManifest(manifestHash);
                 RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
-                registrationScope.Commit();
+                if (registrationScope.Commit() == 0)
+                {
+                    loadContext.Unload();
+                    return Result(
+                        HotTieredProviderLoadStatus.InvalidAssembly,
+                        "Hot provider DLL did not register a provider for the manifest.");
+                }
             }
             catch
             {
