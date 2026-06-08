@@ -29,7 +29,7 @@ public static class EventPipelineCompiler
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(compileInclude);
         ArgumentNullException.ThrowIfNull(options);
-        EventPipelineExpression normalized = Snapshot(Normalize(pipeline));
+        EventPipelineExpression normalized = Snapshot(Normalize(pipeline, errorFactory));
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
         if (HasInvalidProjectionShape(normalized) ||
             HasParameters(normalized) ||
@@ -187,12 +187,46 @@ public static class EventPipelineCompiler
             $"Projection include '{include.Intrinsic}' cannot run after a projected stage.");
     }
 
-    private static EventPipelineExpression Normalize(EventPipelineExpression? pipeline)
+    private static EventPipelineExpression Normalize(
+        EventPipelineExpression? pipeline,
+        Func<string, Exception>? errorFactory = null)
     {
         pipeline ??= EventPipelineExpression.Default;
-        return pipeline.HasProjection
+        ValidateStages(pipeline, errorFactory);
+        return HasProjection(pipeline)
             ? pipeline
             : pipeline.AppendProjection(EventProjectionExpression.Default);
+    }
+
+    private static void ValidateStages(
+        EventPipelineExpression pipeline,
+        Func<string, Exception>? errorFactory)
+    {
+        if (pipeline.Stages is null)
+            throw Error(errorFactory, "Pipeline stages cannot be null.");
+
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            EventPipelineStage? stage = pipeline.Stages[i];
+            if (stage is null)
+                throw Error(errorFactory, "Pipeline stages cannot contain null.");
+            if (stage.Kind is not EventPipelineStageKind.Filter and
+                not EventPipelineStageKind.Projection)
+            {
+                throw Error(errorFactory, $"Pipeline stage kind '{stage.Kind}' is not supported.");
+            }
+        }
+    }
+
+    private static bool HasProjection(EventPipelineExpression pipeline)
+    {
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            if (pipeline.Stages[i].Kind == EventPipelineStageKind.Projection)
+                return true;
+        }
+
+        return false;
     }
 
     private static EventPipelineExpression Snapshot(EventPipelineExpression pipeline) =>
@@ -256,4 +290,6 @@ public static class EventPipelineCompiler
         Volatile.Write(ref s_cacheCount, 0);
     }
 
+    private static Exception Error(Func<string, Exception>? errorFactory, string message) =>
+        errorFactory?.Invoke(message) ?? new FilterValidationException(message);
 }
