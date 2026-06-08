@@ -35,6 +35,32 @@ public sealed class QueryKernelProjectedRegressionTests
     }
 
     [Fact]
+    public async Task RepeatedProjectedSelectUsesAliasedStageInput()
+    {
+        EventPipelineExpression pipeline = QueryKernel.For<ItemUsedEvent>()
+            .Select(new EventProjectionField(nameof(ItemUsedEvent.Quantity), "Amount"))
+            .WhereProjected(static ev => ev.Field("Amount").Integer >= 2)
+            .Select(new EventProjectionField(nameof(ItemUsedEvent.Quantity), "Quantity"))
+            .Select(new EventProjectionField(nameof(ItemUsedEvent.Quantity), "QuantityAgain"))
+            .Pipeline;
+
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            pipeline,
+            RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 7, 100, 3),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(ProjectedEventValueKind.Integer, projected!.Field("QuantityAgain").Kind);
+        Assert.Equal(3, projected.Field("QuantityAgain").Integer);
+    }
+
+    [Fact]
     public async Task ProjectedEventWhereProjectedFiltersExistingProjectedFields()
     {
         QueryKernel<ProjectedEvent> kernel = QueryKernel.For<ProjectedEvent>()
