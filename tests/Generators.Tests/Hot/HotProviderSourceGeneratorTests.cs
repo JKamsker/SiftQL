@@ -189,7 +189,7 @@ public sealed class HotProviderSourceGeneratorTests
         AssertEx.True(!kernel.IsTiered, "startup-loaded provider beat tiered fallback");
         AssertEx.True(kernel.Matches(Event(eventType, characterId: 9)), "startup-loaded provider matched");
 
-        File.WriteAllText(manifestPath, manifestJson.Replace("10.0.0", "10.0.1"));
+        File.WriteAllText(manifestPath, StaleManifestJson(manifestJson));
         using HotTieredProviderLoadResult stale = HotTieredProviderLoader.TryLoad(new()
         {
             AssemblyPath = assemblyPath,
@@ -275,6 +275,22 @@ public sealed class HotProviderSourceGeneratorTests
             ],
         };
         return JsonSerializer.Serialize(manifest);
+    }
+
+    private static string StaleManifestJson(string manifestJson)
+    {
+        HotCompilationManifest manifest =
+            JsonSerializer.Deserialize<HotCompilationManifest>(manifestJson) ??
+            throw new InvalidOperationException("Manifest did not deserialize.");
+        HotCompilationManifestEntry[] entries = manifest.Entries.ToArray();
+        entries[0] = entries[0] with
+        {
+            Definition = JsonSerializer.SerializeToElement(FilterExpression.Compare(
+                "CharacterId",
+                FilterOperator.Equal,
+                FilterValue.From(10L))),
+        };
+        return JsonSerializer.Serialize(manifest with { Entries = entries });
     }
 
     private static string Fingerprint(FilterExpression expression)
