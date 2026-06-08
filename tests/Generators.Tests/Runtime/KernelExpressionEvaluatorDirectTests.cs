@@ -59,13 +59,13 @@ public sealed class KernelExpressionEvaluatorDirectTests
     }
 
     [Fact]
-    public void Evaluate_ConvertWrapped_Unwraps()
+    public void Evaluate_ConvertWrapped_AppliesConversion()
     {
         var param = Expression.Parameter(typeof(object), "x");
         var inner = Expression.Constant(42);
         var convert = Expression.Convert(inner, typeof(long));
         object? result = KernelExpressionEvaluator.Evaluate(convert, param);
-        Assert.Equal(42, result);
+        Assert.Equal(42L, result);
     }
 
     [Fact]
