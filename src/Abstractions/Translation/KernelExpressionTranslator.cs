@@ -81,6 +81,9 @@ internal static class KernelExpressionTranslator
             return FilterExpression.Exists(RequireField(expression.Arguments[0], parameter));
         }
 
+        if (expression.Method.DeclaringType == typeof(string) && expression.Method.Name == nameof(string.Contains))
+            throw Unsupported(expression);
+
         if (IsContains(expression.Method))
         {
             return TranslateContains(expression, parameter, ref parameterIndex);
@@ -278,9 +281,7 @@ internal static class KernelExpressionTranslator
         method.Name == name &&
         method.DeclaringType == typeof(QueryKernelPredicates);
 
-    private static bool IsContains(MethodInfo method) =>
-        method.Name == nameof(Enumerable.Contains) ||
-        method.Name == "Contains";
+    private static bool IsContains(MethodInfo method) => method.Name is nameof(Enumerable.Contains) or "Contains";
 
     private static bool IsImplicitConversion(MethodCallExpression expression) =>
         expression.Method.Name == "op_Implicit" &&
