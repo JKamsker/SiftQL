@@ -37,6 +37,31 @@ public sealed class TieredScopedProviderPromotionRegressionTests
         Assert.False(afterPromotion);
     }
 
+    [Fact]
+    public void DisposedIsolatedProviderScopeIsNotVisibleThroughCapturedExecutionContext()
+    {
+        IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new ParameterizedRejectingProvider(typeof(ItemUsedEvent), "unused"));
+        ExecutionContext? captured = ExecutionContext.Capture();
+        scope.Dispose();
+
+        try
+        {
+            bool hasProviders = true;
+            ExecutionContext.Run(captured!, _ =>
+            {
+                hasProviders = PrecompiledTieredProviderRegistry.HasProviders;
+            }, null);
+
+            Assert.False(hasProviders);
+        }
+        finally
+        {
+            registration.Dispose();
+        }
+    }
+
     private static async Task<bool> WaitForFalseAsync(
         CompiledKernel kernel,
         object subject)
