@@ -61,6 +61,15 @@ public sealed class FilterSchema
         s_cache.Clear();
     }
 
+    internal static void UnregisterGeneratedProvider(Assembly assembly)
+    {
+        if (!s_generatedProviders.TryRemove(assembly, out _))
+            return;
+
+        IncrementSchemaVersion();
+        s_cache.Clear();
+    }
+
     public bool TryGetField(string name, out FilterField field) =>
         _fields.TryGetValue(name, out field!);
 

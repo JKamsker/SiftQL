@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.Loader;
+using SiftQL.Schema;
 
 namespace SiftQL.Hot;
 
@@ -50,6 +51,9 @@ public sealed class HotTieredProviderLoadResult : IDisposable
     {
         if (System.Threading.Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
+
+        if (Assembly is not null)
+            FilterSchema.UnregisterGeneratedProvider(Assembly);
 
         if (_registration is not null)
             _registration.Dispose();
