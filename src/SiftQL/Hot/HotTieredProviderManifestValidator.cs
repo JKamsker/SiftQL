@@ -1,0 +1,177 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using System.Runtime.Loader;
+using System.Text.Json;
+using SiftQL.Expressions;
+using SiftQL.Projected;
+using SiftQL.Projection;
+using SiftQL.Schema;
+
+namespace SiftQL.Hot;
+
+internal static class HotTieredProviderManifestValidator
+{
+    public static bool EntriesSatisfied(
+        HotCompilationManifest manifest,
+        AssemblyLoadContext loadContext,
+        IReadOnlyList<IPrecompiledTieredProvider> providers)
+    {
+        if (manifest.Entries.Length == 0 || providers.Count == 0)
+            return false;
+
+        for (int i = 0; i < manifest.Entries.Length; i++)
+        {
+            HotCompilationManifestEntry entry = manifest.Entries[i];
+            if (!TryResolveSubjectType(loadContext, entry.SubjectType, out Type? subjectType))
+                return false;
+
+            if (string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                !EntrySatisfied(entry, subjectType, providers))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool EntrySatisfied(
+        HotCompilationManifestEntry entry,
+        Type subjectType,
+        IReadOnlyList<IPrecompiledTieredProvider> providers)
+    {
+        string[] fingerprints = CandidateFingerprints(entry, subjectType);
+        for (int i = 0; i < providers.Count; i++)
+        {
+            for (int j = 0; j < fingerprints.Length; j++)
+            {
+                if (ProviderSatisfiesEntry(providers[i], entry, subjectType, fingerprints[j]))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ProviderSatisfiesEntry(
+        IPrecompiledTieredProvider provider,
+        HotCompilationManifestEntry entry,
+        Type subjectType,
+        string fingerprint)
+    {
+        try
+        {
+            if (string.Equals(entry.Kind, "filter", StringComparison.Ordinal))
+            {
+                return provider.TryGetFilter(subjectType, fingerprint, out var predicate) &&
+                    predicate is not null ||
+                    provider.TryGetParameterizedFilter(subjectType, fingerprint, out var hot) &&
+                    hot is not null;
+            }
+
+            if (string.Equals(entry.Kind, "projection", StringComparison.Ordinal))
+            {
+                return provider.TryGetProjection(subjectType, fingerprint, out var projectFields) &&
+                    projectFields is not null ||
+                    provider.TryGetParameterizedProjection(subjectType, fingerprint, out var hot) &&
+                    hot is not null;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static string[] CandidateFingerprints(
+        HotCompilationManifestEntry entry,
+        Type subjectType)
+    {
+        if (!string.Equals(entry.Kind, "projection", StringComparison.Ordinal) ||
+            !TryEffectiveProjectionFingerprint(entry, subjectType, out string? fingerprint) ||
+            string.Equals(entry.Fingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            return [entry.Fingerprint];
+        }
+
+        return [entry.Fingerprint, fingerprint];
+    }
+
+    private static bool TryEffectiveProjectionFingerprint(
+        HotCompilationManifestEntry entry,
+        Type subjectType,
+        [NotNullWhen(true)] out string? fingerprint)
+    {
+        try
+        {
+            EventProjectionExpression? projection =
+                entry.Definition.Deserialize<EventProjectionExpression>();
+            if (projection is null)
+            {
+                fingerprint = null;
+                return false;
+            }
+
+            EventProjectionExpression effective = projection.Fields.Length == 0
+                ? projection with { Fields = DefaultProjectionFields(subjectType) }
+                : projection;
+            fingerprint = ProjectionExpressionFingerprint.Create(effective);
+            return true;
+        }
+        catch
+        {
+            fingerprint = null;
+            return false;
+        }
+    }
+
+    private static EventProjectionField[] DefaultProjectionFields(Type subjectType)
+    {
+        FilterSchema schema = subjectType == typeof(ProjectedEvent)
+            ? ProjectedEventFilterSchema.ForProjection(EventProjectionExpression.Default)
+            : FilterSchema.For(subjectType);
+        return schema.FieldNames
+            .Where(name => IsDefaultProjectionField(schema, name))
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .Select(static name => new EventProjectionField(name))
+            .ToArray();
+    }
+
+    private static bool IsDefaultProjectionField(FilterSchema schema, string name) =>
+        !IsVirtualMetadataField(schema.SubjectType, name) &&
+        schema.TryGetField(name, out FilterField field) &&
+        field.Kind != FilterFieldKind.Object;
+
+    private static bool IsVirtualMetadataField(Type subjectType, string name) =>
+        string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase) ||
+        subjectType == typeof(ProjectedEvent) &&
+        (string.Equals(name, "eventType", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, "eventName", StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryResolveSubjectType(
+        AssemblyLoadContext loadContext,
+        string subjectType,
+        [NotNullWhen(true)] out Type? type)
+    {
+        string fullName = subjectType.Split(',', 2)[0].Trim();
+        type = FindLoadedType(loadContext.Assemblies, fullName) ??
+            Type.GetType(subjectType, throwOnError: false) ??
+            FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), fullName);
+        return type is not null;
+    }
+
+    private static Type? FindLoadedType(IEnumerable<Assembly> assemblies, string fullName)
+    {
+        foreach (Assembly assembly in assemblies)
+        {
+            Type? type = assembly.GetType(fullName, throwOnError: false);
+            if (type is not null)
+                return type;
+        }
+
+        return null;
+    }
+}
