@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using SiftQL.Compiler;
@@ -137,7 +136,7 @@ public sealed class FilterSchema
     {
         if (schema is not null && schema.SubjectType == requestedType)
         {
-            ValidateReservedMetadataFields(requestedType, schema);
+            FilterSchemaReservedMetadataValidator.Validate(requestedType, schema);
             return schema;
         }
 
@@ -145,90 +144,6 @@ public sealed class FilterSchema
         throw new FilterValidationException(
             $"Generated filter schema provider for '{requestedType.FullName}' returned schema for '{actual}'.");
     }
-
-    private static void ValidateReservedMetadataFields(
-        Type subjectType,
-        FilterSchema schema)
-    {
-        if (!TryCreateMetadataProbe(subjectType, out object? probe))
-            return;
-
-        ValidateReservedMetadataField(
-            subjectType,
-            schema,
-            "subjectType",
-            subjectType.FullName ?? subjectType.Name,
-            probe);
-        ValidateReservedMetadataField(
-            subjectType,
-            schema,
-            "subjectName",
-            subjectType.Name,
-            probe);
-    }
-
-    private static void ValidateReservedMetadataField(
-        Type subjectType,
-        FilterSchema schema,
-        string name,
-        string expected,
-        object probe)
-    {
-        if (!schema._fields.TryGetValue(name, out FilterField? field))
-            return;
-        if (field.Kind != FilterFieldKind.Scalar ||
-            field.ValueType != typeof(string) ||
-            !TryReadString(() => field.Getter(probe), out string? actual) ||
-            !string.Equals(actual, expected, StringComparison.Ordinal))
-        {
-            throw InvalidReservedMetadata(subjectType, name);
-        }
-
-        if (field.ScalarAccessor?.Text is { } text &&
-            (!TryReadString(() => text(probe), out actual) ||
-                !string.Equals(actual, expected, StringComparison.Ordinal)))
-        {
-            throw InvalidReservedMetadata(subjectType, name);
-        }
-    }
-
-    private static bool TryCreateMetadataProbe(
-        Type subjectType,
-        [NotNullWhen(true)] out object? probe)
-    {
-        try
-        {
-            probe = subjectType.IsValueType
-                ? Activator.CreateInstance(subjectType)
-                : RuntimeHelpers.GetUninitializedObject(subjectType);
-            return probe is not null;
-        }
-        catch
-        {
-            probe = null;
-            return false;
-        }
-    }
-
-    private static bool TryReadString(Func<object?> read, out string? value)
-    {
-        try
-        {
-            value = read() as string;
-            return true;
-        }
-        catch
-        {
-            value = null;
-            return false;
-        }
-    }
-
-    private static FilterValidationException InvalidReservedMetadata(
-        Type subjectType,
-        string fieldName) =>
-        new(
-            $"Generated filter schema provider for '{subjectType.FullName}' returned invalid reserved metadata field '{fieldName}'.");
 
     private static bool IsRegisteredValueObject(Type type) =>
         s_valueObjects.ContainsKey(type);
