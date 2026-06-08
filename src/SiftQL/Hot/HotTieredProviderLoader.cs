@@ -53,6 +53,7 @@ public static class HotTieredProviderLoader
                 assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
                 using var registrationScope = HotProviderRegistrationContext.AllowManifest(manifestHash);
                 RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+                PrecompiledTieredProviderRegistry.RemoveAssembly(assembly);
                 if (registrationScope.Commit() == 0)
                 {
                     UnloadFailedAssembly(loadContext, assembly);
