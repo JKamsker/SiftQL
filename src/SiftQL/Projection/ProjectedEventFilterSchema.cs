@@ -92,8 +92,35 @@ public static class ProjectedEventFilterSchema
             ProjectionAccessor: subject => Value((ProjectedEvent)subject, context, name));
     }
 
-    private static ProjectedEventValue Value(ProjectedEvent projected, bool context, string name) =>
-        context ? projected.ContextValue(name) : projected.Field(name);
+    private static ProjectedEventValue Value(ProjectedEvent projected, bool context, string name)
+    {
+        string[] segments = name.Split('.');
+        if (segments.Length == 0)
+            return ProjectedEventValue.Null;
+
+        ProjectedEventValue value = context
+            ? projected.ContextValue(segments[0])
+            : projected.Field(segments[0]);
+        for (int i = 1; i < segments.Length; i++)
+            value = ObjectField(value, segments[i]);
+
+        return value;
+    }
+
+    private static ProjectedEventValue ObjectField(ProjectedEventValue value, string name)
+    {
+        if (value.Kind != ProjectedEventValueKind.Object)
+            return ProjectedEventValue.Null;
+
+        for (int i = 0; i < value.Fields.Length; i++)
+        {
+            ProjectedEventField field = value.Fields[i];
+            if (string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase))
+                return field.Value;
+        }
+
+        return ProjectedEventValue.Null;
+    }
 
     private static object? ToObject(ProjectedEventValue value) =>
         value.Kind switch

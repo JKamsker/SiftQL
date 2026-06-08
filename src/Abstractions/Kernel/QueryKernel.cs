@@ -245,6 +245,14 @@ public sealed record QueryKernel<TSubject>
                 fieldName = field.Name;
                 return true;
             }
+
+            if (sourcePath.Length > field.Path.Length &&
+                sourcePath[field.Path.Length] == '.' &&
+                sourcePath.StartsWith(field.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                fieldName = field.Name + sourcePath[field.Path.Length..];
+                return true;
+            }
         }
 
         fieldName = string.Empty;
