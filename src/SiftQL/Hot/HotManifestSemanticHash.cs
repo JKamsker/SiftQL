@@ -41,14 +41,13 @@ internal static class HotManifestSemanticHash
             return;
         }
 
-        var encoded = new List<string>();
+        var encoded = new SortedSet<string>(StringComparer.Ordinal);
         foreach (JsonElement entry in entries.EnumerateArray())
             encoded.Add(EntryKey(entry));
 
-        encoded.Sort(StringComparer.Ordinal);
         builder.Append(encoded.Count.ToString(CultureInfo.InvariantCulture)).Append(':');
-        for (int i = 0; i < encoded.Count; i++)
-            AppendPart(builder, encoded[i]);
+        foreach (string entry in encoded)
+            AppendPart(builder, entry);
         builder.Append(']');
     }
 
@@ -107,7 +106,7 @@ internal static class HotManifestSemanticHash
                 break;
             case JsonValueKind.Number:
                 builder.Append("n");
-                AppendPart(builder, value.GetRawText());
+                AppendPart(builder, CanonicalNumber(value));
                 break;
             case JsonValueKind.True:
                 builder.Append("t;");
@@ -155,6 +154,16 @@ internal static class HotManifestSemanticHash
             .Append(':')
             .Append(value)
             .Append(';');
+
+    private static string CanonicalNumber(JsonElement value)
+    {
+        if (value.TryGetDecimal(out decimal decimalValue))
+            return decimalValue.ToString("G29", CultureInfo.InvariantCulture);
+        if (value.TryGetDouble(out double doubleValue))
+            return doubleValue.ToString("R", CultureInfo.InvariantCulture);
+
+        return value.GetRawText();
+    }
 
     private static string Sha256(string text)
     {
