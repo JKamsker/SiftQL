@@ -41,7 +41,7 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
     {
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(expression);
-        if (ContainsNonFiniteNumber(expression))
+        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
             return;
 
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
@@ -57,6 +57,9 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
     {
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(projection);
+        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(projection))
+            return;
+
         string fingerprint = ProjectionExpressionFingerprint.CreateKey(projection).ToString();
         var observed = new HotCompilationObserved
         {
@@ -221,7 +224,7 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
         DateTimeOffset now = DateTimeOffset.UtcNow;
         foreach (HotCompilationManifestEntry entry in manifest.Entries)
         {
-            if (string.IsNullOrWhiteSpace(entry.Key))
+            if (!IsValidExistingEntry(entry))
                 continue;
             _entries[entry.Key] = entry;
         }
@@ -239,29 +242,16 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
             string.Equals(manifest.GeneratorVersion, current.GeneratorVersion, StringComparison.Ordinal);
     }
 
-    private static bool ContainsNonFiniteNumber(FilterExpression expression)
-    {
-        if (IsNonFiniteNumber(expression.Value))
-            return true;
+    private static bool IsValidExistingEntry(HotCompilationManifestEntry entry) =>
+        !string.IsNullOrWhiteSpace(entry.Key) &&
+        IsSupportedKind(entry.Kind) &&
+        !string.IsNullOrWhiteSpace(entry.SubjectType) &&
+        !string.IsNullOrWhiteSpace(entry.Fingerprint) &&
+        entry.Definition.ValueKind == JsonValueKind.Object;
 
-        for (int i = 0; i < expression.Values.Length; i++)
-        {
-            if (IsNonFiniteNumber(expression.Values[i]))
-                return true;
-        }
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (ContainsNonFiniteNumber(expression.Children[i]))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsNonFiniteNumber(FilterValue? value) =>
-        value?.Kind == FilterValueKind.Number &&
-        (double.IsNaN(value.Number) || double.IsInfinity(value.Number));
+    private static bool IsSupportedKind(string kind) =>
+        string.Equals(kind, "filter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(kind, "projection", StringComparison.OrdinalIgnoreCase);
 
     private void DecayLocked(DateTimeOffset now)
     {

@@ -38,7 +38,7 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
     {
         if (Volatile.Read(ref _disposed) != 0)
             return;
-        if (ContainsNonFiniteNumber(expression))
+        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
             return;
 
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
@@ -61,6 +61,8 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
         long payloadWrites)
     {
         if (Volatile.Read(ref _disposed) != 0)
+            return;
+        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(projection))
             return;
 
         string fingerprint = ProjectionExpressionFingerprint.CreateKey(projection).ToString();
@@ -240,30 +242,6 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
         if (options.MinimumInterval < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(options.MinimumInterval));
     }
-
-    private static bool ContainsNonFiniteNumber(FilterExpression expression)
-    {
-        if (IsNonFiniteNumber(expression.Value))
-            return true;
-
-        for (int i = 0; i < expression.Values.Length; i++)
-        {
-            if (IsNonFiniteNumber(expression.Values[i]))
-                return true;
-        }
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (ContainsNonFiniteNumber(expression.Children[i]))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsNonFiniteNumber(FilterValue? value) =>
-        value?.Kind == FilterValueKind.Number &&
-        (double.IsNaN(value.Number) || double.IsInfinity(value.Number));
 
     private sealed record QueueWork(
         RuntimeHotProviderBatchSink Sink,
