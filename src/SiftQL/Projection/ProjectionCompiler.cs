@@ -69,11 +69,12 @@ public static class ProjectionCompiler
             out var schemaFields,
             out var fields);
         var includes = projection.Includes.Select(include => compileInclude(schema, include)).ToArray();
+        EventProjectionExpression effectiveProjection = EffectiveProjection(projection, fields);
         string compiledKey = ProjectionCompilerKeyBuilder.Build(
             fields,
             projection.Includes,
             IncludeCompilerKey.From(compileInclude).ToString());
-        ProjectionExpressionKey projectionKey = ProjectionExpressionFingerprint.CreateKey(projection);
+        ProjectionExpressionKey projectionKey = ProjectionExpressionFingerprint.CreateKey(effectiveProjection);
         string? fingerprint = null;
         FilterValue[]? parameters = ProjectionExpressionParameters.HasParameters(projection)
             ? ProjectionExpressionParameters.BindValues(projection, ProjectionExpressionParameters.Keys(projection))
@@ -109,7 +110,7 @@ public static class ProjectionCompiler
             ? null
             : snapshot => options.HotManifestSink.RecordHotProjection(
                 schema.SubjectType,
-                projection,
+                effectiveProjection,
                 snapshot.Materializations,
                 snapshot.PayloadWrites);
         CompiledProjection<TContext>? compiledProjection = null;
@@ -132,6 +133,18 @@ public static class ProjectionCompiler
 
         string Fingerprint() => fingerprint ??= projectionKey.ToString();
     }
+
+    private static EventProjectionExpression EffectiveProjection<TContext>(
+        EventProjectionExpression projection,
+        IReadOnlyList<CompiledProjection<TContext>.FieldProjector> fields) =>
+        projection.Fields.Length == 0
+            ? projection with
+            {
+                Fields = fields
+                    .Select(static field => new EventProjectionField(field.Path, field.Name))
+                    .ToArray(),
+            }
+            : projection;
 
     private static void ValidateShape(
         EventProjectionExpression projection,

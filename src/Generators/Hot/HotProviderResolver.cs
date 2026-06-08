@@ -63,7 +63,10 @@ internal static class HotProviderResolver
                     diagnostics,
                     manifest.Path);
                 if (projection is not null)
-                    entries.Add(new(entry.Kind, subject.ToDisplayString(s_format), entry.Fingerprint, null, projection));
+                {
+                    string fingerprint = HotManifestFingerprint.Projection(projection);
+                    entries.Add(new(entry.Kind, subject.ToDisplayString(s_format), fingerprint, null, projection));
+                }
             }
         }
 
