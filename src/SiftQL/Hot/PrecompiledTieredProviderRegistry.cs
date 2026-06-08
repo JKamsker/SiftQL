@@ -175,14 +175,7 @@ public static class PrecompiledTieredProviderRegistry
         {
             bool changed;
             lock (_gate)
-            {
-                IPrecompiledTieredProvider[] updated = _providers
-                    .Where(item => !ReferenceEquals(item, provider))
-                    .ToArray();
-                changed = updated.Length != _providers.Length;
-                if (changed)
-                    _providers = updated;
-            }
+                changed = TryRemoveOne(ref _providers, provider);
 
             if (changed)
                 IncrementGlobalVersion();
@@ -229,14 +222,7 @@ public static class PrecompiledTieredProviderRegistry
 
             bool changed;
             lock (s_gate)
-            {
-                IPrecompiledTieredProvider[] updated = s_providers
-                    .Where(item => !ReferenceEquals(item, provider))
-                    .ToArray();
-                changed = updated.Length != s_providers.Length;
-                if (changed)
-                    s_providers = updated;
-            }
+                changed = TryRemoveOne(ref s_providers, provider);
 
             if (changed)
                 IncrementGlobalVersion();
@@ -252,5 +238,22 @@ public static class PrecompiledTieredProviderRegistry
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
                 scope.Remove(provider);
         }
+    }
+
+    private static bool TryRemoveOne(
+        ref IPrecompiledTieredProvider[] providers,
+        IPrecompiledTieredProvider provider)
+    {
+        int index = Array.FindLastIndex(providers, item => ReferenceEquals(item, provider));
+        if (index < 0)
+            return false;
+
+        var updated = new IPrecompiledTieredProvider[providers.Length - 1];
+        if (index > 0)
+            Array.Copy(providers, 0, updated, 0, index);
+        if (index < providers.Length - 1)
+            Array.Copy(providers, index + 1, updated, index, providers.Length - index - 1);
+        providers = updated;
+        return true;
     }
 }
