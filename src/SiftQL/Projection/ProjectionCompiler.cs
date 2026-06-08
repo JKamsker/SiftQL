@@ -69,6 +69,10 @@ public static class ProjectionCompiler
             out var schemaFields,
             out var fields);
         var includes = projection.Includes.Select(include => compileInclude(schema, include)).ToArray();
+        string compiledKey = ProjectionCompilerKeyBuilder.Build(
+            fields,
+            projection.Includes,
+            IncludeCompilerKey.From(compileInclude).ToString());
         ProjectionExpressionKey projectionKey = ProjectionExpressionFingerprint.CreateKey(projection);
         string? fingerprint = null;
         FilterValue[]? parameters = ProjectionExpressionParameters.HasParameters(projection)
@@ -84,7 +88,7 @@ public static class ProjectionCompiler
         if (hasPrecompiled)
         {
             return new CompiledProjection<TContext>(
-                ProjectionCompilerKeyBuilder.Build(fields, projection.Includes),
+                compiledKey,
                 subjectType,
                 eventMetadataType ?? subjectType,
                 fields,
@@ -117,7 +121,7 @@ public static class ProjectionCompiler
                 projectFields => compiledProjection!.PromoteProjectFields(projectFields))
             : null;
         compiledProjection = new CompiledProjection<TContext>(
-            ProjectionCompilerKeyBuilder.Build(fields, projection.Includes),
+            compiledKey,
             subjectType,
             eventMetadataType ?? subjectType,
             fields,

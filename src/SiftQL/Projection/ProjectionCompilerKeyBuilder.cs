@@ -9,11 +9,20 @@ internal static class ProjectionCompilerKeyBuilder
 {
     public static string Build<TContext>(
         IReadOnlyList<CompiledProjection<TContext>.FieldProjector> fields,
-        IReadOnlyList<EventProjectionInclude> includes)
+        IReadOnlyList<EventProjectionInclude> includes,
+        string? includeCompilerKey = null)
     {
         string fieldKey = string.Concat(fields.Select(FieldKey));
         string includeKey = string.Concat(includes.Select(IncludeKey));
-        return string.Concat("F", CountPart(fields.Count), fieldKey, "I", CountPart(includes.Count), includeKey);
+        string compilerKey = includes.Count == 0 ? string.Empty : "C" + KeyPart(includeCompilerKey);
+        return string.Concat(
+            "F",
+            CountPart(fields.Count),
+            fieldKey,
+            "I",
+            CountPart(includes.Count),
+            includeKey,
+            compilerKey);
     }
 
     private static string FieldKey<TContext>(CompiledProjection<TContext>.FieldProjector field) =>
