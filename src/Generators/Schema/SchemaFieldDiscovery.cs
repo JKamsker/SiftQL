@@ -122,8 +122,9 @@ internal static class SchemaFieldDiscovery
         string escaped = CSharpIdentifier.EscapePath(property.Name);
         if (!SymbolEqualityComparer.Default.Equals(property.ContainingType, owner))
         {
-            return "((" + property.ContainingType.ToDisplayString(s_format) + ")(" +
-                ownerAccess + "))." + escaped;
+            string cast = "((" + property.ContainingType.ToDisplayString(s_format) + ")(" +
+                ownerAccess + "))";
+            return cast + (!root && CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
         }
 
         return ownerAccess + (!root && CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
