@@ -24,7 +24,6 @@ internal static class HotManifestSemanticHash
     {
         builder.Append("manifest{");
         AppendStringProperty(builder, manifest, "Schema");
-        AppendStringProperty(builder, manifest, "RuntimeVersion");
         AppendStringProperty(builder, manifest, "FilterEngineVersion");
         AppendStringProperty(builder, manifest, "GeneratorVersion");
         AppendEntries(builder, manifest);
@@ -125,6 +124,9 @@ internal static class HotManifestSemanticHash
 
     private static void AppendObject(StringBuilder builder, JsonElement value)
     {
+        if (TryAppendParameterizedValue(builder, value))
+            return;
+
         JsonProperty[] properties = value
             .EnumerateObject()
             .OrderBy(static property => property.Name, StringComparer.Ordinal)
@@ -137,6 +139,25 @@ internal static class HotManifestSemanticHash
         }
 
         builder.Append('}');
+    }
+
+    private static bool TryAppendParameterizedValue(StringBuilder builder, JsonElement value)
+    {
+        if (!value.TryGetProperty("ParameterKey", out JsonElement parameterKey) ||
+            parameterKey.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(parameterKey.GetString()) ||
+            !value.TryGetProperty("Kind", out JsonElement kind))
+        {
+            return false;
+        }
+
+        builder.Append("o2{");
+        AppendPart(builder, "Kind");
+        AppendCanonicalJson(builder, kind);
+        AppendPart(builder, "ParameterKey");
+        AppendCanonicalJson(builder, parameterKey);
+        builder.Append('}');
+        return true;
     }
 
     private static void AppendArray(StringBuilder builder, JsonElement value)
