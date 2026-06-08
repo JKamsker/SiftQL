@@ -75,6 +75,19 @@ internal static class EventPipelineNormalizer
             {
                 throw Error(errorFactory, $"Pipeline stage kind '{stage.Kind}' is not supported.");
             }
+
+            if (stage.Kind == EventPipelineStageKind.Filter)
+            {
+                if (stage.Filter is null)
+                    throw Error(errorFactory, "Pipeline filter stages require a filter.");
+                FilterExpressionShapeValidator.Validate(stage.Filter, errorFactory);
+            }
+
+            if (stage.Kind == EventPipelineStageKind.Projection &&
+                stage.Projection is null)
+            {
+                throw Error(errorFactory, "Pipeline projection stages require a projection.");
+            }
         }
     }
 

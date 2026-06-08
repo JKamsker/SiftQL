@@ -56,6 +56,7 @@ public static class FilterCompiler
         expression ??= FilterExpression.Any;
         if (expression.Kind == FilterExpressionKind.Any)
             return CompiledKernel.Any;
+        FilterExpressionShapeValidator.Validate(expression, errorFactory);
         expression = FilterExpressionSnapshot.Clone(expression);
 
         TieredFilterPromotionPolicy policy = options.CreateFilterPromotionPolicy(expression);
@@ -90,6 +91,7 @@ public static class FilterCompiler
         expression ??= FilterExpression.Any;
         if (expression.Kind == FilterExpressionKind.Any)
             return CompiledKernel.Any;
+        FilterExpressionShapeValidator.Validate(expression, errorFactory);
         expression = FilterExpressionSnapshot.Clone(expression);
 
         bool hasParameters = FilterExpressionParameters.HasParameters(expression);
