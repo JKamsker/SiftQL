@@ -40,6 +40,39 @@ public sealed class QueryKernelIncludeCompositionRegressionTests
         Assert.Equal(3, limit.Integer);
     }
 
+    [Fact]
+    public async Task IncludeAfterProjectedSelectPreservesContext()
+    {
+        var rawInclude = new EventProjectionInclude(
+            "test.limit",
+            "limit",
+            [new EventProjectionArgument("limit", FilterValue.From(5L))]);
+
+        EventPipelineExpression pipeline = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.ItemId))
+            .WhereProjected(static projected =>
+                projected.Field(nameof(ItemUsedEvent.ItemId)).Integer == 100)
+            .Select(new EventProjectionField(nameof(ItemUsedEvent.ItemId), "Visible"))
+            .Include(rawInclude)
+            .Pipeline;
+
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            pipeline,
+            CompileLimitInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 7, 100, 2),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(100, projected!.Field("Visible").Integer);
+        Assert.True(projected.TryGetContext("limit", out ProjectedEventValue limit));
+        Assert.Equal(5, limit.Integer);
+    }
+
     private static CompiledProjection<object>.IncludeProjector CompileLimitInclude(
         FilterSchema schema,
         EventProjectionInclude include)
