@@ -93,15 +93,9 @@ public sealed class InMemoryServerPluginHost
         where TEvent : IFilterSubject
     {
         ArgumentNullException.ThrowIfNull(ev);
-        foreach (var pair in _subscriptions)
-        {
-            if (!pair.Key.IsInstanceOfType(ev))
-                continue;
-
-            List<ISubscription> subscriptions = pair.Value;
-            for (int i = 0; i < subscriptions.Count; i++)
-                await subscriptions[i].DispatchAsync(ev, cancellationToken).ConfigureAwait(false);
-        }
+        ISubscription[] subscriptions = SubscriptionsFor(ev);
+        for (int i = 0; i < subscriptions.Length; i++)
+            await subscriptions[i].DispatchAsync(ev, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
@@ -157,6 +151,18 @@ public sealed class InMemoryServerPluginHost
 
     private PluginContext CreateContext(string pluginId) =>
         new(pluginId, _clients, new ServerQueryGateway(pluginId, this));
+
+    private ISubscription[] SubscriptionsFor(object ev)
+    {
+        var matches = new List<ISubscription>();
+        foreach ((Type type, List<ISubscription> subscriptions) in _subscriptions)
+        {
+            if (type.IsInstanceOfType(ev))
+                matches.AddRange(subscriptions);
+        }
+
+        return matches.ToArray();
+    }
 
     private void RemovePluginRegistrations(string pluginId)
     {
