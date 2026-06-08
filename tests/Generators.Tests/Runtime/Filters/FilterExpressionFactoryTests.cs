@@ -31,6 +31,13 @@ public sealed class FilterExpressionFactoryTests
     }
 
     [Fact]
+    public void OrRejectsEmptyChildren()
+    {
+        Assert.ThrowsAny<ArgumentException>(() =>
+            FilterExpression.Or());
+    }
+
+    [Fact]
     public void AndRejectsNullChildren()
     {
         Assert.ThrowsAny<ArgumentException>(() =>
