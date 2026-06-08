@@ -32,10 +32,10 @@ public sealed record QueryKernel<TSubject, TContext>
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
         if (translated.NewIncludes.Length == 0 &&
-            !ContextProjectionPipeline.HasProjection(Pipeline))
+            !ReferencesContextPath(translated.Filter))
         {
             return new QueryKernel<TSubject, TContext>(
-                Kernel with { Pipeline = Pipeline.AppendFilter(ToSourceFilter(translated.Filter)) },
+                Kernel with { Pipeline = Pipeline.AppendSourceFilter(ToSourceFilter(translated.Filter)) },
                 translated.Bindings);
         }
 
@@ -121,6 +121,20 @@ public sealed record QueryKernel<TSubject, TContext>
                 : expression.Field,
             Children = expression.Children.Select(ToSourceFilter).ToArray(),
         };
+
+    private static bool ReferencesContextPath(FilterExpression expression)
+    {
+        if (ProjectedEventPaths.TrySplit(expression.Field, out bool context, out _) && context)
+            return true;
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (ReferencesContextPath(expression.Children[i]))
+                return true;
+        }
+
+        return false;
+    }
 }
 
 public static class QueryKernelContextExtensions
