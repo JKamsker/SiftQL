@@ -6,6 +6,7 @@ namespace SiftQL.Examples.ShaRpc.Client.Hosting;
 
 public sealed class RemoteClientService : IRemoteClient
 {
+    private readonly string _premiumInventoryRegion = "north-gate";
     private IRemoteServer? _server;
 
     public void Attach(IRemoteServer server) =>
@@ -99,13 +100,13 @@ public sealed class RemoteClientService : IRemoteClient
             cancellationToken);
     }
 
-    private static Task SubscribePremiumInventoryAsync(
+    private Task SubscribePremiumInventoryAsync(
         IRemoteServer server,
         CancellationToken cancellationToken)
     {
         var subscription = ServerKernel.ForInventoryChanged()
             .WithServerContext()
-            .Where(static ev => ev.Region == "north-gate" && ev.Quantity > 0)
+            .Where(ev => ev.Region == _premiumInventoryRegion && ev.Quantity > 0)
             .Select(static (ev, ctx) => new
             {
                 ev.SessionId,
