@@ -86,6 +86,9 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(visitor);
         EnsureCurrentSchema();
+        if (!_schema.SubjectType.IsInstanceOfType(subject))
+            return;
+
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
@@ -137,6 +140,9 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     {
         ArgumentNullException.ThrowIfNull(subject);
         EnsureCurrentSchema();
+        if (!_schema.SubjectType.IsInstanceOfType(subject))
+            return [];
+
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var candidates = new List<TSubscription>(snapshot.Unindexed.Length);
         var seen = new HashSet<TSubscription>();
