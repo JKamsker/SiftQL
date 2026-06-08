@@ -111,7 +111,12 @@ internal static class FilterExpressionScalarBuilder
         }
 
         if (value.Kind == FilterValueKind.UnsignedInteger)
+        {
+            if (IsFloating(type))
+                return null;
+
             return BuildUnsignedIntegerCompare(actual, value.UnsignedInteger, op);
+        }
 
         if (value.Kind == FilterValueKind.Number && FilterNumeric.IsExactNumeric(type))
         {
