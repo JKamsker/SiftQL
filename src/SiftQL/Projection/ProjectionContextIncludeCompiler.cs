@@ -99,11 +99,21 @@ public static class ProjectionContextIncludeCompiler
         EventProjectionInclude include,
         IReadOnlyList<ParameterInfo> parameters)
     {
-        var getters = new Func<object, object?>[include.Arguments.Length];
-        for (int i = 0; i < include.Arguments.Length; i++)
+        Dictionary<string, EventProjectionArgument> arguments = include.Arguments.ToDictionary(
+            static argument => argument.Name,
+            StringComparer.OrdinalIgnoreCase);
+        var getters = new Func<object, object?>[parameters.Count];
+        for (int i = 0; i < parameters.Count; i++)
         {
-            EventProjectionArgument argument = include.Arguments[i];
-            Type targetType = parameters[i].ParameterType;
+            ParameterInfo parameter = parameters[i];
+            if (string.IsNullOrWhiteSpace(parameter.Name) ||
+                !arguments.TryGetValue(parameter.Name, out EventProjectionArgument? argument))
+            {
+                throw new FilterValidationException(
+                    $"Projection include '{include.Intrinsic}' is missing argument '{parameter.Name}'.");
+            }
+
+            Type targetType = parameter.ParameterType;
             getters[i] = argument.Kind == EventProjectionArgumentKind.SourceField
                 ? CompileSourceGetter(schema, include, argument, targetType)
                 : _ => ConvertValue(argument.Value, targetType);
