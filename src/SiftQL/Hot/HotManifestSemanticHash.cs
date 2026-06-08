@@ -157,12 +157,47 @@ internal static class HotManifestSemanticHash
 
     private static string CanonicalNumber(JsonElement value)
     {
+        string raw = value.GetRawText();
+        if (IsNegativeZeroLiteral(raw))
+            return "-0";
+
         if (value.TryGetDecimal(out decimal decimalValue))
             return decimalValue.ToString("G29", CultureInfo.InvariantCulture);
         if (value.TryGetDouble(out double doubleValue))
             return doubleValue.ToString("R", CultureInfo.InvariantCulture);
 
-        return value.GetRawText();
+        return raw;
+    }
+
+    private static bool IsNegativeZeroLiteral(string raw)
+    {
+        if (!raw.StartsWith("-", StringComparison.Ordinal))
+            return false;
+
+        int lowerExponent = raw.IndexOf('e');
+        int upperExponent = raw.IndexOf('E');
+        int end = lowerExponent < 0
+            ? upperExponent
+            : upperExponent < 0
+                ? lowerExponent
+                : Math.Min(lowerExponent, upperExponent);
+        if (end < 0)
+            end = raw.Length;
+
+        bool hasZero = false;
+        for (int i = 1; i < end; i++)
+        {
+            if (raw[i] == '0')
+            {
+                hasZero = true;
+                continue;
+            }
+
+            if (raw[i] != '.')
+                return false;
+        }
+
+        return hasZero;
     }
 
     private static string Sha256(string text)
