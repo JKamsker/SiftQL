@@ -219,25 +219,36 @@ public sealed record QueryKernel<TSubject>
     {
         if (ProjectedEventPaths.TrySplit(field.Path, out _, out _))
             return field;
+        if (TryProjectedFieldName(field.Path, out string projectedFieldName))
+        {
+            return new EventProjectionField(
+                ProjectedEventPaths.Field(projectedFieldName),
+                field.Name);
+        }
+
         if (IsProjectedMetadataPath(field.Path))
             return field;
 
         return new EventProjectionField(
-            ProjectedEventPaths.Field(ProjectedFieldName(field.Path)),
+            ProjectedEventPaths.Field(field.Path),
             field.Name);
     }
 
-    private string ProjectedFieldName(string sourcePath)
+    private bool TryProjectedFieldName(string sourcePath, out string fieldName)
     {
         EventProjectionExpression previous = QueryKernelPipelineState.ProjectionInputForNextProjection(Pipeline);
         for (int i = previous.Fields.Length - 1; i >= 0; i--)
         {
             EventProjectionField field = previous.Fields[i];
             if (string.Equals(field.Path, sourcePath, StringComparison.OrdinalIgnoreCase))
-                return field.Name;
+            {
+                fieldName = field.Name;
+                return true;
+            }
         }
 
-        return sourcePath;
+        fieldName = string.Empty;
+        return false;
     }
 
     private bool ProjectionWillReadProjectedEvent() =>
