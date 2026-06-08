@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using SiftQL.Compiler;
@@ -191,7 +192,9 @@ public sealed class FilterSchema
         }
     }
 
-    private static bool TryCreateMetadataProbe(Type subjectType, out object? probe)
+    private static bool TryCreateMetadataProbe(
+        Type subjectType,
+        [NotNullWhen(true)] out object? probe)
     {
         try
         {
