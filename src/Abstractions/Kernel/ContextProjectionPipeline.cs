@@ -69,26 +69,69 @@ internal static class ContextProjectionPipeline
 
     public static string ProjectedFieldName(EventPipelineExpression pipeline, string sourcePath)
     {
-        EventProjectionExpression previous = QueryKernelPipelineState.LastProjectionOrDefault(pipeline);
-        for (int i = previous.Fields.Length - 1; i >= 0; i--)
+        string currentName = sourcePath;
+        bool projected = false;
+        for (int i = 0; i < pipeline.Stages.Length; i++)
         {
-            EventProjectionField field = previous.Fields[i];
-            if (string.Equals(field.Path, sourcePath, StringComparison.OrdinalIgnoreCase))
-                return field.Name;
+            if (pipeline.Stages[i].Kind != EventPipelineStageKind.Projection)
+                continue;
 
-            if (sourcePath.Length > field.Path.Length &&
-                sourcePath[field.Path.Length] == '.' &&
-                sourcePath.StartsWith(field.Path, StringComparison.OrdinalIgnoreCase))
+            EventProjectionExpression projection = pipeline.Stages[i].Projection;
+            string currentPath = projected
+                ? ProjectedEventPaths.Field(currentName)
+                : sourcePath;
+            if (TryProjectedFieldName(projection, currentPath, out string nextName))
             {
-                return field.Name + sourcePath[field.Path.Length..];
+                currentName = nextName;
             }
+
+            projected = true;
         }
 
-        return sourcePath;
+        return currentName;
     }
 
     public static string ProjectedPath(EventPipelineExpression pipeline, string sourcePath) =>
         ProjectedEventPaths.Field(ProjectedFieldName(pipeline, sourcePath));
+
+    private static bool TryProjectedFieldName(
+        EventProjectionExpression projection,
+        string path,
+        out string fieldName)
+    {
+        for (int i = projection.Fields.Length - 1; i >= 0; i--)
+        {
+            EventProjectionField field = projection.Fields[i];
+            if (TryMatchPath(field.Path, path, out string suffix))
+            {
+                fieldName = field.Name + suffix;
+                return true;
+            }
+        }
+
+        fieldName = string.Empty;
+        return false;
+    }
+
+    private static bool TryMatchPath(string candidate, string path, out string suffix)
+    {
+        if (string.Equals(candidate, path, StringComparison.OrdinalIgnoreCase))
+        {
+            suffix = string.Empty;
+            return true;
+        }
+
+        if (path.Length > candidate.Length &&
+            path[candidate.Length] == '.' &&
+            path.StartsWith(candidate, StringComparison.OrdinalIgnoreCase))
+        {
+            suffix = path[candidate.Length..];
+            return true;
+        }
+
+        suffix = string.Empty;
+        return false;
+    }
 
     private static EventProjectionField FinalField(EventProjectionField field, bool projected) =>
         projected
