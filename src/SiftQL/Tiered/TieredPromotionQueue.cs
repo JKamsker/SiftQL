@@ -46,7 +46,7 @@ internal static class TieredPromotionQueue
 
         if (!started)
             return;
-        ThreadPool.UnsafeQueueUserWorkItem(static _ => RunWorker(), null);
+        ThreadPool.QueueUserWorkItem(static _ => RunWorker(), null);
     }
 
     private static void RunWorker()
