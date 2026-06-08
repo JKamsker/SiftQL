@@ -210,10 +210,21 @@ internal static class HotProviderResolver
         "SiftQL.IFilterSubject";
 
     private static bool CurrentGeneratedSchemaEligible(INamedTypeSymbol subject) =>
-        subject.DeclaredAccessibility == Accessibility.Public &&
+        IsExternallyVisible(subject) &&
         !subject.IsGenericType &&
         !subject.IsAbstract &&
         subject.TypeKind is TypeKind.Class or TypeKind.Struct;
+
+    private static bool IsExternallyVisible(INamedTypeSymbol subject)
+    {
+        for (INamedTypeSymbol? current = subject; current is not null; current = current.ContainingType)
+        {
+            if (current.DeclaredAccessibility != Accessibility.Public)
+                return false;
+        }
+
+        return true;
+    }
 
     private static bool ValidateFingerprint(
         string actual,
