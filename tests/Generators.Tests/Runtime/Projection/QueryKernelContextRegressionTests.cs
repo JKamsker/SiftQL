@@ -172,6 +172,33 @@ public sealed class QueryKernelContextRegressionTests
         Assert.Equal(ProjectedEventValueKind.Null, projected!.Field("TargetProfession").Kind);
     }
 
+    [Fact]
+    public async Task ContextSourceWhereAfterSourceSelectRunsBeforeProjection()
+    {
+        Guid targetId = Guid.NewGuid();
+        var query = QueryKernel
+            .For<BuffActivatedEvent, CombatContext>()
+            .Select(new EventProjectionField(nameof(BuffActivatedEvent.TargetId), "Target"))
+            .Where((ev, _) => ev.PluginId == 7);
+        CompiledEventPipeline<CombatContext> compiled = EventPipelineCompiler.Compile<CombatContext>(
+            typeof(BuffActivatedEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(
+            new BuffActivatedEvent(targetId, Guid.NewGuid(), 7, 11, 1),
+            new CombatContext(),
+            CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(
+            new BuffActivatedEvent(targetId, Guid.NewGuid(), 8, 11, 1),
+            new CombatContext(),
+            CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.Equal(targetId, accepted!.Field("Target").Guid);
+        Assert.Null(rejected);
+    }
+
     private enum Profession
     {
         Thief,
