@@ -75,11 +75,15 @@ public sealed class InMemoryServerPluginHost
         where TEvent : IFilterSubject
     {
         ArgumentNullException.ThrowIfNull(ev);
-        if (!_subscriptions.TryGetValue(typeof(TEvent), out List<ISubscription>? subscriptions))
-            return;
+        foreach (var pair in _subscriptions)
+        {
+            if (!pair.Key.IsInstanceOfType(ev))
+                continue;
 
-        for (int i = 0; i < subscriptions.Count; i++)
-            await subscriptions[i].DispatchAsync(ev, cancellationToken).ConfigureAwait(false);
+            List<ISubscription> subscriptions = pair.Value;
+            for (int i = 0; i < subscriptions.Count; i++)
+                await subscriptions[i].DispatchAsync(ev, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
