@@ -46,6 +46,7 @@ public static class HotTieredProviderLoader
             string assemblyPath = Path.GetFullPath(options.AssemblyPath);
             var loadContext = new HotTieredProviderLoadContext(assemblyPath);
             Assembly assembly;
+            IDisposable registration;
             try
             {
                 assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
@@ -58,6 +59,8 @@ public static class HotTieredProviderLoader
                         HotTieredProviderLoadStatus.InvalidAssembly,
                         "Hot provider DLL did not register a provider for the manifest.");
                 }
+
+                registration = registrationScope.ClaimCommittedRegistrations();
             }
             catch
             {
@@ -69,7 +72,8 @@ public static class HotTieredProviderLoader
                 HotTieredProviderLoadStatus.Loaded,
                 $"Loaded hot provider DLL '{assemblyPath}'.",
                 assembly,
-                loadContext);
+                loadContext,
+                registration);
         }
         catch (BadImageFormatException ex)
         {

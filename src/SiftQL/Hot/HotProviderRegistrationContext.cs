@@ -96,6 +96,16 @@ public static class HotProviderRegistrationContext
             return committed;
         }
 
+        internal IDisposable ClaimCommittedRegistrations()
+        {
+            if (!_committed || _registrations.Count == 0)
+                return NullRegistration.Instance;
+
+            var registrations = _registrations.ToArray();
+            _registrations.Clear();
+            return new CompositeRegistration(registrations);
+        }
+
         public void Dispose()
         {
             if (_disposed)
@@ -158,5 +168,19 @@ public static class HotProviderRegistrationContext
     {
         public static NullRegistration Instance { get; } = new();
         public void Dispose() { }
+    }
+
+    private sealed class CompositeRegistration(IDisposable[] registrations) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
+            for (int i = registrations.Length - 1; i >= 0; i--)
+                registrations[i].Dispose();
+        }
     }
 }

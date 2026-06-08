@@ -24,18 +24,21 @@ public enum HotTieredProviderLoadStatus
 public sealed class HotTieredProviderLoadResult : IDisposable
 {
     private readonly AssemblyLoadContext? _loadContext;
+    private readonly IDisposable? _registration;
     private int _disposed;
 
     internal HotTieredProviderLoadResult(
         HotTieredProviderLoadStatus status,
         string message,
         Assembly? assembly = null,
-        AssemblyLoadContext? loadContext = null)
+        AssemblyLoadContext? loadContext = null,
+        IDisposable? registration = null)
     {
         Status = status;
         Message = message;
         Assembly = assembly;
         _loadContext = loadContext;
+        _registration = registration;
     }
 
     public HotTieredProviderLoadStatus Status { get; }
@@ -48,7 +51,9 @@ public sealed class HotTieredProviderLoadResult : IDisposable
         if (System.Threading.Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
-        if (Assembly is not null)
+        if (_registration is not null)
+            _registration.Dispose();
+        else if (Assembly is not null)
             PrecompiledTieredProviderRegistry.RemoveAssembly(Assembly);
         _loadContext?.Unload();
     }
