@@ -67,6 +67,12 @@ internal static class FilterSchemaEmitter
 
     private static void EmitFactory(StringBuilder source, GeneratedSchema schema)
     {
+        if (!string.IsNullOrWhiteSpace(schema.ReservedFieldCollision))
+        {
+            EmitReservedCollisionFactory(source, schema);
+            return;
+        }
+
         source.Append("    private static FilterSchema Create");
         source.Append(schema.HelperName);
         source.AppendLine("() =>");
@@ -79,6 +85,21 @@ internal static class FilterSchemaEmitter
         foreach (GeneratedField field in schema.Fields)
             EmitField(source, schema, field);
         source.AppendLine("        });");
+        source.AppendLine();
+    }
+
+    private static void EmitReservedCollisionFactory(StringBuilder source, GeneratedSchema schema)
+    {
+        source.Append("    private static FilterSchema Create");
+        source.Append(schema.HelperName);
+        source.AppendLine("() =>");
+        source.Append("        throw new global::SiftQL.Compiler.FilterValidationException(");
+        AppendLiteral(
+            source,
+            "Filter subject '" + schema.MetadataName + "' property '" +
+            schema.ReservedFieldCollision + "' collides with reserved metadata field '" +
+            schema.ReservedFieldCollision + "'.");
+        source.AppendLine(");");
         source.AppendLine();
     }
 

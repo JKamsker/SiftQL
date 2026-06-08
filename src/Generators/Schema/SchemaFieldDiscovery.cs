@@ -85,6 +85,17 @@ internal static class SchemaFieldDiscovery
         }
     }
 
+    public static string? ReservedTopLevelPropertyCollision(INamedTypeSymbol owner)
+    {
+        foreach (IPropertySymbol property in EnumerateProperties(owner))
+        {
+            if (CanRead(property) && IsReservedTopLevelField(property.Name))
+                return property.Name;
+        }
+
+        return null;
+    }
+
     private static bool CanRead(IPropertySymbol property) =>
         !property.IsStatic &&
         property.GetMethod is not null &&

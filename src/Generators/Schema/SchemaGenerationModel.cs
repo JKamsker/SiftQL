@@ -21,7 +21,8 @@ internal sealed record GeneratedSchema(
     string TypeName,
     string MetadataName,
     string HelperName,
-    EquatableArray<GeneratedField> Fields);
+    EquatableArray<GeneratedField> Fields,
+    string? ReservedFieldCollision);
 
 internal sealed record GeneratedProvider(
     EquatableArray<GeneratedSchema> Schemas,

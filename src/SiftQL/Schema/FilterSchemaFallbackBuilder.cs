@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using SiftQL.Compiler;
 
 namespace SiftQL.Schema;
 
@@ -85,6 +86,8 @@ internal static class FilterSchemaFallbackBuilder
                 continue;
 
             string name = string.IsNullOrEmpty(prefix) ? property.Name : prefix + "." + property.Name;
+            if (string.IsNullOrEmpty(prefix) && IsReservedMetadataField(name))
+                throw ReservedMetadataCollision(ownerType, property.Name);
             if (ContainsField(fields, name))
                 continue;
 
@@ -168,6 +171,16 @@ internal static class FilterSchemaFallbackBuilder
 
         return false;
     }
+
+    private static bool IsReservedMetadataField(string name) =>
+        string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
+
+    private static FilterValidationException ReservedMetadataCollision(
+        Type subjectType,
+        string propertyName) =>
+        new(
+            $"Filter subject '{subjectType.FullName}' property '{propertyName}' collides with reserved metadata field '{propertyName}'.");
 
     private static FilterField BuildVirtualField(
         Type subjectType,
