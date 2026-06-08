@@ -111,7 +111,11 @@ internal static class HotProviderResolver
         SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, string.Empty, subject, depth: 0);
         return new(includeGeneratedOnlyFields
             ? fields.ToImmutable()
-            : fields.Where(static field => !field.Name.Contains(".", StringComparison.Ordinal)).ToImmutableArray());
+            : fields
+                .Where(static field =>
+                    field.FieldKind != GeneratedFieldKind.Object &&
+                    !field.Name.Contains(".", StringComparison.Ordinal))
+                .ToImmutableArray());
     }
 
     private static HotProjection? ResolveProjection(
