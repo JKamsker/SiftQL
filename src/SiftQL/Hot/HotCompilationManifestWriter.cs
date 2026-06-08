@@ -41,6 +41,9 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
     {
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(expression);
+        if (ContainsNonFiniteNumber(expression))
+            return;
+
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
         var observed = new HotCompilationObserved { Evaluations = evaluations, Matches = matches };
         Record("filter", subjectType, fingerprint, JsonSerializer.SerializeToElement(expression, s_json), observed);
@@ -235,6 +238,30 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
             string.Equals(manifest.FilterEngineVersion, current.FilterEngineVersion, StringComparison.Ordinal) &&
             string.Equals(manifest.GeneratorVersion, current.GeneratorVersion, StringComparison.Ordinal);
     }
+
+    private static bool ContainsNonFiniteNumber(FilterExpression expression)
+    {
+        if (IsNonFiniteNumber(expression.Value))
+            return true;
+
+        for (int i = 0; i < expression.Values.Length; i++)
+        {
+            if (IsNonFiniteNumber(expression.Values[i]))
+                return true;
+        }
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (ContainsNonFiniteNumber(expression.Children[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsNonFiniteNumber(FilterValue? value) =>
+        value?.Kind == FilterValueKind.Number &&
+        (double.IsNaN(value.Number) || double.IsInfinity(value.Number));
 
     private void DecayLocked(DateTimeOffset now)
     {
