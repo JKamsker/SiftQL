@@ -53,6 +53,50 @@ public sealed class FilterSubscriptionIndexScalarAccessorRegressionTests
         }
     }
 
+    [Fact]
+    public void ExactNumericGetterDrivesIndexedLookupWhenScalarAccessorWouldRound()
+    {
+        const long exact = 9_007_199_254_740_993L;
+        Type subjectType = CreateSubjectType();
+        object subject = Activator.CreateInstance(subjectType)!;
+        GeneratedFilterSchemaRegistry.Register(subjectType.Assembly, Provider);
+        var filter = FilterExpression.Compare("Value", FilterOperator.Equal, FilterValue.From(exact));
+        CompiledKernel kernel = FilterCompiler.Compile(subjectType, filter, FilterCompilerOptions.Immediate);
+        var index = new FilterSubscriptionIndex<string>(subjectType);
+
+        index.Add("exact", filter);
+
+        Assert.True(kernel.Matches(subject));
+        Assert.Equal(["exact"], index.SnapshotCandidates(subject));
+        Assert.Equal(["exact"], index.SnapshotMatches(subject));
+
+        bool Provider(Type candidate, out FilterSchema? schema)
+        {
+            if (candidate != subjectType)
+            {
+                schema = null;
+                return false;
+            }
+
+            schema = GeneratedFilterSchemaRegistry.Create(
+                candidate,
+                [
+                    Reserved("subjectType", static subject => subject.GetType().FullName ?? subject.GetType().Name),
+                    Reserved("subjectName", static subject => subject.GetType().Name),
+                    new FilterField(
+                        "Value",
+                        typeof(long),
+                        FilterFieldKind.Scalar,
+                        static _ => exact,
+                        new FilterScalarAccessor(
+                            FilterScalarKind.Number,
+                            requiredNumber: static _ => (double)exact),
+                        ProjectionAccessor: static _ => ProjectedEventValue.FromScalar(exact)),
+                ]);
+            return true;
+        }
+    }
+
     private static FilterField Reserved(string name, Func<object, string> value) =>
         new(
             name,
