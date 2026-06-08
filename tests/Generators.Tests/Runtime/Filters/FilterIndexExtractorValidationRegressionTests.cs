@@ -30,5 +30,28 @@ public sealed class FilterIndexExtractorValidationRegressionTests
         Assert.Throws<FilterValidationException>(() => index.Add("bad", malformed));
     }
 
-    private sealed record IndexValidationSubject(int Id) : IFilterSubject;
+    [Fact]
+    public void ExtractorRejectsInvalidNonEqualityCompareWithValidationException()
+    {
+        var invalid = FilterExpression.Compare(
+            nameof(IndexValidationSubject.Name),
+            FilterOperator.GreaterThan,
+            FilterValue.From("A"));
+
+        Assert.Throws<FilterValidationException>(() =>
+            FilterIndexExtractor.Extract(typeof(IndexValidationSubject), invalid));
+    }
+
+    [Fact]
+    public void ExtractorReturnsNullForValidNonEqualityCompare()
+    {
+        var unindexed = FilterExpression.Compare(
+            nameof(IndexValidationSubject.Id),
+            FilterOperator.GreaterThan,
+            FilterValue.From(0L));
+
+        Assert.Null(FilterIndexExtractor.Extract(typeof(IndexValidationSubject), unindexed));
+    }
+
+    private sealed record IndexValidationSubject(int Id, string Name = "") : IFilterSubject;
 }
