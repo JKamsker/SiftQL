@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using SiftQL.Schema;
+using SiftQL.Values;
 
 namespace SiftQL.Index;
 
@@ -49,7 +50,9 @@ internal static class FilterIndexValueAccessor<TSubject>
             return Expression.Lambda<Func<TSubject, FilterIndexValue?>>(key, parameter).Compile();
         }
 
-        if (!hasPropertyPath && field.ScalarAccessor is { } scalarAccessor)
+        if (!hasPropertyPath &&
+            field.ScalarAccessor is { } scalarAccessor &&
+            !PrefersExactNumericGetter(field, scalarAccessor))
         {
             return subject => FilterIndexValue.TryCreateActual(scalarAccessor, subject!, out var actual)
                 ? actual
@@ -63,6 +66,17 @@ internal static class FilterIndexValueAccessor<TSubject>
         FilterIndexValue.TryCreateActual(field.Getter(subject!), out var actual)
             ? actual
             : null;
+
+    private static bool PrefersExactNumericGetter(
+        FilterField field,
+        FilterScalarAccessor scalarAccessor)
+    {
+        if (scalarAccessor.Kind != FilterScalarKind.Number)
+            return false;
+
+        Type valueType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        return FilterNumeric.IsExactNumeric(valueType);
+    }
 
     private static bool TryCreateConstant(FilterField field, out FilterIndexValue? key)
     {
