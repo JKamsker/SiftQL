@@ -35,7 +35,17 @@ internal static class HotProviderResolver
                 continue;
             }
 
-            var fields = DiscoverFields(subject);
+            if (!projectedEvent &&
+                SchemaFieldDiscovery.ReservedTopLevelPropertyCollision(subject) is { } collision)
+            {
+                Add(
+                    diagnostics,
+                    manifest.Path,
+                    $"Hot entry subject '{entry.SubjectType}' property '{collision}' collides with reserved metadata field '{collision}'.");
+                continue;
+            }
+
+            var fields = DiscoverFields(subject, CurrentGeneratedSchemaEligible(subject));
             if (entry.Kind == HotEntryKind.Filter && entry.Filter is not null)
             {
                 if (HotProviderFilterValidator.Validate(entry.Filter, fields, projectedEvent, diagnostics, manifest.Path) &&
@@ -93,11 +103,15 @@ internal static class HotProviderResolver
             .ThenBy(static entry => entry.SubjectTypeName, StringComparer.Ordinal)
             .ToImmutableArray();
 
-    private static EquatableArray<GeneratedField> DiscoverFields(INamedTypeSymbol subject)
+    private static EquatableArray<GeneratedField> DiscoverFields(
+        INamedTypeSymbol subject,
+        bool includeGeneratedOnlyFields)
     {
         var fields = ImmutableArray.CreateBuilder<GeneratedField>();
         SchemaFieldDiscovery.AddProperties(fields, string.Empty, string.Empty, string.Empty, subject, depth: 0);
-        return new(fields.ToImmutable());
+        return new(includeGeneratedOnlyFields
+            ? fields.ToImmutable()
+            : fields.Where(static field => !field.Name.Contains(".", StringComparison.Ordinal)).ToImmutableArray());
     }
 
     private static HotProjection? ResolveProjection(
@@ -194,6 +208,12 @@ internal static class HotProviderResolver
     private static bool IsFilterSubjectType(INamedTypeSymbol subject) =>
         subject.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ==
         "SiftQL.IFilterSubject";
+
+    private static bool CurrentGeneratedSchemaEligible(INamedTypeSymbol subject) =>
+        subject.DeclaredAccessibility == Accessibility.Public &&
+        !subject.IsGenericType &&
+        !subject.IsAbstract &&
+        subject.TypeKind is TypeKind.Class or TypeKind.Struct;
 
     private static bool ValidateFingerprint(
         string actual,
