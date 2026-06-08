@@ -60,6 +60,7 @@ public static class ProjectionCompiler
         if (projection.Includes.Length > MaxIncludes)
             throw Error(errorFactory, $"Projection exceeds the {MaxIncludes} include limit.");
         ValidateIncludes(projection.Includes, errorFactory);
+        TieredProjectionPromotionPolicy promotionPolicy = options.CreatePromotionPolicy();
 
         var schema = schemaFactory(subjectType);
         CompileFields<TContext>(
@@ -117,7 +118,7 @@ public static class ProjectionCompiler
         var tieredState = options.Mode == ProjectionCompilationMode.Tiered
             ? new TieredProjectionState<TContext>(
                 compileProjectFields,
-                options.CreatePromotionPolicy(),
+                promotionPolicy,
                 recordHot,
                 projectFields => compiledProjection!.PromoteProjectFields(projectFields))
             : null;
