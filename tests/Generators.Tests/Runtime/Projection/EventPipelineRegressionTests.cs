@@ -200,6 +200,33 @@ public sealed class EventPipelineRegressionTests
     }
 
     [Fact]
+    public async Task ProjectedContextFilterWithoutExplicitProjectionKeepsContextField()
+    {
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendFilter(FilterExpression.Compare(
+                ProjectedEventPaths.Context("tag"),
+                FilterOperator.Equal,
+                FilterValue.From("ok")));
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            pipeline,
+            ProjectionRuntimeTestSupport.RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+        var source = new ProjectedEvent
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Context = [new ProjectedEventField("tag", ProjectedEventValue.FromScalar("ok"))],
+        };
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(source, new object(), CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.True(accepted!.TryGetField("tag", out ProjectedEventValue tag));
+        Assert.Equal("ok", tag.String);
+    }
+
+    [Fact]
     public async Task ProjectedObjectExistsMatchesPresentObject()
     {
         EventPipelineExpression pipeline = EventPipelineExpression.Default
