@@ -56,6 +56,7 @@ public static class FilterCompiler
         expression ??= FilterExpression.Any;
         if (expression.Kind == FilterExpressionKind.Any)
             return CompiledKernel.Any;
+        expression = FilterExpressionSnapshot.Clone(expression);
 
         TieredFilterPromotionPolicy policy = options.CreateFilterPromotionPolicy(expression);
         return CompileUncached(
@@ -89,6 +90,7 @@ public static class FilterCompiler
         expression ??= FilterExpression.Any;
         if (expression.Kind == FilterExpressionKind.Any)
             return CompiledKernel.Any;
+        expression = FilterExpressionSnapshot.Clone(expression);
 
         bool hasParameters = FilterExpressionParameters.HasParameters(expression);
         FilterExpressionKey expressionKey = FilterExpressionFingerprint.CreateKey(expression);

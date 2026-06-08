@@ -33,7 +33,8 @@ public static class ProjectionCompiler
         ProjectionCompilerOptions options,
         Func<string, Exception>? errorFactory = null)
     {
-        EventProjectionExpression normalized = projection ?? EventProjectionExpression.Default;
+        EventProjectionExpression normalized = ProjectionExpressionSnapshot.Clone(
+            projection ?? EventProjectionExpression.Default);
         Func<Type, FilterSchema> schemaFactory = subjectType == typeof(ProjectedEvent)
             ? _ => ProjectedEventFilterSchema.ForProjection(normalized)
             : FilterSchema.For;
@@ -53,6 +54,7 @@ public static class ProjectionCompiler
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(schemaFactory);
         projection ??= EventProjectionExpression.Default;
+        projection = ProjectionExpressionSnapshot.Clone(projection);
         ValidateShape(projection, errorFactory);
         if (projection.Fields.Length > MaxFields)
             throw Error(errorFactory, $"Projection exceeds the {MaxFields} field limit.");
