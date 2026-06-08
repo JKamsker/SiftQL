@@ -32,6 +32,36 @@ public sealed class FilterSubscriptionIndexProjectedRegressionTests
         Assert.Empty(index.SnapshotMatches(ProjectedItem(101)));
     }
 
+    [Fact]
+    public void UntypedIndexMatchesProjectedEventMetadataAliases()
+    {
+        var index = new FilterSubscriptionIndex<string>(typeof(ProjectedEvent));
+
+        AddMetadataFilters(index);
+
+        Assert.Equal(["name", "type"], index.SnapshotMatches(ProjectedInventory()));
+        Assert.Empty(index.SnapshotMatches(new ProjectedEvent
+        {
+            EventType = "Plugin.Events.OtherEvent",
+            EventName = "OtherEvent",
+        }));
+    }
+
+    [Fact]
+    public void TypedIndexMatchesProjectedEventMetadataAliases()
+    {
+        var index = new TypedFilterSubscriptionIndex<string, ProjectedEvent>();
+
+        AddMetadataFilters(index);
+
+        Assert.Equal(["name", "type"], index.SnapshotMatches(ProjectedInventory()));
+        Assert.Empty(index.SnapshotMatches(new ProjectedEvent
+        {
+            EventType = "Plugin.Events.OtherEvent",
+            EventName = "OtherEvent",
+        }));
+    }
+
     private static CompiledEventPipeline<object> CompileProjectedItemFilter()
     {
         QueryKernel<ProjectedEvent> query = QueryKernel.For<ProjectedEvent>()
@@ -52,6 +82,37 @@ public sealed class FilterSubscriptionIndexProjectedRegressionTests
             [
                 new ProjectedEventField("ItemId", ProjectedEventValue.FromScalar(itemId)),
             ],
+        };
+
+    private static void AddMetadataFilters(FilterSubscriptionIndex<string> index)
+    {
+        index.Add("name", SubjectNameFilter());
+        index.Add("type", SubjectTypeFilter());
+    }
+
+    private static void AddMetadataFilters(TypedFilterSubscriptionIndex<string, ProjectedEvent> index)
+    {
+        index.Add("name", SubjectNameFilter());
+        index.Add("type", SubjectTypeFilter());
+    }
+
+    private static FilterExpression SubjectNameFilter() =>
+        FilterExpression.Compare(
+            "subjectName",
+            FilterOperator.Equal,
+            FilterValue.From("InventoryChangedEvent"));
+
+    private static FilterExpression SubjectTypeFilter() =>
+        FilterExpression.Compare(
+            "subjectType",
+            FilterOperator.Equal,
+            FilterValue.From("Plugin.Events.InventoryChangedEvent"));
+
+    private static ProjectedEvent ProjectedInventory() =>
+        new()
+        {
+            EventType = "Plugin.Events.InventoryChangedEvent",
+            EventName = "InventoryChangedEvent",
         };
 
     private static CompiledProjection<object>.IncludeProjector RejectInclude(
