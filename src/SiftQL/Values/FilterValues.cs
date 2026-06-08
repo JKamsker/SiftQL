@@ -117,24 +117,16 @@ public static class FilterValues
         if (actual is ICollection collection && collection.Count > MaxRuntimeArrayItems)
             throw TooManyRuntimeArrayItems();
 
-        bool matched = false;
-        try
+        int seen = 0;
+        foreach (object? item in enumerable)
         {
-            int seen = 0;
-            foreach (object? item in enumerable)
-            {
-                if (actual is not ICollection && ++seen > MaxRuntimeArrayItems)
-                    throw TooManyRuntimeArrayItems();
-                if (!matched && AreEqual(item, expected))
-                    matched = true;
-            }
-        }
-        catch (Exception ex) when (matched && !IsTooManyRuntimeArrayItems(ex))
-        {
-            return true;
+            if (actual is not ICollection && ++seen > MaxRuntimeArrayItems)
+                throw TooManyRuntimeArrayItems();
+            if (AreEqual(item, expected))
+                return true;
         }
 
-        return matched;
+        return false;
     }
 
     private static bool ContainsString(object? actual, FilterValue expected) =>
@@ -145,9 +137,6 @@ public static class FilterValues
 
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
         new(TooManyRuntimeArrayItemsMessage);
-
-    private static bool IsTooManyRuntimeArrayItems(Exception ex) =>
-        ex is InvalidOperationException { Message: TooManyRuntimeArrayItemsMessage };
 
     private static bool AreEqual(object? actual, FilterValue expected)
     {
