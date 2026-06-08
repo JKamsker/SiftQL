@@ -42,7 +42,14 @@ internal static class ProjectionCompilerKeyBuilder
     }
 
     private static string ArgumentKey(EventProjectionArgument argument) =>
-        string.Concat("a", KeyPart(argument.Name), KeyPart(ArgumentValueKey(argument.Value)));
+        string.Concat(
+            "a",
+            KeyPart(argument.Name),
+            ((int)argument.Kind).ToString(CultureInfo.InvariantCulture),
+            ":",
+            argument.Kind == EventProjectionArgumentKind.SourceField
+                ? KeyPart(argument.SourcePath)
+                : KeyPart(ArgumentValueKey(argument.Value)));
 
     private static string ArgumentValueKey(FilterValue value)
     {

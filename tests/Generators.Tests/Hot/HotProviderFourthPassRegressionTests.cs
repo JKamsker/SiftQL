@@ -118,6 +118,32 @@ public sealed class HotProviderFourthPassRegressionTests
         AssertNoDiagnostic(run, "FSFHOT009", "projection include fingerprint accepted");
     }
 
+    [Fact]
+    public void HotProjectionRejectsUnknownSourceFieldIncludeArgument()
+    {
+        EventProjectionExpression projection = EventProjectionExpression
+            .Select("Score")
+            .WithIncludes(
+            [
+                new EventProjectionInclude(
+                    "siftql.context.method:Lookup.Name",
+                    "name",
+                    [EventProjectionArgument.FromSourceField("score", "Missing")]),
+            ]);
+        GeneratorRun run = RunGenerator(
+            "Plugin.Hot.SourceFieldInclude",
+            new InMemoryAdditionalText(
+                "projection-source-field.siftql-hot.json",
+                ManifestJson(
+                    "projection",
+                    "Plugin.Events.PluginOwnedEvent, Plugin.Hot.SourceFieldInclude",
+                    ProjectionFingerprint(projection),
+                    projection)),
+            PluginEventTree());
+
+        AssertDiagnostic(run, "FSFHOT009", "unknown source field include rejected");
+    }
+
     private static GeneratorRun RunGenerator(
         string assemblyName,
         AdditionalText hotManifest,
@@ -206,6 +232,12 @@ public sealed class HotProviderFourthPassRegressionTests
     {
         int count = run.Diagnostics.Count(item => item.Id == id);
         AssertEx.Equal(0, count, label);
+    }
+
+    private static void AssertDiagnostic(GeneratorRun run, string id, string label)
+    {
+        int count = run.Diagnostics.Count(item => item.Id == id);
+        AssertEx.Equal(1, count, label);
     }
 
     private static int HotProviderSourceCount(GeneratorRun run) =>

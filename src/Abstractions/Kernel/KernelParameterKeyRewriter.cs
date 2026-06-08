@@ -16,7 +16,7 @@ internal static class KernelParameterKeyRewriter
         {
             EventProjectionArgument[] arguments = projection.Includes[i].Arguments;
             for (int j = 0; j < arguments.Length; j++)
-                AddKey(keys, arguments[j].Value);
+                AddArgumentKey(keys, arguments[j]);
         }
 
         return keys.Count;
@@ -91,7 +91,9 @@ internal static class KernelParameterKeyRewriter
         include with
         {
             Arguments = include.Arguments
-                .Select(argument => argument with { Value = RebaseValue(argument.Value, offset, map)! })
+                .Select(argument => argument.Kind == EventProjectionArgumentKind.Value
+                    ? argument with { Value = RebaseValue(argument.Value, offset, map)! }
+                    : argument)
                 .ToArray(),
         };
 
@@ -124,7 +126,7 @@ internal static class KernelParameterKeyRewriter
         {
             EventProjectionArgument[] arguments = projection.Includes[i].Arguments;
             for (int j = 0; j < arguments.Length; j++)
-                AddKey(keys, arguments[j].Value);
+                AddArgumentKey(keys, arguments[j]);
         }
     }
 
@@ -141,6 +143,12 @@ internal static class KernelParameterKeyRewriter
     {
         if (!string.IsNullOrWhiteSpace(value?.ParameterKey))
             keys.Add(value.ParameterKey);
+    }
+
+    private static void AddArgumentKey(HashSet<string> keys, EventProjectionArgument argument)
+    {
+        if (argument.Kind == EventProjectionArgumentKind.Value)
+            AddKey(keys, argument.Value);
     }
 
     private static int NextParameterOffset(HashSet<string> keys)

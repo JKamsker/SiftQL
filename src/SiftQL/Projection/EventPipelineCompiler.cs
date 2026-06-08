@@ -22,6 +22,18 @@ public static class EventPipelineCompiler
     public static CompiledEventPipeline<TContext> Compile<TContext>(
         Type subjectType,
         EventPipelineExpression? pipeline,
+        EventPipelineCompilerOptions options,
+        Func<string, Exception>? errorFactory = null) =>
+        Compile(
+            subjectType,
+            pipeline,
+            ProjectionContextIncludeCompiler.Compile<TContext>,
+            options,
+            errorFactory);
+
+    public static CompiledEventPipeline<TContext> Compile<TContext>(
+        Type subjectType,
+        EventPipelineExpression? pipeline,
         Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> compileInclude,
         EventPipelineCompilerOptions options,
         Func<string, Exception>? errorFactory = null)
@@ -29,7 +41,7 @@ public static class EventPipelineCompiler
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(compileInclude);
         ArgumentNullException.ThrowIfNull(options);
-        EventPipelineExpression normalized = Snapshot(
+        EventPipelineExpression normalized = EventPipelineCachePolicy.Snapshot(
             EventPipelineNormalizer.Normalize(subjectType, pipeline, errorFactory));
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
         if (EventPipelineCachePolicy.ShouldBypassCache(normalized, options))
@@ -235,16 +247,6 @@ public static class EventPipelineCompiler
         throw new FilterValidationException(
             $"Projection include '{include.Intrinsic}' cannot run after a projected stage.");
     }
-
-    private static EventPipelineExpression Snapshot(EventPipelineExpression pipeline) =>
-        pipeline with
-        {
-            Stages = pipeline.Stages
-                .Select(static stage => stage.Kind == EventPipelineStageKind.Filter
-                    ? stage with { Filter = FilterExpressionSnapshot.Clone(stage.Filter) }
-                    : stage with { Projection = ProjectionExpressionSnapshot.Clone(stage.Projection) })
-                .ToArray(),
-        };
 
     private static void ClearCache()
     {

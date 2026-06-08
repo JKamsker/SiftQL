@@ -55,6 +55,51 @@ public sealed class ShaRpcRegressionTests
     }
 
     [Fact]
+    public async Task PublishAsyncRunsContextProjectionFilterPipeline()
+    {
+        var client = new RecordingClient();
+        var context = new ServerLookupContext(
+            new ClientProfile(1001, "Ari", ClientTier.Premium),
+            new ClientProfile(1002, "Bryn", ClientTier.Standard));
+        var server = new RemoteServerService(new ServerDataStore(), new ClientMessageSink(), context);
+        server.Attach(client);
+        var subscription = ServerKernel.ForInventoryChanged()
+            .WithServerContext()
+            .Where(static ev => ev.Region == "north-gate" && ev.Quantity > 0)
+            .Select(static (ev, ctx) => new
+            {
+                ev.SessionId,
+                ev.ItemCode,
+                ev.Quantity,
+                ClientTier = ctx.GetClient(ev.SessionId).Tier,
+            })
+            .Where(static ev => ev.ClientTier == ClientTier.Premium)
+            .Select(static ev => new
+            {
+                Session = ev.SessionId,
+                Item = ev.ItemCode,
+                ev.Quantity,
+                Tier = ev.ClientTier,
+            });
+        await server.SubscribeAsync(
+            new SubscriptionRequest("premium-inventory-feed", nameof(InventoryChangedEvent), subscription.Pipeline),
+            CancellationToken.None);
+
+        await server.PublishAsync(
+            new InventoryChangedEvent(1001, "north-gate", "potion", 2, 10),
+            CancellationToken.None);
+        await server.PublishAsync(
+            new InventoryChangedEvent(1002, "north-gate", "ore", 2, 10),
+            CancellationToken.None);
+
+        SubscriptionDispatch dispatch = Assert.Single(client.Dispatches);
+        Assert.Equal("premium-inventory-feed", dispatch.SubscriptionId);
+        Assert.Equal(1001, dispatch.Payload.Field("Session").Integer);
+        Assert.Equal("potion", dispatch.Payload.Field("Item").String);
+        Assert.Equal(nameof(ClientTier.Premium), dispatch.Payload.Field("Tier").String);
+    }
+
+    [Fact]
     public async Task DispatchAsyncRejectsPayloadWithoutIntegerSession()
     {
         var server = new RecordingServer();

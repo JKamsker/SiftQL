@@ -89,10 +89,18 @@ internal readonly record struct ProjectionFieldKey(string Path, string Name)
         new(field.Path, field.Name);
 }
 
-internal readonly record struct ProjectionArgumentKey(string Name, ProjectionArgumentValueKey Value)
+internal readonly record struct ProjectionArgumentKey(
+    string Name,
+    EventProjectionArgumentKind Kind,
+    ProjectionArgumentValueKey Value,
+    string SourcePath)
 {
     public static ProjectionArgumentKey From(EventProjectionArgument argument) =>
-        new(argument.Name, ProjectionArgumentValueKey.From(argument.Value));
+        new(
+            argument.Name,
+            argument.Kind,
+            ProjectionArgumentValueKey.From(argument.Value),
+            argument.SourcePath);
 }
 
 internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgumentValueKey>
@@ -241,7 +249,11 @@ internal readonly record struct ProjectionIncludeKey(
         {
             FilterKeyText.AppendText(builder, Arguments[i].Name);
             builder.Append('=');
-            Arguments[i].Value.AppendTo(builder);
+            builder.Append((int)Arguments[i].Kind).Append(':');
+            if (Arguments[i].Kind == EventProjectionArgumentKind.SourceField)
+                FilterKeyText.AppendText(builder, Arguments[i].SourcePath);
+            else
+                Arguments[i].Value.AppendTo(builder);
         }
     }
 }

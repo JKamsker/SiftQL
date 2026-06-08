@@ -6,6 +6,16 @@ namespace SiftQL.Projection;
 
 internal static class EventPipelineCachePolicy
 {
+    public static EventPipelineExpression Snapshot(EventPipelineExpression pipeline) =>
+        pipeline with
+        {
+            Stages = pipeline.Stages
+                .Select(static stage => stage.Kind == EventPipelineStageKind.Filter
+                    ? stage with { Filter = FilterExpressionSnapshot.Clone(stage.Filter) }
+                    : stage with { Projection = ProjectionExpressionSnapshot.Clone(stage.Projection) })
+                .ToArray(),
+        };
+
     public static bool ShouldBypassCache(
         EventPipelineExpression pipeline,
         EventPipelineCompilerOptions options) =>

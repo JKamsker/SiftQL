@@ -257,8 +257,24 @@ public static class ProjectionCompiler
                 throw Error(errorFactory, $"Projection include '{include.Intrinsic}' arguments cannot contain null.");
             if (string.IsNullOrWhiteSpace(argument.Name))
                 throw Error(errorFactory, $"Projection include '{include.Intrinsic}' arguments require a name.");
-            if (argument.Value is null)
+            if (argument.Kind == EventProjectionArgumentKind.Value && argument.Value is null)
                 throw Error(errorFactory, $"Projection include '{include.Intrinsic}' argument '{argument.Name}' is null.");
+            if (argument.Kind == EventProjectionArgumentKind.SourceField &&
+                string.IsNullOrWhiteSpace(argument.SourcePath))
+            {
+                throw Error(
+                    errorFactory,
+                    $"Projection include '{include.Intrinsic}' argument '{argument.Name}' requires a source field path.");
+            }
+
+            if (argument.Kind is not EventProjectionArgumentKind.Value and
+                not EventProjectionArgumentKind.SourceField)
+            {
+                throw Error(
+                    errorFactory,
+                    $"Projection include '{include.Intrinsic}' argument '{argument.Name}' has unsupported kind '{argument.Kind}'.");
+            }
+
             if (!names.Add(argument.Name))
                 throw Error(errorFactory, $"Projection include '{include.Intrinsic}' argument '{argument.Name}' is duplicated.");
         }
