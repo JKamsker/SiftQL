@@ -132,8 +132,7 @@ public static class FilterValues
         {
             return expected.Kind switch
             {
-                FilterValueKind.String =>
-                    string.Equals(actual.ToString(), expected.String, StringComparison.Ordinal),
+                FilterValueKind.String => IsEnumStringEqual(actual, expected.String),
                 FilterValueKind.Integer => IsEnumIntegerEqual(actual, expected.Integer),
                 FilterValueKind.UnsignedInteger =>
                     IsEnumUnsignedIntegerEqual(actual, expected.UnsignedInteger),
@@ -208,6 +207,17 @@ public static class FilterValues
 
     private static bool IsProjectedDynamic(Type type) =>
         type == typeof(ProjectedEventValue);
+
+    private static bool IsEnumStringEqual(object actual, string? expected)
+    {
+        if (expected is null ||
+            !Enum.TryParse(actual.GetType(), expected, ignoreCase: false, out object? parsed))
+        {
+            return false;
+        }
+
+        return actual.Equals(parsed);
+    }
 
     private static bool IsEnumIntegerEqual(object actual, long expected)
     {
