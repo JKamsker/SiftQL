@@ -36,8 +36,10 @@ internal static class FilterIndexValueAccessor<TSubject>
             return _ => constant;
 
         var parameter = Expression.Parameter(typeof(TSubject), "subject");
-        Expression? value = field.Access?.PropertyPath is { } path
-            ? FilterFieldAccessExpression.Build(parameter, path)
+        string? propertyPath = field.Access?.PropertyPath;
+        bool hasPropertyPath = propertyPath is not null;
+        Expression? value = propertyPath is not null
+            ? FilterFieldAccessExpression.Build(parameter, propertyPath)
             : null;
         Expression? key = value is null ? null : BuildKeyExpression(field, value);
         if (key is not null)
@@ -47,17 +49,20 @@ internal static class FilterIndexValueAccessor<TSubject>
             return Expression.Lambda<Func<TSubject, FilterIndexValue?>>(key, parameter).Compile();
         }
 
-        if (field.ScalarAccessor is { } scalarAccessor)
+        if (!hasPropertyPath && field.ScalarAccessor is { } scalarAccessor)
         {
             return subject => FilterIndexValue.TryCreateActual(scalarAccessor, subject!, out var actual)
                 ? actual
-                : null;
+                : TryCreateFromGetter(field, subject);
         }
 
-        return subject => FilterIndexValue.TryCreateActual(field.Getter(subject!), out var actual)
+        return subject => TryCreateFromGetter(field, subject);
+    }
+
+    private static FilterIndexValue? TryCreateFromGetter(FilterField field, TSubject subject) =>
+        FilterIndexValue.TryCreateActual(field.Getter(subject!), out var actual)
             ? actual
             : null;
-    }
 
     private static bool TryCreateConstant(FilterField field, out FilterIndexValue? key)
     {
