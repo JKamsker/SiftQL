@@ -85,6 +85,71 @@ public sealed class FilterSchemaNestedRegressionTests
         Assert.True(schema.TryGetField("Location.Point.X", out _));
     }
 
+    [Fact]
+    public void GeneratedSchemaMergeDoesNotExpandNullableGeneratedObject()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.NullableGeneratedObjectMerge",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public readonly record struct MapLocation(long MapId);
+
+                public sealed record MovedEvent(
+                    Guid EventId,
+                    MapLocation? Location) : IFilterSubject;
+                """));
+
+        AssertNoCompilationErrors(run, "nullable generated object schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "nullable generated object schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type locationType = assembly.GetType("Plugin.Events.MapLocation", throwOnError: true)!;
+        Type eventType = assembly.GetType("Plugin.Events.MovedEvent", throwOnError: true)!;
+
+        FilterSchema.RegisterValueObject(locationType);
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        Assert.False(schema.TryGetField("Location.MapId", out _));
+    }
+
+    [Fact]
+    public void GeneratedInheritedNestedAccessorReturnsNullWhenParentIsNull()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.InheritedNestedNullParent",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public record BaseLocation
+                {
+                    public string Code { get; } = "base";
+                }
+
+                public sealed record DerivedLocation : BaseLocation;
+
+                public sealed record MovedEvent(
+                    Guid EventId,
+                    DerivedLocation Location) : IFilterSubject;
+                """));
+
+        AssertNoCompilationErrors(run, "inherited nested null-parent schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "inherited nested null-parent schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type eventType = assembly.GetType("Plugin.Events.MovedEvent", throwOnError: true)!;
+        object ev = Activator.CreateInstance(eventType, Guid.NewGuid(), null)!;
+
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        Assert.True(schema.TryGetField("Location.Code", out FilterField? field));
+        Assert.Null(field.Getter(ev));
+    }
+
     private static GeneratorRun RunGenerator(string assemblyName, params SyntaxTree[] trees)
     {
         CSharpCompilation compilation = GeneratorTestCompilation.Create(assemblyName, trees);
