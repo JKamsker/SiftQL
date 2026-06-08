@@ -59,6 +59,24 @@ public sealed class StrictPrecompiledProviderTests
     }
 
     [Fact]
+    public void PrecompiledProjectionProviderStillValidatesTieredOptions()
+    {
+        EventProjectionExpression expected = EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId));
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using var registration = PrecompiledTieredProviderRegistry.Register(
+            StrictProvider.ForProjection(
+                typeof(ItemUsedEvent),
+                ProjectionExpressionFingerprint.Create(expected)));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ProjectionCompiler.Compile<object>(
+                typeof(ItemUsedEvent),
+                expected,
+                RejectInclude,
+                ProjectionCompilerOptions.Tiered with { TieredPromotionQueueCapacity = 0 }));
+    }
+
+    [Fact]
     public async Task PrecompiledProjectionProviderWritesProvidedPayloadFields()
     {
         EventProjectionExpression expected = EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId));
