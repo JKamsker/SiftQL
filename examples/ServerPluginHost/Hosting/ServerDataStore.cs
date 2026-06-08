@@ -16,9 +16,16 @@ public sealed class ServerDataStore
     public IReadOnlyList<TModel> Rows<TModel>()
         where TModel : IFilterSubject
     {
-        if (!_rows.TryGetValue(typeof(TModel), out List<object>? rows))
-            return [];
+        var results = new List<TModel>();
+        foreach (List<object> rows in _rows.Values)
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (rows[i] is TModel row)
+                    results.Add(row);
+            }
+        }
 
-        return rows.Cast<TModel>().ToArray();
+        return results;
     }
 }
