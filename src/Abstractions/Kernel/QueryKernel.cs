@@ -50,32 +50,32 @@ public sealed record QueryKernel<TSubject>
 
     public FilterExpression Filter
     {
-        get => _filter;
+        get => KernelExpressionSnapshot.Clone(_filter);
         init
         {
-            _filter = value ?? throw new ArgumentNullException(nameof(value));
+            _filter = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
             _pipeline = EventPipelineExpression.Default;
         }
     }
 
     public EventProjectionExpression Projection
     {
-        get => _projection;
+        get => KernelExpressionSnapshot.Clone(_projection);
         init
         {
-            _projection = value ?? throw new ArgumentNullException(nameof(value));
+            _projection = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
             _pipeline = EventPipelineExpression.Default;
         }
     }
 
     public EventPipelineExpression Pipeline
     {
-        get => _pipeline.IsDefault
-            ? EventPipelineExpression.From(Filter, Projection)
-            : _pipeline;
+        get => KernelExpressionSnapshot.Clone(_pipeline.IsDefault
+            ? EventPipelineExpression.From(_filter, _projection)
+            : _pipeline);
         init
         {
-            _pipeline = value ?? throw new ArgumentNullException(nameof(value));
+            _pipeline = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
             if (_pipeline.IsDefault)
                 return;
 
