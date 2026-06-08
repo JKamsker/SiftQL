@@ -214,7 +214,7 @@ public sealed record QueryKernel<TSubject>
 
     private string ProjectedFieldName(string sourcePath)
     {
-        EventProjectionExpression previous = QueryKernelPipelineState.LastProjectionOrDefault(Pipeline);
+        EventProjectionExpression previous = QueryKernelPipelineState.ProjectionInputForNextProjection(Pipeline);
         for (int i = previous.Fields.Length - 1; i >= 0; i--)
         {
             EventProjectionField field = previous.Fields[i];
