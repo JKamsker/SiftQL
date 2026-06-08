@@ -103,7 +103,9 @@ public sealed record QueryKernel<TSubject>
         var translated = KernelParameterKeyRewriter.Rebase(
             KernelExpressionTranslator.Translate(predicate),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
-        EventPipelineExpression pipeline = EnsureProjection(Pipeline).AppendFilter(translated);
+        EventPipelineExpression pipeline = SourceIsProjected()
+            ? Pipeline.AppendFilter(translated)
+            : EnsureProjection(Pipeline).AppendFilter(translated);
         return new QueryKernel<TSubject>(Filter, Projection, pipeline);
     }
 
@@ -180,7 +182,7 @@ public sealed record QueryKernel<TSubject>
             return EventProjectionExpression.Default.WithFields(fields);
 
         return EventProjectionExpression.Default.WithFields(
-            fields.Select(static field => ProjectedField(field)).ToArray());
+            fields.Select(ProjectedField).ToArray());
     }
 
     private EventProjectionExpression ProjectedFieldProjection(EventProjectionExpression projection)
@@ -191,18 +193,39 @@ public sealed record QueryKernel<TSubject>
         return projection with
         {
             Fields = projection.Fields
-                .Select(static field => ProjectedField(field))
+                .Select(ProjectedField)
                 .ToArray(),
         };
     }
 
-    private static EventProjectionField ProjectedField(EventProjectionField field) =>
-        ProjectedEventPaths.TrySplit(field.Path, out _, out _)
-            ? field
-            : new EventProjectionField(ProjectedEventPaths.Field(field.Path), field.Name);
+    private EventProjectionField ProjectedField(EventProjectionField field)
+    {
+        if (ProjectedEventPaths.TrySplit(field.Path, out _, out _))
+            return field;
+
+        return new EventProjectionField(
+            ProjectedEventPaths.Field(ProjectedFieldName(field.Path)),
+            field.Name);
+    }
+
+    private string ProjectedFieldName(string sourcePath)
+    {
+        EventProjectionExpression previous = LastProjectionOrDefault(Pipeline);
+        for (int i = previous.Fields.Length - 1; i >= 0; i--)
+        {
+            EventProjectionField field = previous.Fields[i];
+            if (string.Equals(field.Path, sourcePath, StringComparison.Ordinal))
+                return field.Name;
+        }
+
+        return sourcePath;
+    }
 
     private bool ProjectionWillReadProjectedEvent() =>
         ProjectionDomain(Pipeline);
+
+    private static bool SourceIsProjected() =>
+        typeof(TSubject) == typeof(ProjectedEvent);
 
     private static bool ProjectionDomain(EventPipelineExpression pipeline)
     {
