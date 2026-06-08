@@ -41,6 +41,7 @@ public sealed class InMemoryServerPluginHost
         }
         catch
         {
+            RemovePluginRegistrations(pluginId);
             _pluginIds.Remove(pluginId);
             throw;
         }
@@ -142,6 +143,20 @@ public sealed class InMemoryServerPluginHost
     private PluginContext CreateContext(string pluginId) =>
         new(pluginId, _clients, new ServerQueryGateway(pluginId, this));
 
+    private void RemovePluginRegistrations(string pluginId)
+    {
+        _startupHandlers.RemoveAll(handler =>
+            string.Equals(handler.PluginId, pluginId, StringComparison.Ordinal));
+
+        foreach (var pair in _subscriptions.ToArray())
+        {
+            pair.Value.RemoveAll(subscription =>
+                string.Equals(subscription.PluginId, pluginId, StringComparison.Ordinal));
+            if (pair.Value.Count == 0)
+                _subscriptions.Remove(pair.Key);
+        }
+    }
+
     private static CompiledProjection<PluginContext>.IncludeProjector RejectInclude(
         FilterSchema schema,
         EventProjectionInclude include)
@@ -152,6 +167,7 @@ public sealed class InMemoryServerPluginHost
 
     private interface ISubscription
     {
+        string PluginId { get; }
         ValueTask DispatchAsync(object ev, CancellationToken cancellationToken);
     }
 
@@ -165,6 +181,8 @@ public sealed class InMemoryServerPluginHost
         Func<ProjectedEvent, PluginContext, ValueTask> handler) : ISubscription
         where TEvent : IFilterSubject
     {
+        public string PluginId => context.PluginId;
+
         public async ValueTask DispatchAsync(object ev, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
