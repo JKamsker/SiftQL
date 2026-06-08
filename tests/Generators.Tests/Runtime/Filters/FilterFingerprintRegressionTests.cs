@@ -30,6 +30,27 @@ public sealed class FilterFingerprintRegressionTests
         Assert.Equal(first.ToString(), second.ToString());
     }
 
+    [Fact]
+    public void IntegerFilterKeysIgnoreInactivePayloads()
+    {
+        FilterExpressionKey first = FilterExpressionFingerprint.CreateKey(
+            FilterExpression.Compare("Score", FilterOperator.Equal, IntegerWithInactiveText("first")));
+        FilterExpressionKey second = FilterExpressionFingerprint.CreateKey(
+            FilterExpression.Compare("Score", FilterOperator.Equal, IntegerWithInactiveText("second")));
+
+        Assert.True(first.Equals(second));
+        Assert.Equal(first.GetHashCode(), second.GetHashCode());
+        Assert.Equal(first.ToString(), second.ToString());
+    }
+
+    private static FilterValue IntegerWithInactiveText(string text) =>
+        new()
+        {
+            Kind = FilterValueKind.Integer,
+            Integer = 7,
+            String = text,
+        };
+
     private static EventProjectionExpression ProjectionArgument(FilterValue value) =>
         EventProjectionExpression.Default.WithIncludes(
         [
