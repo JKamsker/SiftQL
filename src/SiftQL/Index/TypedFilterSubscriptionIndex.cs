@@ -203,7 +203,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
     private void EnsureCurrentSchema()
     {
-        if (_schemaVersion == FilterSchema.Version)
+        if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version)
             return;
 
         lock (_sync)
@@ -212,11 +212,11 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
     private void EnsureCurrentSchemaLocked()
     {
-        if (_schemaVersion == FilterSchema.Version)
+        if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version)
             return;
 
         FilterSchemaSnapshot current = FilterSchemaSnapshot.For(typeof(TSubject));
-        if (_schemaVersion == current.Version)
+        if (Volatile.Read(ref _schemaVersion) == current.Version)
             return;
 
         var existing = _entries.Values.SelectMany(static entries => entries).ToArray();
@@ -225,7 +225,6 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
             rebuilt[i] = CreateEntry(current.Schema, existing[i].Subscription, existing[i].Expression);
 
         _schema = current.Schema;
-        _schemaVersion = current.Version;
         _fields.Clear();
         _entries.Clear();
         _unindexed.Clear();
@@ -233,6 +232,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         for (int i = 0; i < rebuilt.Length; i++)
             AddEntry(rebuilt[i]);
         PublishSnapshot();
+        Volatile.Write(ref _schemaVersion, current.Version);
     }
 
     private void Track(TypedSubscriptionEntry<TSubscription, TSubject> entry)
