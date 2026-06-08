@@ -14,7 +14,11 @@ internal static class HotProviderFieldValidator
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics)
     {
         if (IsAllowedMetadataField(projectedEvent, name))
-            return scalar != false;
+        {
+            return scalar == false
+                ? Unsupported(diagnostics, path, $"Hot entry field '{name}' is not a scalar array.")
+                : true;
+        }
         if (projectedEvent && IsProjectedField(name))
             return true;
 
