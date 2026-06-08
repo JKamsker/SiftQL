@@ -10,6 +10,7 @@ internal sealed class ContextExpressionIncludes
 {
     private readonly ParameterExpression _subject;
     private readonly ParameterExpression _context;
+    private readonly SiftQueryContextDescriptor? _contextDescriptor;
     private Dictionary<string, EventProjectionInclude> _known = [];
     private readonly List<EventProjectionInclude> _newIncludes = [];
     private readonly List<ContextProjectionBinding> _bindings = [];
@@ -24,6 +25,7 @@ internal sealed class ContextExpressionIncludes
     {
         _subject = subject;
         _context = context;
+        _contextDescriptor = ResolveDescriptor(context.Type);
         _parameterIndex = parameterOffset;
         _nextParameterKey = NextLocalParameterKey;
         LoadBindings(bindings);
@@ -37,6 +39,7 @@ internal sealed class ContextExpressionIncludes
     {
         _subject = subject;
         _context = context;
+        _contextDescriptor = ResolveDescriptor(context.Type);
         _nextParameterKey = nextParameterKey ?? throw new ArgumentNullException(nameof(nextParameterKey));
         LoadBindings(bindings);
     }
@@ -63,7 +66,7 @@ internal sealed class ContextExpressionIncludes
         }
 
         EventProjectionArgument[] arguments = TranslateArguments(call);
-        string intrinsic = EventProjectionContextIntrinsics.Method(call.Method.Name, memberPath);
+        string intrinsic = ContextIntrinsic(call.Method, memberPath);
         string key = IncludeKey(intrinsic, arguments);
         if (!_known.TryGetValue(key, out EventProjectionInclude? include))
         {
@@ -78,6 +81,44 @@ internal sealed class ContextExpressionIncludes
 
         projectedPath = ProjectedEventPaths.Context(include.ResultName);
         return true;
+    }
+
+    private string ContextIntrinsic(MethodInfo method, string memberPath)
+    {
+        if (_contextDescriptor is not null &&
+            TryGetMethodDescriptor(method, out SiftQueryContextMethodDescriptor? descriptor) &&
+            descriptor is not null)
+        {
+            return EventProjectionContextIntrinsics.Method(
+                _contextDescriptor.ContextId,
+                descriptor.MethodId,
+                memberPath);
+        }
+
+        return EventProjectionContextIntrinsics.Method(method.Name, memberPath);
+    }
+
+    private bool TryGetMethodDescriptor(
+        MethodInfo method,
+        out SiftQueryContextMethodDescriptor? descriptor)
+    {
+        descriptor = null;
+        if (_contextDescriptor is null)
+            return false;
+
+        ParameterInfo[] parameters = method.GetParameters();
+        for (int i = 0; i < _contextDescriptor.Methods.Count; i++)
+        {
+            SiftQueryContextMethodDescriptor candidate = _contextDescriptor.Methods[i];
+            if (string.Equals(candidate.MethodName, method.Name, StringComparison.Ordinal) &&
+                ParametersMatch(parameters, candidate.Parameters))
+            {
+                descriptor = candidate;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private EventProjectionArgument[] TranslateArguments(MethodCallExpression call)
@@ -193,6 +234,27 @@ internal sealed class ContextExpressionIncludes
 
     private string NextLocalParameterKey() =>
         "p" + _parameterIndex++;
+
+    private static SiftQueryContextDescriptor? ResolveDescriptor(Type contextType) =>
+        SiftQueryContextRegistry.TryGet(contextType, out SiftQueryContextDescriptor? descriptor)
+            ? descriptor
+            : null;
+
+    private static bool ParametersMatch(
+        IReadOnlyList<ParameterInfo> parameters,
+        IReadOnlyList<SiftQueryContextParameterDescriptor> descriptors)
+    {
+        if (parameters.Count != descriptors.Count)
+            return false;
+
+        for (int i = 0; i < parameters.Count; i++)
+        {
+            if (parameters[i].ParameterType != descriptors[i].Type)
+                return false;
+        }
+
+        return true;
+    }
 
     private static Expression StripConvert(Expression expression)
     {

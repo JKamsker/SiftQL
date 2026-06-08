@@ -19,23 +19,24 @@ public static class ProjectionContextIncludeCompiler
         if (EventProjectionConstantIntrinsics.IsConstant(include.Intrinsic))
             return CompileConstant<TContext>(include);
 
-        if (!EventProjectionContextIntrinsics.TryParseMethod(
-            include.Intrinsic,
-            out string methodName,
+        if (!ProjectionContextMethodResolver.TryResolve<TContext>(
+            include,
+            out MethodInfo? method,
             out string memberPath))
         {
             throw new FilterValidationException(
                 $"Projection include '{include.Intrinsic}' is not a SiftQL context expression.");
         }
 
-        MethodInfo method = ResolveMethod(typeof(TContext), methodName, include.Arguments.Length);
-        ParameterInfo[] parameters = method.GetParameters();
+        MethodInfo resolvedMethod = method ?? throw new FilterValidationException(
+            $"Projection include '{include.Intrinsic}' did not resolve a context method.");
+        ParameterInfo[] parameters = resolvedMethod.GetParameters();
         Func<object, object?>[] argumentGetters = CompileArgumentGetters(schema, include, parameters);
-        MemberInfo[] members = ResolveMembers(method.ReturnType, memberPath);
+        MemberInfo[] members = ResolveMembers(resolvedMethod.ReturnType, memberPath);
         return new CompiledProjection<TContext>.IncludeProjector(
             include.ResultName,
             (subject, context, _) => new ValueTask<ProjectedEventValue>(
-                Project(subject, context, method, argumentGetters, members)));
+                Project(subject, context, resolvedMethod, argumentGetters, members)));
     }
 
     private static CompiledProjection<TContext>.IncludeProjector CompileConstant<TContext>(
@@ -140,23 +141,6 @@ public static class ProjectionContextIncludeCompiler
             return value is null && IsRequiredValueType(targetType)
                 ? MissingArgument.Instance
                 : ConvertObject(value, targetType);
-        };
-    }
-
-    private static MethodInfo ResolveMethod(Type contextType, string methodName, int argumentCount)
-    {
-        MethodInfo[] matches = contextType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(method => method.Name == methodName && method.GetParameters().Length == argumentCount)
-            .ToArray();
-
-        return matches.Length switch
-        {
-            1 => matches[0],
-            0 => throw new FilterValidationException(
-                $"Context type '{contextType.FullName}' does not define method '{methodName}' with {argumentCount} argument(s)."),
-            _ => throw new FilterValidationException(
-                $"Context type '{contextType.FullName}' has ambiguous method '{methodName}' with {argumentCount} argument(s)."),
         };
     }
 
