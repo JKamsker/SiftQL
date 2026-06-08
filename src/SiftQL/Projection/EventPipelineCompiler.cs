@@ -32,10 +32,7 @@ public static class EventPipelineCompiler
         EventPipelineExpression normalized = Snapshot(
             EventPipelineNormalizer.Normalize(subjectType, pipeline, errorFactory));
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
-        if (HasInvalidProjectionShape(normalized) ||
-            HasParameters(normalized) ||
-            HasTieredOptions(options) ||
-            PrecompiledTieredProviderRegistry.IsolatedScopeActive)
+        if (EventPipelineCachePolicy.ShouldBypassCache(normalized, options))
         {
             return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
         }
@@ -248,55 +245,6 @@ public static class EventPipelineCompiler
                     : stage with { Projection = ProjectionExpressionSnapshot.Clone(stage.Projection) })
                 .ToArray(),
         };
-
-    private static bool HasParameters(EventPipelineExpression pipeline)
-    {
-        for (int i = 0; i < pipeline.Stages.Length; i++)
-        {
-            EventPipelineStage stage = pipeline.Stages[i];
-            if (stage.Kind == EventPipelineStageKind.Filter &&
-                FilterExpressionParameters.HasParameters(stage.Filter))
-            {
-                return true;
-            }
-
-            if (stage.Kind == EventPipelineStageKind.Projection &&
-                ProjectionExpressionParameters.HasParameters(stage.Projection))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasTieredOptions(EventPipelineCompilerOptions options) =>
-        options.FilterOptions.Mode == FilterCompilationMode.Tiered ||
-        options.ProjectionOptions.Mode == ProjectionCompilationMode.Tiered;
-
-    private static bool HasInvalidProjectionShape(EventPipelineExpression pipeline)
-    {
-        for (int i = 0; i < pipeline.Stages.Length; i++)
-        {
-            EventPipelineStage stage = pipeline.Stages[i];
-            if (stage.Kind != EventPipelineStageKind.Projection)
-                continue;
-
-            if (stage.Projection.Fields is null || stage.Projection.Includes is null)
-                return true;
-            if (stage.Projection.Fields.Any(static field => field is null))
-                return true;
-            if (stage.Projection.Includes.Any(static include =>
-                    include is null ||
-                    include.Arguments is null ||
-                    include.Arguments.Any(static argument => argument is null)))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     private static void ClearCache()
     {
