@@ -86,6 +86,51 @@ public sealed class FilterSchemaNestedRegressionTests
     }
 
     [Fact]
+    public void GeneratedSchemaMergeExpandsRegisteredValueObjectUnderGeneratedStructObjectWithReferenceParent()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.NestedRegisteredValueObjectUnderStruct",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed class ManualPoint
+                {
+                    public int X { get; init; }
+                }
+
+                public readonly record struct Point(ManualPoint Manual);
+
+                public sealed record Location(Point Point);
+
+                public sealed record MovedEvent(
+                    Guid EventId,
+                    Location Location) : IFilterSubject;
+                """));
+
+        AssertNoCompilationErrors(run, "registered value object under generated struct schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "registered value object under generated struct schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type manualType = assembly.GetType("Plugin.Events.ManualPoint", throwOnError: true)!;
+        Type pointType = assembly.GetType("Plugin.Events.Point", throwOnError: true)!;
+        Type locationType = assembly.GetType("Plugin.Events.Location", throwOnError: true)!;
+        Type eventType = assembly.GetType("Plugin.Events.MovedEvent", throwOnError: true)!;
+        object manual = Activator.CreateInstance(manualType)!;
+        manualType.GetProperty("X")!.SetValue(manual, 7);
+        object point = Activator.CreateInstance(pointType, manual)!;
+        object location = Activator.CreateInstance(locationType, point)!;
+        object ev = Activator.CreateInstance(eventType, Guid.NewGuid(), location)!;
+
+        FilterSchema.RegisterValueObject(manualType);
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        Assert.True(schema.TryGetField("Location.Point.Manual.X", out FilterField? field));
+        Assert.Equal(7, field.Getter(ev));
+    }
+
+    [Fact]
     public void GeneratedSchemaMergeDoesNotExpandNullableGeneratedObject()
     {
         GeneratorRun run = RunGenerator(
