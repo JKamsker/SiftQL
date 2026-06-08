@@ -28,7 +28,14 @@ internal static class SchemaFieldDiscovery
                 continue;
 
             string access = string.IsNullOrEmpty(accessPrefix) ? property.Name : accessPrefix + "." + property.Name;
-            string safeAccess = SafeAccess(safeAccessPrefix, owner, property);
+            string ownerAccess = string.IsNullOrEmpty(safeAccessPrefix)
+                ? "((" + owner.ToDisplayString(s_format) + ")subject)"
+                : safeAccessPrefix;
+            string safeAccess = SafeAccess(
+                ownerAccess,
+                root: string.IsNullOrEmpty(safeAccessPrefix),
+                owner,
+                property);
             bool accessCanReturnNull = IsNullable(property.Type) ||
                 safeAccess.Contains("?.", StringComparison.Ordinal);
             ITypeSymbol valueType = UnwrapNullable(property.Type);
@@ -107,24 +114,19 @@ internal static class SchemaFieldDiscovery
             ArrayContainsMethod(propertyType, scalarKind));
 
     private static string SafeAccess(
-        string prefix,
+        string ownerAccess,
+        bool root,
         INamedTypeSymbol owner,
         IPropertySymbol property)
     {
         string escaped = CSharpIdentifier.EscapePath(property.Name);
-        if (string.IsNullOrEmpty(prefix))
+        if (!SymbolEqualityComparer.Default.Equals(property.ContainingType, owner))
         {
-            if (!SymbolEqualityComparer.Default.Equals(property.ContainingType, owner))
-            {
-                return "((" + property.ContainingType.ToDisplayString(s_format) +
-                    ")((" + owner.ToDisplayString(s_format) + ")subject))." +
-                    escaped;
-            }
-
-            return escaped;
+            return "((" + property.ContainingType.ToDisplayString(s_format) + ")(" +
+                ownerAccess + "))." + escaped;
         }
 
-        return prefix + (CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
+        return ownerAccess + (!root && CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
     }
 
     private static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
