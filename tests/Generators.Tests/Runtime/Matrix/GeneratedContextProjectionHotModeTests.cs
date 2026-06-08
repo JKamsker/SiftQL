@@ -62,32 +62,33 @@ public sealed class GeneratedContextProjectionHotModeTests
         Assert.False(compiledFilter.Matches(rejected));
     }
 
-    [Fact]
-    public async Task GeneratedHotHandlesConstantIncludeProjectionPipeline()
+    [Theory]
+    [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
+    public async Task ConstantIncludeProjectionPipelineReturnsSameFinalField(GeneratedExecutionMode mode)
     {
-        string assemblyName = "Plugin.Matrix.ContextProjection.ConstantHot";
+        string assemblyName = "Plugin.Matrix.ContextProjection.Constant." + mode;
         string runtimeLabel = "runtime-label";
         EventProjectionExpression manifestSourceProjection = ConstantSourceProjection("manifest-label");
         EventProjectionExpression runtimeSourceProjection = ConstantSourceProjection(runtimeLabel);
         EventProjectionExpression finalProjection = ConstantFinalProjection();
         using var context = GeneratedModeMatrixSupport.LoadContext(
-            GeneratedExecutionMode.GeneratedHot,
+            mode,
             assemblyName,
             EventTree(),
             EventTypeName,
-            "generated constant projection hot provider",
+            "constant projection pipeline provider",
             GeneratedModeMatrixSupport.ProjectionEntry(Subject(assemblyName), manifestSourceProjection),
             GeneratedModeMatrixSupport.ProjectionEntry(ProjectedSubject(assemblyName), finalProjection));
         CompiledProjection<object> sourceProjection = ProjectionCompiler.Compile(
             context.EventType,
             runtimeSourceProjection,
             ProjectionContextIncludeCompiler.Compile<object>,
-            GeneratedModeMatrixSupport.ProjectionOptions(GeneratedExecutionMode.GeneratedHot));
+            GeneratedModeMatrixSupport.ProjectionOptions(mode));
         CompiledProjection<object> projectedProjection = ProjectionCompiler.Compile(
             typeof(ProjectedEvent),
             finalProjection,
             ProjectionContextIncludeCompiler.Compile<object>,
-            GeneratedModeMatrixSupport.ProjectionOptions(GeneratedExecutionMode.GeneratedHot));
+            GeneratedModeMatrixSupport.ProjectionOptions(mode));
         EventPipelineExpression pipeline = EventPipelineExpression.Default
             .AppendProjection(runtimeSourceProjection)
             .AppendProjection(finalProjection);
@@ -95,15 +96,15 @@ public sealed class GeneratedContextProjectionHotModeTests
             context.EventType,
             pipeline,
             ProjectionContextIncludeCompiler.Compile<object>,
-            GeneratedModeMatrixSupport.PipelineOptions(GeneratedExecutionMode.GeneratedHot));
+            GeneratedModeMatrixSupport.PipelineOptions(mode));
 
         ProjectedEvent? projected = await compiled.ProjectAsync(
             Event(context.EventType, Guid.NewGuid(), Guid.NewGuid(), pluginId: 7, contentId: 11, duration: 2.5),
             new object(),
             CancellationToken.None);
 
-        Assert.False(sourceProjection.IsTiered);
-        Assert.False(projectedProjection.IsTiered);
+        Assert.Equal(mode == GeneratedExecutionMode.Interpreted, sourceProjection.IsTiered);
+        Assert.Equal(mode == GeneratedExecutionMode.Interpreted, projectedProjection.IsTiered);
         Assert.NotNull(projected);
         Assert.Equal(runtimeLabel, projected!.Field("Label").String);
     }
