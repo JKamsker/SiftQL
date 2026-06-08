@@ -145,6 +145,41 @@ public sealed class ShaRpcRegressionTests
             client.DispatchAsync(dispatch, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task SendToClientAsyncRecordsConcurrentDeliveries()
+    {
+        var sink = new ClientMessageSink();
+        var server = new RemoteServerService(new ServerDataStore(), sink);
+        using var start = new ManualResetEventSlim(initialState: false);
+        const int workers = 32;
+        const int deliveriesPerWorker = 256;
+
+        Task[] tasks = Enumerable.Range(0, workers)
+            .Select(worker => Task.Run(async () =>
+            {
+                start.Wait();
+                for (int i = 0; i < deliveriesPerWorker; i++)
+                {
+                    await server.SendToClientAsync(
+                        new ClientDelivery(
+                            worker,
+                            "test",
+                            new ProjectedEvent
+                            {
+                                EventType = "Test",
+                                EventName = "Test",
+                            }),
+                        CancellationToken.None);
+                }
+            }))
+            .ToArray();
+
+        start.Set();
+        await Task.WhenAll(tasks);
+
+        Assert.Equal(workers * deliveriesPerWorker, sink.Deliveries.Count);
+    }
+
     private sealed class RecordingClient : IRemoteClient
     {
         public List<SubscriptionDispatch> Dispatches { get; } = [];
