@@ -102,7 +102,10 @@ public sealed class CompiledProjection<TContext>
         _metadata.Create(subject, ProjectFieldArray(subject), InheritedContext(subject));
 
     private ProjectedEvent ProjectFields(object subject, ProjectedEventField[] includes) =>
-        _metadata.Create(subject, ProjectFieldArray(subject), includes);
+        _metadata.Create(
+            subject,
+            ProjectFieldArray(subject),
+            ProjectionContextMerger.Merge(InheritedContext(subject), includes));
 
     private ProjectedEvent ProjectComposedFields(
         object subject,
@@ -213,7 +216,10 @@ public sealed class CompiledProjection<TContext>
             includes[i] = projected.Result;
         }
 
-        return new ValueTask<ReadOnlyMemory<byte>>(WritePayload(subject, includes, options));
+        return new ValueTask<ReadOnlyMemory<byte>>(WritePayload(
+            subject,
+            ProjectionContextMerger.Merge(InheritedContext(subject), includes),
+            options));
     }
 
     private async ValueTask<ProjectedEvent> AwaitIncludesAsync(
@@ -250,7 +256,10 @@ public sealed class CompiledProjection<TContext>
                 .ConfigureAwait(false);
         }
 
-        return WritePayload(subject, includes, options);
+        return WritePayload(
+            subject,
+            ProjectionContextMerger.Merge(InheritedContext(subject), includes),
+            options);
     }
 
     private ReadOnlyMemory<byte> WritePayload(
