@@ -80,17 +80,20 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         ref TState state,
         FilterCandidateVisitor<TSubscription, TState> visitor)
     {
+        ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(visitor);
         Snapshot snapshot = Volatile.Read(ref _snapshot);
+        var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
         {
-            if (!visitor(snapshot.Unindexed[i].Subscription, ref state))
+            TSubscription subscription = snapshot.Unindexed[i].Subscription;
+            if (seen.Add(subscription) && !visitor(subscription, ref state))
                 return;
         }
 
         for (int i = 0; i < snapshot.Fields.Length; i++)
         {
-            if (!snapshot.Fields[i].VisitCandidates(subject, ref state, visitor))
+            if (!snapshot.Fields[i].VisitCandidates(subject, ref state, visitor, seen))
                 return;
         }
     }
@@ -100,6 +103,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         ref TState state,
         FilterCandidateVisitor<TSubscription, TState> visitor)
     {
+        ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(visitor);
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var seen = new HashSet<TSubscription>();
@@ -123,18 +127,25 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
     public TSubscription[] SnapshotCandidates(TSubject subject)
     {
+        ArgumentNullException.ThrowIfNull(subject);
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var candidates = new List<TSubscription>(snapshot.Unindexed.Length);
+        var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
-            candidates.Add(snapshot.Unindexed[i].Subscription);
+        {
+            TSubscription subscription = snapshot.Unindexed[i].Subscription;
+            if (seen.Add(subscription))
+                candidates.Add(subscription);
+        }
 
         for (int i = 0; i < snapshot.Fields.Length; i++)
-            snapshot.Fields[i].AddCandidates(subject, candidates);
+            snapshot.Fields[i].AddCandidates(subject, candidates, seen);
         return candidates.ToArray();
     }
 
     public TSubscription[] SnapshotMatches(TSubject subject)
     {
+        ArgumentNullException.ThrowIfNull(subject);
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var matches = new List<TSubscription>(snapshot.Unindexed.Length);
         var seen = new HashSet<TSubscription>();

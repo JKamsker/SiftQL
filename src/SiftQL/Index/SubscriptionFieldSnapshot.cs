@@ -17,14 +17,16 @@ internal sealed class SubscriptionFieldSnapshot<TSubscription>
     public bool VisitCandidates<TState>(
         object subject,
         ref TState state,
-        FilterCandidateVisitor<TSubscription, TState> visitor)
+        FilterCandidateVisitor<TSubscription, TState> visitor,
+        HashSet<TSubscription> seen)
     {
         if (!TryGetEntries(subject, out var items))
             return true;
 
         for (int i = 0; i < items.Length; i++)
         {
-            if (!visitor(items[i].Subscription, ref state))
+            TSubscription subscription = items[i].Subscription;
+            if (seen.Add(subscription) && !visitor(subscription, ref state))
                 return false;
         }
 
@@ -54,12 +56,19 @@ internal sealed class SubscriptionFieldSnapshot<TSubscription>
         return true;
     }
 
-    public void AddCandidates(object subject, List<TSubscription> candidates)
+    public void AddCandidates(
+        object subject,
+        List<TSubscription> candidates,
+        HashSet<TSubscription> seen)
     {
         if (!TryGetEntries(subject, out var items))
             return;
         for (int i = 0; i < items.Length; i++)
-            candidates.Add(items[i].Subscription);
+        {
+            TSubscription subscription = items[i].Subscription;
+            if (seen.Add(subscription))
+                candidates.Add(subscription);
+        }
     }
 
     public void AddMatches(
