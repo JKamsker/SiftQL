@@ -153,13 +153,13 @@ public sealed class FilterSubscriptionIndexTests
     }
 
     [Fact]
-    public void FSubIdx_SnapshotCandidates_WrongRuntimeType_ReturnsOnlyUnindexed()
+    public void FSubIdx_SnapshotCandidates_WrongRuntimeType_ReturnsEmpty()
     {
         var index = new FilterSubscriptionIndex<string>(typeof(SubjectA));
         index.Add("all", null);
         index.Add("id5", FilterExpression.Compare(nameof(SubjectA.Id), FilterOperator.Equal, FilterValue.From(5L)));
         var candidates = index.SnapshotCandidates(new object());
-        Assert.Equal(["all"], candidates);
+        Assert.Empty(candidates);
     }
 
     [Fact]
