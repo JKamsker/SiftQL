@@ -8,14 +8,22 @@ namespace SiftQL.Projection;
 internal static class ProjectionCompilerKeyBuilder
 {
     public static string Build<TContext>(
+        Type subjectType,
+        Type eventMetadataType,
         IReadOnlyList<CompiledProjection<TContext>.FieldProjector> fields,
         IReadOnlyList<EventProjectionInclude> includes,
         string? includeCompilerKey = null)
     {
+        ArgumentNullException.ThrowIfNull(subjectType);
+        ArgumentNullException.ThrowIfNull(eventMetadataType);
         string fieldKey = string.Concat(fields.Select(FieldKey));
         string includeKey = string.Concat(includes.Select(IncludeKey));
         string compilerKey = includes.Count == 0 ? string.Empty : "C" + KeyPart(includeCompilerKey);
         return string.Concat(
+            "S",
+            KeyPart(TypeKey(subjectType)),
+            "M",
+            KeyPart(TypeKey(eventMetadataType)),
             "F",
             CountPart(fields.Count),
             fieldKey,
@@ -99,6 +107,9 @@ internal static class ProjectionCompilerKeyBuilder
 
     private static string CountPart(int count) =>
         count.ToString(CultureInfo.InvariantCulture) + ":";
+
+    private static string TypeKey(Type type) =>
+        type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
 
     private static string KeyPart(string? value) =>
         value is null

@@ -71,7 +71,10 @@ public static class ProjectionCompiler
             out var fields);
         var includes = projection.Includes.Select(include => compileInclude(schema, include)).ToArray();
         EventProjectionExpression effectiveProjection = EffectiveProjection(projection, fields);
+        Type projectionMetadataType = eventMetadataType ?? subjectType;
         string compiledKey = ProjectionCompilerKeyBuilder.Build(
+            subjectType,
+            projectionMetadataType,
             fields,
             projection.Includes,
             IncludeCompilerKey.From(compileInclude).ToString());
@@ -92,7 +95,7 @@ public static class ProjectionCompiler
             return new CompiledProjection<TContext>(
                 compiledKey,
                 subjectType,
-                eventMetadataType ?? subjectType,
+                projectionMetadataType,
                 fields,
                 includes,
                 projectFields,
@@ -125,7 +128,7 @@ public static class ProjectionCompiler
         compiledProjection = new CompiledProjection<TContext>(
             compiledKey,
             subjectType,
-            eventMetadataType ?? subjectType,
+            projectionMetadataType,
             fields,
             includes,
             projectFields,
