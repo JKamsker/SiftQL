@@ -28,8 +28,14 @@ internal static class HotProviderResolver
                 continue;
             }
 
-            var fields = DiscoverFields(subject);
             bool projectedEvent = IsProjectedEvent(subject);
+            if (!projectedEvent && !IsFilterSubject(subject))
+            {
+                Add(diagnostics, manifest.Path, $"Hot entry subject '{entry.SubjectType}' must implement SiftQL.IFilterSubject.");
+                continue;
+            }
+
+            var fields = DiscoverFields(subject);
             if (entry.Kind == HotEntryKind.Filter && entry.Filter is not null)
             {
                 if (HotProviderFilterValidator.Validate(entry.Filter, fields, projectedEvent, diagnostics, manifest.Path) &&
@@ -180,6 +186,14 @@ internal static class HotProviderResolver
     private static bool IsProjectedEvent(INamedTypeSymbol subject) =>
         subject.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ==
         "SiftQL.Projected.ProjectedEvent";
+
+    private static bool IsFilterSubject(INamedTypeSymbol subject) =>
+        IsFilterSubjectType(subject) ||
+        subject.AllInterfaces.Any(IsFilterSubjectType);
+
+    private static bool IsFilterSubjectType(INamedTypeSymbol subject) =>
+        subject.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ==
+        "SiftQL.IFilterSubject";
 
     private static bool ValidateFingerprint(
         string actual,
