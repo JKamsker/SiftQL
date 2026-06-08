@@ -100,6 +100,32 @@ public sealed class ShaRpcRegressionTests
     }
 
     [Fact]
+    public async Task PublishAsyncSnapshotsSubscriptionsDuringAsyncDispatch()
+    {
+        var client = new BlockingClient();
+        var server = new RemoteServerService(new ServerDataStore(), new ClientMessageSink());
+        server.Attach(client);
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendProjection(EventProjectionExpression.Select(nameof(InventoryChangedEvent.ItemCode)));
+        await server.SubscribeAsync(
+            new SubscriptionRequest("first", nameof(InventoryChangedEvent), pipeline),
+            CancellationToken.None);
+        Task publish = server.PublishAsync(
+            new InventoryChangedEvent(1001, "north-gate", "potion", 3, 10),
+            CancellationToken.None);
+
+        await client.DispatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await server.SubscribeAsync(
+            new SubscriptionRequest("second", nameof(InventoryChangedEvent), pipeline),
+            CancellationToken.None);
+        client.ReleaseDispatch();
+        await publish.WaitAsync(TimeSpan.FromSeconds(5));
+
+        SubscriptionDispatch dispatch = Assert.Single(client.Dispatches);
+        Assert.Equal("first", dispatch.SubscriptionId);
+    }
+
+    [Fact]
     public async Task DispatchAsyncRejectsPayloadWithoutIntegerSession()
     {
         var server = new RecordingServer();
@@ -137,6 +163,36 @@ public sealed class ShaRpcRegressionTests
             Dispatches.Add(dispatch);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class BlockingClient : IRemoteClient
+    {
+        private readonly TaskCompletionSource _releaseDispatch = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource DispatchStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public List<SubscriptionDispatch> Dispatches { get; } = [];
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public async Task DispatchAsync(
+            SubscriptionDispatch dispatch,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Dispatches.Add(dispatch);
+            DispatchStarted.TrySetResult();
+            await _releaseDispatch.Task.WaitAsync(cancellationToken);
+        }
+
+        public void ReleaseDispatch() =>
+            _releaseDispatch.TrySetResult();
     }
 
     private sealed class RecordingServer : IRemoteServer
