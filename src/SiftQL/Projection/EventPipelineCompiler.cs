@@ -225,6 +225,8 @@ public static class EventPipelineCompiler
             if (stage.Kind != EventPipelineStageKind.Projection)
                 continue;
 
+            if (stage.Projection.Fields is null || stage.Projection.Includes is null)
+                return true;
             if (stage.Projection.Fields.Any(static field => field is null))
                 return true;
             if (stage.Projection.Includes.Any(static include =>

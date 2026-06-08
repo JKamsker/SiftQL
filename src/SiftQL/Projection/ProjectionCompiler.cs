@@ -53,6 +53,7 @@ public static class ProjectionCompiler
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(schemaFactory);
         projection ??= EventProjectionExpression.Default;
+        ValidateShape(projection, errorFactory);
         if (projection.Fields.Length > MaxFields)
             throw Error(errorFactory, $"Projection exceeds the {MaxFields} field limit.");
         if (projection.Includes.Length > MaxIncludes)
@@ -125,6 +126,16 @@ public static class ProjectionCompiler
         return compiledProjection;
 
         string Fingerprint() => fingerprint ??= projectionKey.ToString();
+    }
+
+    private static void ValidateShape(
+        EventProjectionExpression projection,
+        Func<string, Exception>? errorFactory)
+    {
+        if (projection.Fields is null)
+            throw Error(errorFactory, "Projection fields cannot be null.");
+        if (projection.Includes is null)
+            throw Error(errorFactory, "Projection includes cannot be null.");
     }
 
     private static bool TryGetPrecompiledProjection(
