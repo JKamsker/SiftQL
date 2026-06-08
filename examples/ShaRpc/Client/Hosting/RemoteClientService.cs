@@ -25,6 +25,7 @@ public sealed class RemoteClientService : IRemoteClient
 
         await QueryOffersAsync(server, cancellationToken).ConfigureAwait(false);
         await SubscribeInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+        await SubscribePremiumInventoryAsync(server, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DispatchAsync(
@@ -93,6 +94,37 @@ public sealed class RemoteClientService : IRemoteClient
         return server.SubscribeAsync(
             new SubscriptionRequest(
                 "inventory-feed",
+                nameof(InventoryChangedEvent),
+                subscription.Pipeline),
+            cancellationToken);
+    }
+
+    private static Task SubscribePremiumInventoryAsync(
+        IRemoteServer server,
+        CancellationToken cancellationToken)
+    {
+        var subscription = ServerKernel.ForInventoryChanged()
+            .WithServerContext()
+            .Where(static ev => ev.Region == "north-gate" && ev.Quantity > 0)
+            .Select(static (ev, ctx) => new
+            {
+                ev.SessionId,
+                ev.ItemCode,
+                ev.Quantity,
+                ClientTier = ctx.GetClient(ev.SessionId).Tier,
+            })
+            .Where(static ev => ev.ClientTier == ClientTier.Premium)
+            .Select(static ev => new
+            {
+                Session = ev.SessionId,
+                Item = ev.ItemCode,
+                ev.Quantity,
+                Tier = ev.ClientTier,
+            });
+
+        return server.SubscribeAsync(
+            new SubscriptionRequest(
+                "premium-inventory-feed",
                 nameof(InventoryChangedEvent),
                 subscription.Pipeline),
             cancellationToken);

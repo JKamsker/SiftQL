@@ -19,7 +19,10 @@ dataStore.Replace<ServerOfferSnapshot>(
 ]);
 
 var clientMessages = new ClientMessageSink();
-var server = new RemoteServerService(dataStore, clientMessages);
+var queryContext = new ServerLookupContext(
+    new(1001, "Ari", ClientTier.Premium),
+    new(1002, "Bryn", ClientTier.Standard));
+var server = new RemoteServerService(dataStore, clientMessages, queryContext);
 string pipeName = $"siftql-sharpc-example-{Guid.NewGuid():N}";
 
 await using var pipe = new NamedPipeServerStream(

@@ -13,4 +13,12 @@ public static class KernelExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(region);
         return kernel.Where(record => record.Region == region);
     }
+
+    public static QueryKernel<TRecord, ServerLookupContext> WithServerContext<TRecord>(
+        this QueryKernel<TRecord> kernel)
+        where TRecord : IServerRecord
+    {
+        ArgumentNullException.ThrowIfNull(kernel);
+        return kernel.WithContext<TRecord, ServerLookupContext>();
+    }
 }

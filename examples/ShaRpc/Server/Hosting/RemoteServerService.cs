@@ -3,16 +3,17 @@ using SiftQL.Examples.ShaRpc.SharedContracts.Domain;
 using SiftQL.Expressions;
 using SiftQL.Projected;
 using SiftQL.Projection;
-using SiftQL.Schema;
 
 namespace SiftQL.Examples.ShaRpc.Server.Hosting;
 
 public sealed class RemoteServerService(
     ServerDataStore dataStore,
-    ClientMessageSink clients) : IRemoteServer
+    ClientMessageSink clients,
+    ServerLookupContext? queryContext = null) : IRemoteServer
 {
     private readonly Dictionary<Type, List<Subscription>> _subscriptions = [];
     private readonly HashSet<string> _subscriptionIds = new(StringComparer.Ordinal);
+    private readonly ServerLookupContext _queryContext = queryContext ?? new ServerLookupContext();
     private IRemoteClient? _client;
 
     public void Attach(IRemoteClient client) =>
@@ -36,13 +37,13 @@ public sealed class RemoteServerService(
     {
         ArgumentNullException.ThrowIfNull(request);
         Type subjectType = ResolveSubject(request.Subject);
-        CompiledEventPipeline<object?> pipeline = Compile(subjectType, request.Pipeline);
+        CompiledEventPipeline<ServerLookupContext> pipeline = Compile(subjectType, request.Pipeline);
         var results = new List<ProjectedEvent>();
 
         foreach (object row in dataStore.Rows(subjectType))
         {
             ProjectedEvent? projected = await pipeline
-                .ProjectAsync(row, context: null, cancellationToken)
+                .ProjectAsync(row, _queryContext, cancellationToken)
                 .ConfigureAwait(false);
             if (projected is not null)
                 results.Add(projected);
@@ -106,7 +107,7 @@ public sealed class RemoteServerService(
         foreach (Subscription subscription in SubscriptionsFor(record))
         {
             ProjectedEvent? projected = await subscription.Pipeline
-                .ProjectAsync(record, context: null, cancellationToken)
+                .ProjectAsync(record, _queryContext, cancellationToken)
                 .ConfigureAwait(false);
             if (projected is null)
                 continue;
@@ -145,26 +146,17 @@ public sealed class RemoteServerService(
         throw new InvalidOperationException($"Unknown subject '{subject}'.");
     }
 
-    private static CompiledEventPipeline<object?> Compile(
+    private static CompiledEventPipeline<ServerLookupContext> Compile(
         Type subjectType,
         EventPipelineExpression pipeline) =>
-        EventPipelineCompiler.Compile<object?>(
+        EventPipelineCompiler.Compile<ServerLookupContext>(
             subjectType,
             pipeline,
-            RejectInclude,
             EventPipelineCompilerOptions.Immediate,
             message => new InvalidOperationException(message));
-
-    private static CompiledProjection<object?>.IncludeProjector RejectInclude(
-        FilterSchema schema,
-        EventProjectionInclude include)
-    {
-        _ = schema;
-        throw new InvalidOperationException($"Projection include '{include.Intrinsic}' is not supported here.");
-    }
 
     private sealed record Subscription(
         string Id,
         string Subject,
-        CompiledEventPipeline<object?> Pipeline);
+        CompiledEventPipeline<ServerLookupContext> Pipeline);
 }
