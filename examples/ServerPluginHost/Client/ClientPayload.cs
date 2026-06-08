@@ -38,8 +38,12 @@ internal static class ClientPayload
         string.Equals(name, nameof(ProjectedEvent.EventType), StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, nameof(ProjectedEvent.EventName), StringComparison.OrdinalIgnoreCase);
 
-    private static object? ToObject(ProjectedEventValue value) =>
-        value.Kind switch
+    private static object? ToObject(ProjectedEventValue? value)
+    {
+        if (value is null)
+            return null;
+
+        return value.Kind switch
         {
             ProjectedEventValueKind.Boolean => value.Boolean,
             ProjectedEventValueKind.Integer => value.Integer,
@@ -48,11 +52,25 @@ internal static class ClientPayload
             ProjectedEventValueKind.Decimal => value.Decimal,
             ProjectedEventValueKind.String => value.String,
             ProjectedEventValueKind.Guid => value.Guid,
-            ProjectedEventValueKind.Array => value.Values.Select(ToObject).ToArray(),
-            ProjectedEventValueKind.Object => value.Fields.ToDictionary(
-                static field => field.Name,
-                static field => ToObject(field.Value),
-                StringComparer.OrdinalIgnoreCase),
+            ProjectedEventValueKind.Array => value.Values?.Select(ToObject).ToArray() ?? [],
+            ProjectedEventValueKind.Object => ToDictionary(value.Fields),
             _ => null,
         };
+    }
+
+    private static IReadOnlyDictionary<string, object?> ToDictionary(
+        IEnumerable<ProjectedEventField>? fields)
+    {
+        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        if (fields is null)
+            return values;
+
+        foreach (ProjectedEventField? field in fields)
+        {
+            if (field is not null)
+                values[field.Name] = ToObject(field.Value);
+        }
+
+        return values;
+    }
 }
