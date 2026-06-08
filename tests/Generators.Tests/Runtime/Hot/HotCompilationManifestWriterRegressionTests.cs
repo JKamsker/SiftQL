@@ -96,6 +96,27 @@ public sealed class HotCompilationManifestWriterRegressionTests
     }
 
     [Fact]
+    public void ManifestWriterSkipsRuntimeAcceptedNaNFilter()
+    {
+        string path = TempManifestPath();
+        var writer = new HotCompilationManifestWriter(
+            path,
+            new HotCompilationManifestWriterOptions { CoalesceDelay = TimeSpan.Zero });
+        FilterExpression filter = FilterExpression.Compare(
+            nameof(ItemUsedEvent.Quantity),
+            FilterOperator.Equal,
+            FilterValue.From(double.NaN));
+
+        writer.RecordHotFilter(typeof(ItemUsedEvent), filter, evaluations: 1, matches: 0);
+        writer.Flush();
+
+        if (!File.Exists(path))
+            return;
+
+        Assert.Empty(ReadManifest(path).Entries);
+    }
+
+    [Fact]
     public void ManifestWriterDisposeFlushesQueuedWrite()
     {
         string path = TempManifestPath();
