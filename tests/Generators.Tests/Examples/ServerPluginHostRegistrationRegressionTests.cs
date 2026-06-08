@@ -56,6 +56,18 @@ public sealed class ServerPluginHostRegistrationRegressionTests
         Assert.Single(session.Messages, static message => message.Channel == "server.offer");
     }
 
+    [Fact]
+    public async Task RegisterAfterStartRejectsPluginRegistration()
+    {
+        var host = new InMemoryServerPluginHost(new ClientGateway());
+
+        await host.StartAsync();
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            host.Register(new OfferLookupPlugin()));
+        Assert.Contains("started", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class ThrowingProjectedPlugin : IServerPlugin
     {
         public string Id => "throwing-projected";
