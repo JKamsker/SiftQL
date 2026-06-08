@@ -47,6 +47,13 @@ internal static class FilterIndexValueAccessor<TSubject>
             return Expression.Lambda<Func<TSubject, FilterIndexValue?>>(key, parameter).Compile();
         }
 
+        if (field.ScalarAccessor is { } scalarAccessor)
+        {
+            return subject => FilterIndexValue.TryCreateActual(scalarAccessor, subject!, out var actual)
+                ? actual
+                : null;
+        }
+
         return subject => FilterIndexValue.TryCreateActual(field.Getter(subject!), out var actual)
             ? actual
             : null;
