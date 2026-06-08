@@ -14,6 +14,8 @@ public sealed class InMemoryServerPluginHost
     private readonly HashSet<string> _pluginIds = new(StringComparer.Ordinal);
     private readonly List<StartupHandler> _startupHandlers = [];
     private readonly Dictionary<Type, List<ISubscription>> _subscriptions = [];
+    private readonly SemaphoreSlim _startupGate = new(1, 1);
+    private bool _started;
 
     public InMemoryServerPluginHost(ClientGateway clients)
         : this(clients, new ServerDataStore())
@@ -104,11 +106,24 @@ public sealed class InMemoryServerPluginHost
 
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
-        for (int i = 0; i < _startupHandlers.Count; i++)
+        await _startupGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            StartupHandler startup = _startupHandlers[i];
-            await startup.Handler(CreateContext(startup.PluginId), cancellationToken)
-                .ConfigureAwait(false);
+            if (_started)
+                return;
+
+            for (int i = 0; i < _startupHandlers.Count; i++)
+            {
+                StartupHandler startup = _startupHandlers[i];
+                await startup.Handler(CreateContext(startup.PluginId), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            _started = true;
+        }
+        finally
+        {
+            _startupGate.Release();
         }
     }
 
