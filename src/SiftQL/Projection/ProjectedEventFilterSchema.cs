@@ -94,6 +94,9 @@ public static class ProjectedEventFilterSchema
 
     private static ProjectedEventValue Value(ProjectedEvent projected, bool context, string name)
     {
+        if (TryExactValue(projected, context, name, out ProjectedEventValue exact))
+            return exact;
+
         string[] segments = name.Split('.');
         if (segments.Length == 0)
             return ProjectedEventValue.Null;
@@ -106,6 +109,15 @@ public static class ProjectedEventFilterSchema
 
         return value;
     }
+
+    private static bool TryExactValue(
+        ProjectedEvent projected,
+        bool context,
+        string name,
+        out ProjectedEventValue value) =>
+        context
+            ? projected.TryGetContext(name, out value)
+            : projected.TryGetField(name, out value);
 
     private static ProjectedEventValue ObjectField(ProjectedEventValue value, string name)
     {
