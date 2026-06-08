@@ -9,9 +9,7 @@ internal static class FilterSchemaReservedMetadataValidator
 {
     public static void Validate(Type subjectType, FilterSchema schema)
     {
-        if (!TryCreateMetadataProbe(subjectType, out object? probe))
-            return;
-
+        bool hasProbe = TryCreateMetadataProbe(subjectType, out object? probe);
         bool hasDerivedProbe = ReservedMetadataDerivedProbe.TryCreate(subjectType, out object? derivedProbe);
         bool allowProjectionAccessor = subjectType.IsSealed || hasDerivedProbe;
         ValidateField(
@@ -20,6 +18,7 @@ internal static class FilterSchemaReservedMetadataValidator
             "subjectType",
             subjectType.FullName ?? subjectType.Name,
             probe,
+            hasProbe,
             allowProjectionAccessor);
         ValidateField(
             subjectType,
@@ -27,6 +26,7 @@ internal static class FilterSchemaReservedMetadataValidator
             "subjectName",
             subjectType.Name,
             probe,
+            hasProbe,
             allowProjectionAccessor);
         if (!hasDerivedProbe)
             return;
@@ -38,6 +38,7 @@ internal static class FilterSchemaReservedMetadataValidator
             "subjectType",
             derivedType.FullName ?? derivedType.Name,
             derivedProbe,
+            hasProbe: true,
             allowProjectionAccessor: true);
         ValidateField(
             subjectType,
@@ -45,6 +46,7 @@ internal static class FilterSchemaReservedMetadataValidator
             "subjectName",
             derivedType.Name,
             derivedProbe,
+            hasProbe: true,
             allowProjectionAccessor: true);
     }
 
@@ -53,30 +55,39 @@ internal static class FilterSchemaReservedMetadataValidator
         FilterSchema schema,
         string name,
         string expected,
-        object probe,
+        object? probe,
+        bool hasProbe,
         bool allowProjectionAccessor)
     {
         if (!schema.TryGetField(name, out FilterField? field))
+            throw InvalidReservedMetadata(subjectType, name);
+        if (field.Kind != FilterFieldKind.Scalar || field.ValueType != typeof(string))
+            throw InvalidReservedMetadata(subjectType, name);
+
+        ValidateAccess(subjectType, field, name, expected);
+        if (!hasProbe)
+        {
+            if (field.ProjectionAccessor is not null && !allowProjectionAccessor)
+                throw InvalidReservedMetadata(subjectType, name);
             return;
-        if (field.Kind != FilterFieldKind.Scalar ||
-            field.ValueType != typeof(string) ||
-            !TryReadString(() => field.Getter(probe), out string? actual) ||
+        }
+
+        if (!TryReadString(() => field.Getter(probe!), out string? actual) ||
             !string.Equals(actual, expected, StringComparison.Ordinal))
         {
             throw InvalidReservedMetadata(subjectType, name);
         }
 
         if (field.ScalarAccessor?.Text is { } text &&
-            (!TryReadString(() => text(probe), out actual) ||
+            (!TryReadString(() => text(probe!), out actual) ||
                 !string.Equals(actual, expected, StringComparison.Ordinal)))
         {
             throw InvalidReservedMetadata(subjectType, name);
         }
 
-        ValidateAccess(subjectType, field, name, expected);
         if (field.ProjectionAccessor is { } projectionAccessor &&
             (!allowProjectionAccessor ||
-                !TryReadProjectedString(() => projectionAccessor(probe), out actual) ||
+                !TryReadProjectedString(() => projectionAccessor(probe!), out actual) ||
                 !string.Equals(actual, expected, StringComparison.Ordinal)))
         {
             throw InvalidReservedMetadata(subjectType, name);
