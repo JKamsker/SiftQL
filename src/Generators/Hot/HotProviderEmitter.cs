@@ -92,8 +92,8 @@ internal static class HotProviderEmitter
             HotFilterNodeKind.Contains => "FilterValues.Contains(" + Field(members, entry, node, index, ref fields) +
                 ".Getter(subject), " + Value(members, node.Value!, parameters, index, ref values) + ")",
             HotFilterNodeKind.Not => "!(" + FilterExpression(members, entry, node.Children[0], parameters, index, ref fields, ref values) + ")",
-            HotFilterNodeKind.And => Composite(members, entry, node, parameters, index, " && ", ref fields, ref values),
-            HotFilterNodeKind.Or => Composite(members, entry, node, parameters, index, " || ", ref fields, ref values),
+            HotFilterNodeKind.And => Composite(members, entry, node, parameters, index, " && ", and: true, ref fields, ref values),
+            HotFilterNodeKind.Or => Composite(members, entry, node, parameters, index, " || ", and: false, ref fields, ref values),
             _ => "false",
         };
     }
@@ -105,13 +105,39 @@ internal static class HotProviderEmitter
         HotFilterParameterMap parameters,
         int index,
         string op,
+        bool and,
         ref int fields,
         ref int values)
     {
-        var parts = new string[node.Children.Count];
+        HotFilterNode[] children = and && node.Children.Count > 1
+            ? node.Children.Items.OrderBy(EstimateCost).ToArray()
+            : node.Children.Items.ToArray();
+        var parts = new string[children.Length];
         for (int i = 0; i < parts.Length; i++)
-            parts[i] = FilterExpression(members, entry, node.Children[i], parameters, index, ref fields, ref values);
+            parts[i] = FilterExpression(members, entry, children[i], parameters, index, ref fields, ref values);
         return "(" + string.Join(op, parts) + ")";
+    }
+
+    private static int EstimateCost(HotFilterNode node) =>
+        node.Kind switch
+        {
+            HotFilterNodeKind.Any => 0,
+            HotFilterNodeKind.Compare => node.Operator == 0 ? 1 : 2,
+            HotFilterNodeKind.Exists => 1,
+            HotFilterNodeKind.In => 4 + Math.Min(node.Values.Count, 16),
+            HotFilterNodeKind.Contains => 32,
+            HotFilterNodeKind.Not => 8 + ChildrenCost(node),
+            HotFilterNodeKind.And => ChildrenCost(node),
+            HotFilterNodeKind.Or => 16 + ChildrenCost(node),
+            _ => 64,
+        };
+
+    private static int ChildrenCost(HotFilterNode node)
+    {
+        int cost = 0;
+        for (int i = 0; i < node.Children.Count; i++)
+            cost += EstimateCost(node.Children[i]);
+        return cost;
     }
 
     private static string Field(
