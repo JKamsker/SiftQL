@@ -46,6 +46,24 @@ public sealed class FilterSchemaPolymorphicMetadataRegressionTests
     }
 
     [Fact]
+    public async Task ConcreteBaseProjectionUsesDerivedProjectedEventMetadata()
+    {
+        CompiledProjection<object> projection = ProjectionCompiler.Compile<object>(
+            typeof(BaseRegionEvent),
+            EventProjectionExpression.Select(nameof(BaseRegionEvent.Region)),
+            RejectInclude,
+            ProjectionCompilerOptions.Immediate);
+
+        Projected.ProjectedEvent projected = await projection.ProjectAsync(
+            new DerivedRegionEvent("north"),
+            new object(),
+            CancellationToken.None);
+
+        Assert.Equal(typeof(DerivedRegionEvent).FullName, projected.EventType);
+        Assert.Equal(nameof(DerivedRegionEvent), projected.EventName);
+    }
+
+    [Fact]
     public void GeneratedConcreteBaseSchemaUsesDerivedSubjectName()
     {
         GeneratorRun run = RunGenerator(
