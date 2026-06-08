@@ -19,6 +19,7 @@ internal readonly struct IncludeCompilerKey : IEquatable<IncludeCompilerKey>
 {
     private readonly MethodInfo _method;
     private readonly object? _target;
+    private readonly string _declaringTypeKey;
     private readonly string _genericArgumentsKey;
     private readonly int _hashCode;
 
@@ -26,9 +27,11 @@ internal readonly struct IncludeCompilerKey : IEquatable<IncludeCompilerKey>
     {
         _method = method;
         _target = target;
+        _declaringTypeKey = DeclaringTypeKey(method);
         _genericArgumentsKey = GenericArgumentsKey(method);
         _hashCode = HashCode.Combine(
             method,
+            _declaringTypeKey,
             _genericArgumentsKey,
             target is null ? 0 : RuntimeHelpers.GetHashCode(target));
     }
@@ -38,6 +41,7 @@ internal readonly struct IncludeCompilerKey : IEquatable<IncludeCompilerKey>
 
     public bool Equals(IncludeCompilerKey other) =>
         _method == other._method &&
+        string.Equals(_declaringTypeKey, other._declaringTypeKey, StringComparison.Ordinal) &&
         string.Equals(_genericArgumentsKey, other._genericArgumentsKey, StringComparison.Ordinal) &&
         ReferenceEquals(_target, other._target);
 
@@ -56,10 +60,17 @@ internal readonly struct IncludeCompilerKey : IEquatable<IncludeCompilerKey>
             ":",
             _method.MetadataToken.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ":",
+            KeyPart(_declaringTypeKey),
+            ":",
             KeyPart(_genericArgumentsKey),
             ":",
             target);
     }
+
+    private static string DeclaringTypeKey(MethodInfo method) =>
+        method.DeclaringType is { } declaringType
+            ? TypeKey(declaringType)
+            : string.Empty;
 
     private static string GenericArgumentsKey(MethodInfo method) =>
         method.IsGenericMethod
