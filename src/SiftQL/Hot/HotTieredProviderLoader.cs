@@ -186,8 +186,15 @@ public static class HotTieredProviderLoader
 
         protected override System.Reflection.Assembly? Load(System.Reflection.AssemblyName assemblyName)
         {
+            if (IsSharedRuntimeAssembly(assemblyName))
+                return Assembly.Load(assemblyName);
+
             string? path = _resolver.ResolveAssemblyToPath(assemblyName);
             return path is null ? null : LoadFromAssemblyPath(path);
         }
+
+        private static bool IsSharedRuntimeAssembly(AssemblyName assemblyName) =>
+            string.Equals(assemblyName.Name, "SiftQL", StringComparison.Ordinal) ||
+            string.Equals(assemblyName.Name, "SiftQL.Abstractions", StringComparison.Ordinal);
     }
 }
