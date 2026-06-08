@@ -137,7 +137,7 @@ internal static class KernelExpressionTranslator
         ParameterExpression parameter,
         ref int parameterIndex)
     {
-        object? value = KernelExpressionEvaluator.Evaluate(StripConvert(expression), parameter);
+        object? value = KernelExpressionEvaluator.Evaluate(expression, parameter);
         if (value is string)
         {
             throw new KernelExpressionException("String constants are scalar values, not filter value lists.");
@@ -162,7 +162,7 @@ internal static class KernelExpressionTranslator
         ParameterExpression parameter,
         ref int parameterIndex) =>
         KernelExpressionEvaluator.EvaluateValue(
-            StripConvert(expression),
+            expression,
             parameter,
             NextParameterKey(ref parameterIndex));
 
@@ -190,8 +190,14 @@ internal static class KernelExpressionTranslator
 
         while (current is MemberExpression member)
         {
+            if (member.Expression is null)
+            {
+                field = string.Empty;
+                return false;
+            }
+
             names.Push(member.Member.Name);
-            current = StripConvert(member.Expression!);
+            current = StripConvert(member.Expression);
         }
 
         if (current is MethodCallExpression call &&

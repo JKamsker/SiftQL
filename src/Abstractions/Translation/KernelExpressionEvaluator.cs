@@ -15,7 +15,6 @@ internal static class KernelExpressionEvaluator
 
     public static object? Evaluate(Expression expression, ParameterExpression parameter)
     {
-        expression = StripConvert(expression);
         if (ReferencesParameter(expression, parameter))
         {
             throw new KernelExpressionException(
@@ -30,7 +29,6 @@ internal static class KernelExpressionEvaluator
 
     private static bool TryEvaluateConstant(Expression expression, out object? value)
     {
-        expression = StripConvert(expression);
         switch (expression)
         {
             case ConstantExpression constant:
@@ -38,6 +36,8 @@ internal static class KernelExpressionEvaluator
                 return true;
             case MemberExpression member:
                 return TryEvaluateMember(member, out value);
+            case UnaryExpression unary when IsConversion(unary.NodeType):
+                return TryEvaluateConversion(unary, out value);
             case MethodCallExpression call when IsImplicitConversion(call):
                 return TryEvaluateConstant(call.Arguments[0], out value);
             case NewArrayExpression array:
@@ -75,6 +75,30 @@ internal static class KernelExpressionEvaluator
         return false;
     }
 
+    private static bool TryEvaluateConversion(UnaryExpression expression, out object? value)
+    {
+        if (!TryEvaluateConstant(expression.Operand, out object? operand))
+        {
+            value = null;
+            return false;
+        }
+
+        try
+        {
+            Expression converted = expression.Update(Expression.Constant(operand, expression.Operand.Type));
+            value = Expression.Lambda<Func<object?>>(
+                    Expression.Convert(converted, typeof(object)))
+                .Compile()
+                .Invoke();
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidCastException or OverflowException)
+        {
+            value = null;
+            return false;
+        }
+    }
+
     private static bool TryEvaluateArray(NewArrayExpression array, out object? value)
     {
         Type elementType = array.Type.GetElementType() ?? typeof(object);
@@ -101,18 +125,8 @@ internal static class KernelExpressionEvaluator
         return found;
     }
 
-    private static Expression StripConvert(Expression expression)
-    {
-        while (expression.NodeType is
-            ExpressionType.Convert or
-            ExpressionType.ConvertChecked or
-            ExpressionType.TypeAs)
-        {
-            expression = ((UnaryExpression)expression).Operand;
-        }
-
-        return expression;
-    }
+    private static bool IsConversion(ExpressionType nodeType) =>
+        nodeType is ExpressionType.Convert or ExpressionType.ConvertChecked or ExpressionType.TypeAs;
 
     private static bool IsImplicitConversion(MethodCallExpression expression) =>
         expression.Method.Name == "op_Implicit" &&
