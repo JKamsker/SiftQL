@@ -25,6 +25,30 @@ public sealed class ProjectionMetadataFieldRegressionTests
         Assert.Equal(7, projected.Field(nameof(EventMetadataNamedProjectionEvent.Value)).Integer);
     }
 
+    [Fact]
+    public async Task ProjectedSelectAfterFilterKeepsRealEventTypeField()
+    {
+        EventPipelineExpression pipeline = QueryKernel.For<EventMetadataNamedProjectionEvent>()
+            .Select(nameof(EventMetadataNamedProjectionEvent.EventType))
+            .WhereProjected(static ev =>
+                ev.Field(nameof(EventMetadataNamedProjectionEvent.EventType)).String == "payload-type")
+            .Select(static (ev, _) => new { ev.EventType })
+            .Pipeline;
+        CompiledEventPipeline<object?> compiled = EventPipelineCompiler.Compile<object?>(
+            typeof(EventMetadataNamedProjectionEvent),
+            pipeline,
+            RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new EventMetadataNamedProjectionEvent("payload-type", "payload-name", 7),
+            null,
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal("payload-type", projected!.Field(nameof(EventMetadataNamedProjectionEvent.EventType)).String);
+    }
+
     private static CompiledProjection<object?>.IncludeProjector RejectInclude(
         FilterSchema schema,
         EventProjectionInclude include)
