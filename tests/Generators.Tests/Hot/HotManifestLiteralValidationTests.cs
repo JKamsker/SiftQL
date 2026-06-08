@@ -90,6 +90,20 @@ public sealed class HotManifestLiteralValidationTests
     }
 
     [Fact]
+    public void AcceptsStringContainsHotFilter()
+    {
+        var filter = FilterExpression.StringContains(
+            "Source",
+            FilterValue.From("ell"));
+
+        GeneratorRun run = RunGenerator(Manifest(filter));
+
+        AssertEx.Equal(0, run.Diagnostics.Length, "string contains generator diagnostics");
+        AssertEx.Equal(1, HotProviderSourceCount(run), "string contains emitted a provider");
+        AssertNoCompilationErrors(run, "string contains hot provider");
+    }
+
+    [Fact]
     public void EscapesUnicodeSeparatorsInStringLiterals()
     {
         string value = "line\u2028paragraph\u2029";
