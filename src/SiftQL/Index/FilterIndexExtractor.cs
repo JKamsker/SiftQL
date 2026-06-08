@@ -1,4 +1,5 @@
 using SiftQL;
+using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Schema;
 using SiftQL.Values;
@@ -27,6 +28,7 @@ public static class FilterIndexExtractor
     {
         ArgumentNullException.ThrowIfNull(schema);
         ArgumentNullException.ThrowIfNull(expression);
+        FilterExpressionShapeValidator.Validate(expression, errorFactory);
         return FindExactScalar(schema, expression, errorFactory);
     }
 
