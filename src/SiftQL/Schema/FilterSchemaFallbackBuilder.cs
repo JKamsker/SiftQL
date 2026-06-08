@@ -50,8 +50,12 @@ internal static class FilterSchemaFallbackBuilder
             }
 
             Expression? ownerExpression = FilterFieldAccessExpression.Build(typedSubject, path);
-            if (ownerExpression is null || IsNullableExpression(ownerExpression))
+            if (ownerExpression is null ||
+                IsNullableExpression(ownerExpression) ||
+                PathCanReturnNull(subjectType, path, nullability))
+            {
                 continue;
+            }
 
             AddProperties(
                 fields,
@@ -64,6 +68,36 @@ internal static class FilterSchemaFallbackBuilder
                 isValueObject,
                 nullability);
         }
+    }
+
+    private static bool PathCanReturnNull(Type ownerType, string path, NullabilityInfoContext nullability)
+    {
+        Type current = ownerType;
+        foreach (string segment in path.Split('.'))
+        {
+            PropertyInfo? property = FindProperty(current, segment);
+            if (property is null || IsNullableProperty(property, nullability))
+                return true;
+
+            current = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        }
+
+        return false;
+    }
+
+    private static PropertyInfo? FindProperty(Type ownerType, string name)
+    {
+        foreach (PropertyInfo property in EnumeratePublicProperties(ownerType))
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) &&
+                property.GetMethod is not null &&
+                property.GetMethod.GetParameters().Length == 0)
+            {
+                return property;
+            }
+        }
+
+        return null;
     }
 
     private static void AddProperties(
