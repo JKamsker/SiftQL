@@ -78,7 +78,7 @@ public static class HotProviderRegistrationContext
             if (_disposed || !AcceptManifestHash(manifestHash))
                 return NullRegistration.Instance;
 
-            var registration = new PendingRegistration(this, providerFactory());
+            var registration = new PendingRegistration(this, providerFactory);
             _pending.Add(registration);
             return registration;
         }
@@ -136,17 +136,33 @@ public static class HotProviderRegistrationContext
 
         private sealed class PendingRegistration(
             HotProviderRegistrationScope owner,
-            IPrecompiledTieredProvider provider) : IDisposable
+            IPrecompiledTieredProvider? provider,
+            Func<IPrecompiledTieredProvider>? providerFactory) : IDisposable
         {
             private IDisposable? _committed;
             private bool _disposed;
+
+            public PendingRegistration(
+                HotProviderRegistrationScope owner,
+                IPrecompiledTieredProvider provider)
+                : this(owner, provider, providerFactory: null)
+            {
+            }
+
+            public PendingRegistration(
+                HotProviderRegistrationScope owner,
+                Func<IPrecompiledTieredProvider> providerFactory)
+                : this(owner, provider: null, providerFactory)
+            {
+            }
 
             public bool Commit()
             {
                 if (_disposed || _committed is not null)
                     return false;
 
-                IDisposable registration = PrecompiledTieredProviderRegistry.Register(provider);
+                IPrecompiledTieredProvider item = provider ?? providerFactory!();
+                IDisposable registration = PrecompiledTieredProviderRegistry.Register(item);
                 _committed = registration;
                 owner.AddCommitted(registration);
                 return true;
