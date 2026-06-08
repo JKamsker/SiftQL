@@ -14,6 +14,7 @@ internal static class HotCompilationManifestCompatibility
         JsonElement root = document.RootElement;
         return root.ValueKind == JsonValueKind.Object &&
             HasString(root, "Schema") &&
+            HasString(root, "RuntimeVersion") &&
             HasString(root, "FilterEngineVersion") &&
             HasString(root, "GeneratorVersion") &&
             root.TryGetProperty("Entries", out JsonElement entries) &&
