@@ -28,7 +28,7 @@ internal static class FilterSchemaReservedMetadataValidator
             probe,
             hasProbe,
             allowProjectionAccessor);
-        if (!hasDerivedProbe)
+        if (!hasDerivedProbe || derivedProbe is null)
             return;
 
         Type derivedType = derivedProbe.GetType();

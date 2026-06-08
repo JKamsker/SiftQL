@@ -44,6 +44,22 @@ public sealed class FilterSubscriptionIndexDynamicValueRegressionTests
                 candidate,
                 [
                     new FilterField(
+                        "subjectType",
+                        typeof(string),
+                        FilterFieldKind.Scalar,
+                        static subject => subject.GetType().FullName ?? subject.GetType().Name,
+                        new FilterScalarAccessor(
+                            FilterScalarKind.String,
+                            text: static subject => subject.GetType().FullName ?? subject.GetType().Name)),
+                    new FilterField(
+                        "subjectName",
+                        typeof(string),
+                        FilterFieldKind.Scalar,
+                        static subject => subject.GetType().Name,
+                        new FilterScalarAccessor(
+                            FilterScalarKind.String,
+                            text: static subject => subject.GetType().Name)),
+                    new FilterField(
                         "Value",
                         typeof(ProjectedEventValue),
                         FilterFieldKind.Scalar,

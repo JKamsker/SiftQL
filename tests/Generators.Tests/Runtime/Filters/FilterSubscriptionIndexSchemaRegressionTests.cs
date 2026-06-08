@@ -40,6 +40,8 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
             schema = GeneratedFilterSchemaRegistry.Create(
                 type,
                 [
+                    ReservedField("subjectType", static subject => subject.GetType().FullName ?? subject.GetType().Name),
+                    ReservedField("subjectName", static subject => subject.GetType().Name),
                     new FilterField(
                         "Flag",
                         typeof(bool),
@@ -53,6 +55,14 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
             return true;
         }
     }
+
+    private static FilterField ReservedField(string name, Func<object, string> value) =>
+        new(
+            name,
+            typeof(string),
+            FilterFieldKind.Scalar,
+            value,
+            new FilterScalarAccessor(FilterScalarKind.String, text: value));
 
     private static Type EmitSubjectType()
     {

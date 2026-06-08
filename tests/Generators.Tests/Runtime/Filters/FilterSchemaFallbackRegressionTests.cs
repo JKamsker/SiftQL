@@ -88,6 +88,8 @@ public sealed class FilterSchemaFallbackRegressionTests
             schema = GeneratedFilterSchemaRegistry.Create(
                 candidate,
                 [
+                    ReservedField("subjectType", static subject => subject.GetType().FullName ?? subject.GetType().Name),
+                    ReservedField("subjectName", static subject => subject.GetType().Name),
                     new FilterField(
                         "Flag",
                         typeof(bool),
@@ -104,6 +106,14 @@ public sealed class FilterSchemaFallbackRegressionTests
             return true;
         }
     }
+
+    private static FilterField ReservedField(string name, Func<object, string> value) =>
+        new(
+            name,
+            typeof(string),
+            FilterFieldKind.Scalar,
+            value,
+            new FilterScalarAccessor(FilterScalarKind.String, text: value));
 
     [Fact]
     public async Task EventPipelineCacheRefreshesWhenValueObjectRegistrationChangesSchema()

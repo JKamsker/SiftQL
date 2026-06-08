@@ -127,6 +127,22 @@ public sealed class HotProviderRegistrationFactoryRegressionTests
                     subjectType,
                     [
                         new FilterField(
+                            "subjectType",
+                            typeof(string),
+                            FilterFieldKind.Scalar,
+                            static subject => subject.GetType().FullName ?? subject.GetType().Name,
+                            new FilterScalarAccessor(
+                                FilterScalarKind.String,
+                                text: static subject => subject.GetType().FullName ?? subject.GetType().Name)),
+                        new FilterField(
+                            "subjectName",
+                            typeof(string),
+                            FilterFieldKind.Scalar,
+                            static subject => subject.GetType().Name,
+                            new FilterScalarAccessor(
+                                FilterScalarKind.String,
+                                text: static subject => subject.GetType().Name)),
+                        new FilterField(
                             "Location.Code",
                             typeof(string),
                             FilterFieldKind.Scalar,
