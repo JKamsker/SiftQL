@@ -18,13 +18,15 @@ internal static class ContextProjectionSelectorTranslator
 
         return new ContextSelectorTranslation(
             translator.Outputs.ToArray(),
-            translator.Includes.NewIncludes,
+            [.. translator.Includes.NewIncludes, .. translator.Constants.Includes],
             translator.Includes.Bindings);
     }
 
     private sealed class Translator
     {
         private readonly ParameterExpression _subject;
+        private int _parameterIndex;
+
         public Translator(
             ParameterExpression subject,
             ParameterExpression context,
@@ -32,11 +34,14 @@ internal static class ContextProjectionSelectorTranslator
             int parameterOffset)
         {
             _subject = subject;
-            Includes = new ContextExpressionIncludes(subject, context, bindings, parameterOffset);
+            _parameterIndex = parameterOffset;
+            Includes = new ContextExpressionIncludes(subject, context, bindings, NextParameterKey);
+            Constants = new ProjectionSelectorConstantTranslator(subject, context, NextParameterKey);
         }
 
         public List<ContextSelectorOutput> Outputs { get; } = [];
         public ContextExpressionIncludes Includes { get; }
+        public ProjectionSelectorConstantTranslator Constants { get; }
 
         public void TranslateValue(Expression expression, string? name)
         {
@@ -66,7 +71,9 @@ internal static class ContextProjectionSelectorTranslator
                 return;
             }
 
-            throw new KernelExpressionException($"Unsupported projection selector expression '{expression}'.");
+            Outputs.Add(ContextSelectorOutput.ContextField(
+                Constants.Translate(expression, name),
+                RequiredName(name, expression)));
         }
 
         private void TranslateMemberInit(MemberInitExpression initialized)
@@ -106,6 +113,9 @@ internal static class ContextProjectionSelectorTranslator
                 ? throw new KernelExpressionException(
                     $"Projection selector expression '{expression}' requires a result name.")
                 : name;
+
+        private string NextParameterKey() =>
+            "p" + _parameterIndex++;
     }
 
     private static Expression StripConvert(Expression expression)

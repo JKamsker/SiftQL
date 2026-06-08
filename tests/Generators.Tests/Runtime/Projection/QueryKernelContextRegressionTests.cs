@@ -112,6 +112,44 @@ public sealed class QueryKernelContextRegressionTests
     }
 
     [Fact]
+    public async Task ContextSelectProjectsCapturedLocalValueAlongsideLookup()
+    {
+        string label = "client-label";
+        Guid thiefId = Guid.NewGuid();
+        var context = new CombatContext(new Player(thiefId, Profession.Thief));
+        var query = QueryKernel
+            .For<BuffActivatedEvent, CombatContext>()
+            .Select((ev, ctx) => new
+            {
+                ev.TargetId,
+                Label = label,
+                TargetProfession = ctx.GetPlayer(ev.TargetId).Profession,
+            });
+        CompiledEventPipeline<CombatContext> compiled = EventPipelineCompiler.Compile<CombatContext>(
+            typeof(BuffActivatedEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new BuffActivatedEvent(thiefId, Guid.NewGuid(), 7, 11, 1),
+            context,
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(thiefId, projected!.Field(nameof(BuffActivatedEvent.TargetId)).Guid);
+        Assert.Equal(label, projected.Field("Label").String);
+        Assert.Equal(nameof(Profession.Thief), projected.Field("TargetProfession").String);
+        EventProjectionInclude[] includes = query.Pipeline.Stages
+            .First(static stage => stage.Kind == EventPipelineStageKind.Projection)
+            .Projection
+            .Includes;
+        Assert.Contains(includes, static include =>
+            EventProjectionConstantIntrinsics.IsConstant(include.Intrinsic));
+        Assert.Contains(includes, static include =>
+            EventProjectionContextIntrinsics.TryParseMethod(include.Intrinsic, out _, out _));
+    }
+
+    [Fact]
     public async Task ContextSelectProjectsNullWhenLookupReturnsNull()
     {
         var query = QueryKernel

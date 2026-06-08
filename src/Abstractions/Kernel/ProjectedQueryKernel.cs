@@ -32,7 +32,12 @@ public sealed record ProjectedQueryKernel<TSource, TProjection>
         EventProjectionExpression translated = KernelParameterKeyRewriter.Rebase(
             ProjectedSelectorTranslator.Translate(selector),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
-        EventPipelineExpression pipeline = Pipeline.AppendProjection(translated);
+        EventPipelineExpression pipeline = translated.Includes.Length == 0
+            ? Pipeline.AppendProjection(translated)
+            : ContextProjectionPipeline.AppendSelectorWithIncludes(
+                Pipeline,
+                translated,
+                projected: true);
         return new ProjectedQueryKernel<TSource, TNext>(
             Kernel with { Pipeline = pipeline });
     }

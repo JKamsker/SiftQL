@@ -1,7 +1,6 @@
 using System.Linq.Expressions;
 using SiftQL.Expressions;
 using SiftQL.Projected;
-
 using SiftQL.Translation;
 
 namespace SiftQL;
@@ -123,6 +122,14 @@ public sealed record QueryKernel<TSubject>
     public QueryKernel<TSubject> Select(params Expression<Func<TSubject, object?>>[] fields)
     {
         ArgumentNullException.ThrowIfNull(fields);
+        if (fields.Length == 1)
+        {
+            var translated = KernelParameterKeyRewriter.Rebase(
+                EventProjectionSelectorTranslator.Translate(fields[0]),
+                KernelParameterKeyRewriter.ParameterOffset(Pipeline));
+            return SelectProjection(translated);
+        }
+
         return Select(fields.Select(EventProjectionExpressionTranslator.Translate).ToArray());
     }
 
@@ -133,12 +140,7 @@ public sealed record QueryKernel<TSubject>
         var translated = KernelParameterKeyRewriter.Rebase(
             EventProjectionSelectorTranslator.Translate(selector),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
-        translated = ProjectedFieldProjection(translated);
-        EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(translated);
-        return new QueryKernel<TSubject>(
-            Filter,
-            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
-            pipeline);
+        return SelectProjection(translated);
     }
 
     public QueryKernel<TSubject> Select(params string[] fields)
@@ -167,6 +169,19 @@ public sealed record QueryKernel<TSubject>
         EventPipelineExpression pipeline = ProjectionWillReadProjectedEvent() && !SourceIsProjected()
             ? Pipeline.AppendOrMergeSourceProjection(projection)
             : Pipeline.AppendOrMergeLastProjection(projection);
+        return new QueryKernel<TSubject>(
+            Filter,
+            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
+            pipeline);
+    }
+
+    private QueryKernel<TSubject> SelectProjection(EventProjectionExpression projection)
+    {
+        projection = ProjectedFieldProjection(projection);
+        EventPipelineExpression pipeline = projection.Includes.Length == 0
+            ? Pipeline.AppendOrMergeLastProjection(projection)
+            : ContextProjectionPipeline.AppendSelectorWithIncludes(
+                Pipeline, projection, ProjectionWillReadProjectedEvent());
         return new QueryKernel<TSubject>(
             Filter,
             QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
