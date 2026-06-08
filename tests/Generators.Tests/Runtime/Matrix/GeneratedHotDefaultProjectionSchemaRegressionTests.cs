@@ -57,6 +57,47 @@ public sealed class GeneratedHotDefaultProjectionSchemaRegressionTests
         Assert.Equal(42, x.Integer);
     }
 
+    [Fact]
+    public async Task GeneratedHotDefaultProjectionKeepsRealEventMetadataNamedFields()
+    {
+        const string eventTypeName = "Plugin.Events.MetadataNamedEvent";
+        const string assemblyName = "Plugin.Hot.DefaultProjectionMetadataNames";
+        EventProjectionExpression projection = EventProjectionExpression.Default;
+        using GeneratedModeContext context = GeneratedModeMatrixSupport.LoadContext(
+            GeneratedExecutionMode.GeneratedHot,
+            assemblyName,
+            CSharpSyntaxTree.ParseText("""
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record MetadataNamedEvent(
+                    string EventType,
+                    string EventName,
+                    int Value) : IFilterSubject;
+                """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)),
+            eventTypeName,
+            "generated hot default projection metadata fields",
+            GeneratedModeMatrixSupport.ProjectionEntry(
+                GeneratedModeMatrixSupport.Subject(eventTypeName, assemblyName),
+                projection));
+
+        CompiledProjection<object> compiled = ProjectionCompiler.Compile<object>(
+            context.EventType,
+            projection,
+            GeneratedModeMatrixSupport.RejectInclude,
+            GeneratedModeMatrixSupport.ProjectionOptions(GeneratedExecutionMode.GeneratedHot));
+        ProjectedEvent projected = await compiled.ProjectAsync(
+            Activator.CreateInstance(context.EventType, "payload-type", "payload-name", 7)!,
+            new object(),
+            CancellationToken.None);
+
+        Assert.False(compiled.IsTiered);
+        Assert.Equal("payload-type", projected.Field("EventType").String);
+        Assert.Equal("payload-name", projected.Field("EventName").String);
+        Assert.Equal(7, projected.Field("Value").Integer);
+    }
+
     private static object Event(Type eventType, Type pointType)
     {
         Type locationType = eventType.Assembly.GetType("Plugin.Events.Location", throwOnError: true)!;
