@@ -124,8 +124,11 @@ public sealed class CompiledProjection<TContext>
 
     private ProjectedEventField[] InheritedContext(object subject)
     {
-        if (subject is not ProjectedEvent projected || projected.Context.Length == 0)
+        if (subject is not ProjectedEvent projected ||
+            projected.Context is not { Length: > 0 } contextFields)
+        {
             return s_emptyContext;
+        }
 
         HashSet<string>? consumed = null;
         for (int i = 0; i < _fields.Length; i++)
@@ -141,9 +144,9 @@ public sealed class CompiledProjection<TContext>
         }
 
         if (consumed is null)
-            return projected.Context.ToArray();
+            return contextFields.ToArray();
 
-        return projected.Context
+        return contextFields
             .Where(field => !consumed.Contains(field.Name))
             .ToArray();
     }

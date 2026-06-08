@@ -111,12 +111,17 @@ public static class ProjectedEventFilterSchema
     {
         if (value.Kind != ProjectedEventValueKind.Object)
             return ProjectedEventValue.Null;
+        if (value.Fields is not { Length: > 0 } fields)
+            return ProjectedEventValue.Null;
 
-        for (int i = 0; i < value.Fields.Length; i++)
+        for (int i = 0; i < fields.Length; i++)
         {
-            ProjectedEventField field = value.Fields[i];
-            if (string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase))
+            ProjectedEventField? field = fields[i];
+            if (field is not null &&
+                string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
                 return field.Value;
+            }
         }
 
         return ProjectedEventValue.Null;
@@ -132,7 +137,7 @@ public static class ProjectedEventFilterSchema
             ProjectedEventValueKind.Decimal => value.Decimal,
             ProjectedEventValueKind.String => value.String,
             ProjectedEventValueKind.Guid => value.Guid,
-            ProjectedEventValueKind.Array => value.Values.Select(ToObject).ToArray(),
+            ProjectedEventValueKind.Array => value.Values?.Select(ToObject).ToArray() ?? [],
             ProjectedEventValueKind.Object => value,
             _ => null,
         };
