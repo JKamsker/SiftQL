@@ -114,12 +114,14 @@ public sealed record FilterExpression
                 "Composite filters cannot contain null children.",
                 nameof(children)))
             .ToArray();
+        if (filtered.Length == 0)
+            throw new ArgumentException("Or filters must contain at least one child.", nameof(children));
+
         if (filtered.Any(static child => child.Kind == FilterExpressionKind.Any))
             return Any;
 
         return filtered.Length switch
         {
-            0 => Any,
             1 => filtered[0],
             _ => new FilterExpression(FilterExpressionKind.Or) { Children = filtered },
         };
