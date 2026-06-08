@@ -94,8 +94,14 @@ internal static class ContextProjectionSelectorTranslator
             Expression? current = expression;
             while (current is MemberExpression member)
             {
+                if (member.Expression is null)
+                {
+                    fieldPath = string.Empty;
+                    return false;
+                }
+
                 names.Push(member.Member.Name);
-                current = StripConvert(member.Expression!);
+                current = StripConvert(member.Expression);
             }
 
             if (current == _subject && names.Count > 0)

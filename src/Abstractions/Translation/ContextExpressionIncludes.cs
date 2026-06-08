@@ -154,8 +154,15 @@ internal sealed class ContextExpressionIncludes
         Expression current = StripConvert(expression);
         while (current is MemberExpression member)
         {
+            if (member.Expression is null)
+            {
+                call = null!;
+                memberPath = string.Empty;
+                return false;
+            }
+
             members.Push(member.Member.Name);
-            current = StripConvert(member.Expression!);
+            current = StripConvert(member.Expression);
         }
 
         if (current is MethodCallExpression directCall &&
@@ -179,8 +186,14 @@ internal sealed class ContextExpressionIncludes
         Expression? current = expression;
         while (current is MemberExpression member)
         {
+            if (member.Expression is null)
+            {
+                fieldPath = string.Empty;
+                return false;
+            }
+
             names.Push(member.Member.Name);
-            current = StripConvert(member.Expression!);
+            current = StripConvert(member.Expression);
         }
 
         if (current == _subject && names.Count > 0)

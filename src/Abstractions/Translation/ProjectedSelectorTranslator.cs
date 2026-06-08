@@ -72,8 +72,14 @@ internal static class ProjectedSelectorTranslator
         Expression? current = expression;
         while (current is MemberExpression member)
         {
+            if (member.Expression is null)
+            {
+                field = string.Empty;
+                return false;
+            }
+
             names.Push(member.Member.Name);
-            current = StripConvert(member.Expression!);
+            current = StripConvert(member.Expression);
         }
 
         if (current == subject && names.Count > 0)
