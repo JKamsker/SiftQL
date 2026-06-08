@@ -67,6 +67,27 @@ public sealed class GeneratedFilterValueModeMatrixTests
         Assert.False(inKernel.Matches(Event(context.EventType, score: 1.0, name: "alpha")));
     }
 
+    [Theory]
+    [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
+    public void StringKindNullContainsDoesNotMatchNullArrayElement(GeneratedExecutionMode mode)
+    {
+        string assemblyName = "Plugin.Matrix.ValueStringNullContains." + mode;
+        FilterValue stringNull = new() { Kind = FilterValueKind.String, String = null };
+        FilterExpression filter = FilterExpression.Contains("Tags", stringNull);
+        using var context = LoadContext(
+            mode,
+            assemblyName,
+            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), filter));
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            context.EventType,
+            filter,
+            GeneratedModeMatrixSupport.FilterOptions(mode));
+
+        Assert.False(kernel.Matches(Event(context.EventType, score: 1.0, name: "alpha", tags: [null])));
+        Assert.False(kernel.Matches(Event(context.EventType, score: 1.0, name: "alpha", tags: ["alpha"])));
+    }
+
     private static GeneratedModeContext LoadContext(
         GeneratedExecutionMode mode,
         string assemblyName,
@@ -90,12 +111,13 @@ public sealed class GeneratedFilterValueModeMatrixTests
             public sealed record ValueEvent(
                 Guid EventId,
                 double? Score,
-                string? Name) : IFilterSubject;
+                string? Name,
+                string?[] Tags) : IFilterSubject;
             """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
     private static string Subject(string assemblyName) =>
         GeneratedModeMatrixSupport.Subject(EventTypeName, assemblyName);
 
-    private static object Event(Type eventType, double? score, string? name) =>
-        Activator.CreateInstance(eventType, Guid.NewGuid(), score, name)!;
+    private static object Event(Type eventType, double? score, string? name, string?[]? tags = null) =>
+        Activator.CreateInstance(eventType, Guid.NewGuid(), score, name, tags ?? [])!;
 }

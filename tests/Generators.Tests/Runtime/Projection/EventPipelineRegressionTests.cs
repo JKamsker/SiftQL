@@ -3,6 +3,8 @@ using SiftQL.Expressions;
 using SiftQL.Projected;
 using SiftQL.Projection;
 using SiftQL.Schema;
+using MessagePack;
+using MessagePack.Resolvers;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
@@ -94,6 +96,51 @@ public sealed class EventPipelineRegressionTests
             CancellationToken.None);
 
         Assert.Equal(100, projected.Field("ItemId").Integer);
+    }
+
+    [Fact]
+    public async Task DirectProjectedEventProjectionPreservesInputMetadata()
+    {
+        var expression = EventProjectionExpression.Default.WithFields(
+            [new EventProjectionField(ProjectedEventPaths.Field("ItemId"), "ItemId")]);
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            expression,
+            ProjectionRuntimeTestSupport.RejectInclude);
+        ProjectedEvent source = ProjectedEventWithField(
+            "Game.ItemUsedEvent",
+            "ItemUsedEvent",
+            "ItemId",
+            ProjectedEventValue.FromScalar(100L));
+        var options = MessagePackSerializerOptions.Standard.WithResolver(ContractlessStandardResolver.Instance);
+
+        ProjectedEvent materialized = await projection.ProjectAsync(source, new object(), CancellationToken.None);
+        ReadOnlyMemory<byte> payload = await projection.ProjectPayloadAsync(
+            source,
+            new object(),
+            options,
+            CancellationToken.None);
+        ProjectedEvent roundTripped = MessagePackSerializer.Deserialize<ProjectedEvent>(payload, options);
+
+        Assert.Equal(source.EventType, materialized.EventType);
+        Assert.Equal(source.EventName, materialized.EventName);
+        Assert.Equal(source.EventType, roundTripped.EventType);
+        Assert.Equal(source.EventName, roundTripped.EventName);
+    }
+
+    [Fact]
+    public void DirectProjectedEventProjectionRejectsNullFieldsWithValidationException()
+    {
+        var projection = EventProjectionExpression.Default with
+        {
+            Fields = [null!],
+        };
+
+        Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.Compile<object>(
+                typeof(ProjectedEvent),
+                projection,
+                ProjectionRuntimeTestSupport.RejectInclude));
     }
 
     [Fact]
@@ -189,10 +236,17 @@ public sealed class EventPipelineRegressionTests
     private sealed record TokenEvent(Guid EventId, int[] Tokens) : IFilterSubject;
 
     private static ProjectedEvent ProjectedEventWithField(string name, ProjectedEventValue value) =>
+        ProjectedEventWithField("Projected", "Projected", name, value);
+
+    private static ProjectedEvent ProjectedEventWithField(
+        string eventType,
+        string eventName,
+        string name,
+        ProjectedEventValue value) =>
         new()
         {
-            EventType = "Projected",
-            EventName = "Projected",
+            EventType = eventType,
+            EventName = eventName,
             Fields = [new ProjectedEventField(name, value)],
         };
 }

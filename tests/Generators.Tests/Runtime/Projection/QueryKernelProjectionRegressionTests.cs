@@ -62,6 +62,22 @@ public sealed class QueryKernelProjectionRegressionTests
     }
 
     [Fact]
+    public void SelectFieldArrayInProjectedDomainUpdatesStoredProjection()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.ItemId))
+            .WhereProjected(static projected =>
+                projected.Field(nameof(ItemUsedEvent.ItemId)).Integer == 100)
+            .Select(nameof(ItemUsedEvent.Quantity));
+
+        EventProjectionField pipelineField = LastProjection(kernel).Fields.Single();
+        EventProjectionField storedField = kernel.Projection.Fields.Single();
+
+        Assert.Equal(ProjectedEventPaths.Field(nameof(ItemUsedEvent.Quantity)), pipelineField.Path);
+        Assert.Equal(pipelineField.Path, storedField.Path);
+    }
+
+    [Fact]
     public void SelectorProjectionAfterProjectedFilterReadsProjectedFields()
     {
         QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()

@@ -68,6 +68,28 @@ public sealed class GeneratedFilterProjectionModeMatrixTests
 
     [Theory]
     [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
+    public void AndFilterRejectsBeforeOversizedContains(GeneratedExecutionMode mode)
+    {
+        string assemblyName = "Plugin.Matrix.FilterAndOrder." + mode;
+        FilterExpression filter = FilterExpression.And(
+            FilterExpression.Contains("Tokens", FilterValue.From(1L)),
+            FilterExpression.Compare("ItemId", FilterOperator.Equal, FilterValue.From(-1L)));
+        using var context = LoadContext(
+            mode,
+            assemblyName,
+            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), filter));
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            context.EventType,
+            filter,
+            GeneratedModeMatrixSupport.FilterOptions(mode));
+
+        Assert.Equal(mode == GeneratedExecutionMode.Interpreted, kernel.IsTiered);
+        Assert.False(kernel.Matches(Event(context.EventType, 7, 0, 1, active: true, "alpha", new int[257], 1)));
+    }
+
+    [Theory]
+    [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
     public void ParameterizedFilterBindsRuntimeValues(GeneratedExecutionMode mode)
     {
         string assemblyName = "Plugin.Matrix.ParameterizedFilter." + mode;

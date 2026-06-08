@@ -129,6 +129,53 @@ public sealed class FilterNumericPrecisionRegressionTests
     }
 
     [Fact]
+    public void StringKindNullContainsDoesNotMatchNullArrayElement()
+    {
+        var stringNull = new FilterValue { Kind = FilterValueKind.String, String = null };
+
+        Assert.False(FilterValues.Contains(new string?[] { null }, stringNull));
+        AssertFilter(
+            FilterExpression.Contains(nameof(StringArraySubject.Tags), stringNull),
+            new FilterCase<StringArraySubject>(new([null]), false));
+    }
+
+    [Fact]
+    public void ParameterizedIntegralArrayContainsDoesNotRoundDecimalLiteral()
+    {
+        FilterValue value = FilterValue.From(1.0000000000000000000000000001m) with
+        {
+            ParameterKey = "p0",
+        };
+
+        Assert.False(FilterValues.Contains(new[] { 1 }, value));
+        AssertFilter(
+            FilterExpression.Contains(nameof(IntArraySubject.Counts), value),
+            new FilterCase<IntArraySubject>(new([1]), false));
+    }
+
+    [Fact]
+    public void FloatArrayContainsDoesNotNarrowExpectedDouble()
+    {
+        FilterValue value = FilterValue.From(double.MaxValue);
+
+        Assert.False(FilterValues.Contains(new[] { float.PositiveInfinity }, value));
+        AssertFilter(
+            FilterExpression.Contains(nameof(FloatArraySubject.Values), value),
+            new FilterCase<FloatArraySubject>(new([float.PositiveInfinity]), false));
+    }
+
+    [Fact]
+    public void DecimalLiteralDoesNotRoundToDoubleScalarMatch()
+    {
+        FilterValue value = FilterValue.From(1.0000000000000000000000000001m);
+
+        Assert.False(FilterValues.Compare(1.0D, value, FilterOperator.Equal));
+        AssertFilter(
+            FilterExpression.Compare(nameof(DoubleSubject.Score), FilterOperator.Equal, value),
+            new FilterCase<DoubleSubject>(new(1.0D), false));
+    }
+
+    [Fact]
     public void ExactNumericOrderedNumberFallsBackConsistentlyAcrossModes()
     {
         var filter = FilterExpression.Compare(
@@ -295,6 +342,10 @@ public sealed class FilterNumericPrecisionRegressionTests
         long[] LongIds) : IFilterSubject;
 
     private sealed record NullableArraySubject(int?[] OptionalCounts) : IFilterSubject;
+    private sealed record StringArraySubject(string?[] Tags) : IFilterSubject;
+    private sealed record IntArraySubject(int[] Counts) : IFilterSubject;
+    private sealed record FloatArraySubject(float[] Values) : IFilterSubject;
+    private sealed record DoubleSubject(double Score) : IFilterSubject;
     private sealed record FloatingSubject(double Score) : IFilterSubject;
     private sealed record IntegralSubject(int Count) : IFilterSubject;
     private sealed record UIntIndexSubject(uint Id) : IFilterSubject;
