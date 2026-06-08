@@ -19,12 +19,15 @@ internal static class ClientPayload
     }
 
     private static void AddFields(
-        IEnumerable<ProjectedEventField> fields,
+        IEnumerable<ProjectedEventField>? fields,
         Dictionary<string, object?> payload)
     {
-        foreach (ProjectedEventField field in fields)
+        if (fields is null)
+            return;
+
+        foreach (ProjectedEventField? field in fields)
         {
-            if (IsMetadataKey(field.Name))
+            if (field is null || IsMetadataKey(field.Name))
                 continue;
 
             payload[field.Name] = ToObject(field.Value);
