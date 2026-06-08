@@ -15,6 +15,56 @@ namespace SiftQL.Generators.Tests;
 public sealed class HotProviderSubjectEligibilityRegressionTests
 {
     [Fact]
+    public void RejectsOpenGenericSubjectFilter()
+    {
+        var filter = FilterExpression.Compare(
+            "Value",
+            FilterOperator.Equal,
+            FilterValue.From(42L));
+        GeneratorRun run = RunGenerator(
+            Manifest("Plugin.Events.GenericEvent`1, Plugin.Hot.SubjectEligibility", filter),
+            """
+            using SiftQL;
+
+            namespace Plugin.Events;
+
+            public sealed record GenericEvent<T>(long Value) : IFilterSubject;
+            """);
+
+        Assert.Contains(run.Diagnostics, static diagnostic => diagnostic.Id == "FSFHOT009");
+        Assert.Equal(0, HotProviderSourceCount(run));
+    }
+
+    [Fact]
+    public void RejectsRefLikeSubjectFilter()
+    {
+        var filter = FilterExpression.Compare(
+            "Value",
+            FilterOperator.Equal,
+            FilterValue.From(42L));
+        GeneratorRun run = RunGenerator(
+            Manifest("Plugin.Events.RefLikeEvent, Plugin.Hot.SubjectEligibility", filter),
+            """
+            using SiftQL;
+
+            namespace Plugin.Events;
+
+            public readonly ref struct RefLikeEvent : IFilterSubject
+            {
+                public RefLikeEvent(long value)
+                {
+                    Value = value;
+                }
+
+                public long Value { get; }
+            }
+            """);
+
+        Assert.Contains(run.Diagnostics, static diagnostic => diagnostic.Id == "FSFHOT009");
+        Assert.Equal(0, HotProviderSourceCount(run));
+    }
+
+    [Fact]
     public void RejectsNestedPlainSubjectFilterThatRuntimeSchemaCannotMatch()
     {
         var filter = FilterExpression.Compare(
