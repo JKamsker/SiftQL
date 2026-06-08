@@ -37,6 +37,38 @@ public sealed class EventPipelineCompilerEdgeCaseTests
     }
 
     [Fact]
+    public async Task SourceFilterSnapshotsReturnedFilter()
+    {
+        FilterExpression raw = FilterExpression.In(
+            nameof(ItemUsedEvent.ItemId),
+            [FilterValue.From(100L)]);
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendSourceFilter(raw)
+            .AppendProjection(EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId)));
+
+        FilterExpression sourceFilter = EventPipelineCompiler.SourceFilter(pipeline);
+        sourceFilter.Values[0] = FilterValue.From(200L);
+
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            pipeline,
+            ProjectionRuntimeTestSupport.RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 7, 100, 2),
+            new object(),
+            CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 7, 200, 2),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.Null(rejected);
+    }
+
+    [Fact]
     public void ProjectionDispatchPipeline_NullPipeline_ReturnsDefault()
     {
         EventPipelineExpression result = EventPipelineCompiler.ProjectionDispatchPipeline(null);
