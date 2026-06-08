@@ -16,6 +16,9 @@ public static class ProjectionContextIncludeCompiler
     {
         ArgumentNullException.ThrowIfNull(schema);
         ArgumentNullException.ThrowIfNull(include);
+        if (EventProjectionConstantIntrinsics.IsConstant(include.Intrinsic))
+            return CompileConstant<TContext>(include);
+
         if (!EventProjectionContextIntrinsics.TryParseMethod(
             include.Intrinsic,
             out string methodName,
@@ -33,6 +36,31 @@ public static class ProjectionContextIncludeCompiler
             include.ResultName,
             (subject, context, _) => new ValueTask<ProjectedEventValue>(
                 Project(subject, context, method, argumentGetters, members)));
+    }
+
+    private static CompiledProjection<TContext>.IncludeProjector CompileConstant<TContext>(
+        EventProjectionInclude include)
+    {
+        FilterValue value = ConstantArgument(include);
+        ProjectedEventValue projected = ProjectedEventValue.FromScalar(FilterValueObject(value));
+        return new CompiledProjection<TContext>.IncludeProjector(
+            include.ResultName,
+            (_, _, _) => new ValueTask<ProjectedEventValue>(projected));
+    }
+
+    private static FilterValue ConstantArgument(EventProjectionInclude include)
+    {
+        EventProjectionArgument? argument = include.Arguments
+            .SingleOrDefault(static item =>
+                string.Equals(
+                    item.Name,
+                    EventProjectionConstantIntrinsics.ArgumentName,
+                    StringComparison.OrdinalIgnoreCase));
+        if (argument?.Kind == EventProjectionArgumentKind.Value && argument.Value is not null)
+            return argument.Value;
+
+        throw new FilterValidationException(
+            $"Projection include '{include.Intrinsic}' requires value argument '{EventProjectionConstantIntrinsics.ArgumentName}'.");
     }
 
     private static ProjectedEventValue Project<TContext>(

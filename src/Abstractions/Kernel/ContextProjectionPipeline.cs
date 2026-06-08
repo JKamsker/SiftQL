@@ -45,6 +45,25 @@ internal static class ContextProjectionPipeline
         return pipeline with { Stages = stages };
     }
 
+    public static EventPipelineExpression AppendSelectorWithIncludes(
+        EventPipelineExpression pipeline,
+        EventProjectionExpression projection,
+        bool projected)
+    {
+        EventPipelineExpression withIncludes = AddIncludes(
+            pipeline,
+            projection.Includes,
+            projected ? [] : projection.Fields);
+        EventProjectionField[] finalFields =
+        [
+            .. projection.Fields.Select(field => FinalField(field, projected)),
+            .. projection.Includes.Select(static include =>
+                new EventProjectionField(ProjectedEventPaths.Context(include.ResultName), include.ResultName)),
+        ];
+
+        return withIncludes.AppendProjection(EventProjectionExpression.Default.WithFields(finalFields));
+    }
+
     public static bool HasProjection(EventPipelineExpression pipeline) =>
         pipeline.Stages.Any(static stage => stage.Kind == EventPipelineStageKind.Projection);
 
@@ -63,4 +82,9 @@ internal static class ContextProjectionPipeline
 
     public static string ProjectedPath(EventPipelineExpression pipeline, string sourcePath) =>
         ProjectedEventPaths.Field(ProjectedFieldName(pipeline, sourcePath));
+
+    private static EventProjectionField FinalField(EventProjectionField field, bool projected) =>
+        projected
+            ? field
+            : new EventProjectionField(ProjectedEventPaths.Field(field.Name), field.Name);
 }

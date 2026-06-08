@@ -62,6 +62,52 @@ public sealed class GeneratedContextProjectionHotModeTests
         Assert.False(compiledFilter.Matches(rejected));
     }
 
+    [Fact]
+    public async Task GeneratedHotHandlesConstantIncludeProjectionPipeline()
+    {
+        string assemblyName = "Plugin.Matrix.ContextProjection.ConstantHot";
+        string runtimeLabel = "runtime-label";
+        EventProjectionExpression manifestSourceProjection = ConstantSourceProjection("manifest-label");
+        EventProjectionExpression runtimeSourceProjection = ConstantSourceProjection(runtimeLabel);
+        EventProjectionExpression finalProjection = ConstantFinalProjection();
+        using var context = GeneratedModeMatrixSupport.LoadContext(
+            GeneratedExecutionMode.GeneratedHot,
+            assemblyName,
+            EventTree(),
+            EventTypeName,
+            "generated constant projection hot provider",
+            GeneratedModeMatrixSupport.ProjectionEntry(Subject(assemblyName), manifestSourceProjection),
+            GeneratedModeMatrixSupport.ProjectionEntry(ProjectedSubject(assemblyName), finalProjection));
+        CompiledProjection<object> sourceProjection = ProjectionCompiler.Compile(
+            context.EventType,
+            runtimeSourceProjection,
+            ProjectionContextIncludeCompiler.Compile<object>,
+            GeneratedModeMatrixSupport.ProjectionOptions(GeneratedExecutionMode.GeneratedHot));
+        CompiledProjection<object> projectedProjection = ProjectionCompiler.Compile(
+            typeof(ProjectedEvent),
+            finalProjection,
+            ProjectionContextIncludeCompiler.Compile<object>,
+            GeneratedModeMatrixSupport.ProjectionOptions(GeneratedExecutionMode.GeneratedHot));
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendProjection(runtimeSourceProjection)
+            .AppendProjection(finalProjection);
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile(
+            context.EventType,
+            pipeline,
+            ProjectionContextIncludeCompiler.Compile<object>,
+            GeneratedModeMatrixSupport.PipelineOptions(GeneratedExecutionMode.GeneratedHot));
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            Event(context.EventType, Guid.NewGuid(), Guid.NewGuid(), pluginId: 7, contentId: 11, duration: 2.5),
+            new object(),
+            CancellationToken.None);
+
+        Assert.False(sourceProjection.IsTiered);
+        Assert.False(projectedProjection.IsTiered);
+        Assert.NotNull(projected);
+        Assert.Equal(runtimeLabel, projected!.Field("Label").String);
+    }
+
     private static EventProjectionExpression ContextProjection() =>
         EventProjectionExpression.Default
             .WithFields(
@@ -93,7 +139,27 @@ public sealed class GeneratedContextProjectionHotModeTests
             FilterExpression.Compare(
                 ProjectedEventPaths.Context("prof"),
                 FilterOperator.Equal,
-                FilterValue.From(nameof(Profession.Thief))));
+            FilterValue.From(nameof(Profession.Thief))));
+
+    private static EventProjectionExpression ConstantSourceProjection(string label) =>
+        EventProjectionExpression.Default
+            .WithFields([new EventProjectionField("TargetId", "tg")])
+            .WithIncludes(
+            [
+                new EventProjectionInclude(
+                    EventProjectionConstantIntrinsics.Value,
+                    "label",
+                    new EventProjectionArgument(
+                        EventProjectionConstantIntrinsics.ArgumentName,
+                        FilterValue.From(label) with { ParameterKey = "p0" })),
+            ]);
+
+    private static EventProjectionExpression ConstantFinalProjection() =>
+        EventProjectionExpression.Default.WithFields(
+        [
+            new EventProjectionField(ProjectedEventPaths.Field("tg"), "TargetId"),
+            new EventProjectionField(ProjectedEventPaths.Context("label"), "Label"),
+        ]);
 
     private static SyntaxTree EventTree() =>
         CSharpSyntaxTree.ParseText("""

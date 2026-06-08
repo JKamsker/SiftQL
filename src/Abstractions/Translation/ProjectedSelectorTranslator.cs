@@ -11,24 +11,31 @@ internal static class ProjectedSelectorTranslator
     {
         ArgumentNullException.ThrowIfNull(selector);
         var fields = new List<EventProjectionField>();
-        TranslateValue(StripConvert(selector.Body), selector.Parameters[0], name: null, fields);
-        if (fields.Count == 0)
-            throw new KernelExpressionException("Projection selector must include at least one field.");
+        var constants = new ProjectionSelectorConstantTranslator(selector.Parameters[0]);
+        TranslateValue(StripConvert(selector.Body), selector.Parameters[0], name: null, fields, constants);
+        if (fields.Count == 0 && constants.Includes.Length == 0)
+        {
+            throw new KernelExpressionException(
+                "Projection selector must include at least one field or local value.");
+        }
 
-        return EventProjectionExpression.Default.WithFields(fields);
+        return EventProjectionExpression.Default
+            .WithFields(fields)
+            .WithIncludes(constants.Includes);
     }
 
     private static void TranslateValue(
         Expression expression,
         ParameterExpression subject,
         string? name,
-        List<EventProjectionField> fields)
+        List<EventProjectionField> fields,
+        ProjectionSelectorConstantTranslator constants)
     {
         expression = StripConvert(expression);
         if (expression is NewExpression created && created.Members is not null)
         {
             for (int i = 0; i < created.Arguments.Count; i++)
-                TranslateValue(created.Arguments[i], subject, created.Members[i].Name, fields);
+                TranslateValue(created.Arguments[i], subject, created.Members[i].Name, fields, constants);
             return;
         }
 
@@ -38,7 +45,7 @@ internal static class ProjectedSelectorTranslator
             {
                 if (initialized.Bindings[i] is not MemberAssignment assignment)
                     throw Unsupported(initialized.Bindings[i]);
-                TranslateValue(assignment.Expression, subject, assignment.Member.Name, fields);
+                TranslateValue(assignment.Expression, subject, assignment.Member.Name, fields, constants);
             }
 
             return;
@@ -52,7 +59,7 @@ internal static class ProjectedSelectorTranslator
             return;
         }
 
-        throw Unsupported(expression);
+        constants.Translate(expression, name);
     }
 
     private static bool TryGetFieldPath(
