@@ -1,5 +1,6 @@
 using SiftQL;
 using SiftQL.Compiler;
+using SiftQL.Translation;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
@@ -47,6 +48,14 @@ public sealed class KernelExpressionEvaluatorTests
 
         Assert.True(kernel.Matches(new ItemUsedEvent(Guid.Empty, 1, 1, 1)));
         Assert.False(kernel.Matches(new ItemUsedEvent(Guid.Empty, 1, 2, 1)));
+    }
+
+    [Fact]
+    public void QueryKernel_FieldSideNarrowingCast_IsRejected()
+    {
+        Assert.Throws<KernelExpressionException>(() =>
+            QueryKernel.For<ItemUsedEvent>()
+                .Where(e => (int)e.CharacterId == 1));
     }
 
     [Fact]
