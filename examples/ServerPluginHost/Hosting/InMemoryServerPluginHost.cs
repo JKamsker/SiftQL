@@ -31,6 +31,9 @@ public sealed class InMemoryServerPluginHost
     public void Register(IServerPlugin plugin)
     {
         ArgumentNullException.ThrowIfNull(plugin);
+        if (_started)
+            throw new InvalidOperationException("Plugins cannot be registered after the host has started.");
+
         string pluginId = plugin.Id;
         if (string.IsNullOrWhiteSpace(pluginId))
             throw new ArgumentException("Plugin id is required.", nameof(plugin));
