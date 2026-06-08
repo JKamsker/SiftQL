@@ -74,6 +74,40 @@ public sealed class ProjectionCompilerRuntimeTests
     }
 
     [Fact]
+    public async Task ProjectedEventProjectionWithIncludePreservesInheritedContext()
+    {
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            EventProjectionExpression
+                .Default
+                .WithFields([new EventProjectionField(ProjectedEventPaths.Field("ItemId"), "ItemId")])
+                .WithIncludes([new EventProjectionInclude("test.context", "newContext")]),
+            ProjectionRuntimeTestSupport.CompileInclude);
+        var source = new ProjectedEvent
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Fields =
+            [
+                new ProjectedEventField("ItemId", ProjectedEventValue.FromScalar(100L)),
+            ],
+            Context =
+            [
+                new ProjectedEventField("oldContext", ProjectedEventValue.FromScalar("old")),
+            ],
+        };
+
+        ProjectedEvent projected = await projection.ProjectAsync(
+            source,
+            new object(),
+            CancellationToken.None);
+
+        Assert.Equal(100, projected.Field("ItemId").Integer);
+        Assert.Equal("old", projected.ContextValue("oldContext").String);
+        Assert.Equal("included", projected.ContextValue("newContext").String);
+    }
+
+    [Fact]
     public void PipelineProjectionWithNullFieldArrayThrowsValidationException()
     {
         var projection = EventProjectionExpression.Default with { Fields = null! };

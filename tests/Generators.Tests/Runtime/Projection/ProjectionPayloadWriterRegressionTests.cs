@@ -186,6 +186,46 @@ public sealed class ProjectionPayloadWriterRegressionTests
         ProjectionRuntimeTestSupport.AssertEquivalent(projected, roundTripped);
     }
 
+    [Fact]
+    public async Task ProjectPayloadAsyncProjectedEventIncludePreservesInheritedContext()
+    {
+        var projection = ProjectionCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            EventProjectionExpression
+                .Default
+                .WithFields([new EventProjectionField(ProjectedEventPaths.Field("ItemId"), "ItemId")])
+                .WithIncludes([new EventProjectionInclude("test.context", "newContext")]),
+            ProjectionRuntimeTestSupport.CompileInclude);
+        var source = new ProjectedEvent
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Fields =
+            [
+                new ProjectedEventField("ItemId", ProjectedEventValue.FromScalar(100L)),
+            ],
+            Context =
+            [
+                new ProjectedEventField("oldContext", ProjectedEventValue.FromScalar("old")),
+            ],
+        };
+
+        ProjectedEvent materialized = await projection.ProjectAsync(
+            source,
+            new object(),
+            CancellationToken.None);
+        ReadOnlyMemory<byte> payload = await projection.ProjectPayloadAsync(
+            source,
+            new object(),
+            ProjectionRuntimeTestSupport.PayloadOptions,
+            CancellationToken.None);
+        ProjectedEvent roundTripped = ProjectionRuntimeTestSupport.Deserialize(payload);
+
+        ProjectionRuntimeTestSupport.AssertEquivalent(materialized, roundTripped);
+        Assert.Equal("old", roundTripped.ContextValue("oldContext").String);
+        Assert.Equal("included", roundTripped.ContextValue("newContext").String);
+    }
+
     private sealed class ThrowingProjectedEventFormatter : IMessagePackFormatter<ProjectedEvent>
     {
         public static readonly ThrowingProjectedEventFormatter Instance = new();
