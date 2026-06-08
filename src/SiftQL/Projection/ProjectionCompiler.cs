@@ -1,4 +1,3 @@
-using System.Globalization;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -85,7 +84,7 @@ public static class ProjectionCompiler
         if (hasPrecompiled)
         {
             return new CompiledProjection<TContext>(
-                BuildKey(fields, projection.Includes),
+                ProjectionCompilerKeyBuilder.Build(fields, projection.Includes),
                 subjectType,
                 eventMetadataType ?? subjectType,
                 fields,
@@ -118,7 +117,7 @@ public static class ProjectionCompiler
                 projectFields => compiledProjection!.PromoteProjectFields(projectFields))
             : null;
         compiledProjection = new CompiledProjection<TContext>(
-            BuildKey(fields, projection.Includes),
+            ProjectionCompilerKeyBuilder.Build(fields, projection.Includes),
             subjectType,
             eventMetadataType ?? subjectType,
             fields,
@@ -246,42 +245,6 @@ public static class ProjectionCompiler
                 throw Error(errorFactory, $"Projection include '{include.Intrinsic}' argument '{argument.Name}' is duplicated.");
         }
     }
-
-    private static string BuildKey<TContext>(
-        IReadOnlyList<CompiledProjection<TContext>.FieldProjector> fields,
-        IReadOnlyList<EventProjectionInclude> includes)
-    {
-        string fieldKey = string.Concat(fields.Select(FieldKey));
-        string includeKey = string.Concat(includes.Select(IncludeKey));
-        return string.Concat("F", CountPart(fields.Count), fieldKey, "I", CountPart(includes.Count), includeKey);
-    }
-
-    private static string FieldKey<TContext>(CompiledProjection<TContext>.FieldProjector field) =>
-        string.Concat("f", KeyPart(field.Path), KeyPart(field.Name));
-
-    private static string IncludeKey(EventProjectionInclude include)
-    {
-        string args = string.Concat(include.Arguments
-            .OrderBy(static arg => arg.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(ArgumentKey));
-        return string.Concat(
-            "i",
-            KeyPart(include.Intrinsic),
-            KeyPart(include.ResultName),
-            CountPart(include.Arguments.Length),
-            args);
-    }
-
-    private static string ArgumentKey(EventProjectionArgument argument) =>
-        string.Concat("a", KeyPart(argument.Name), KeyPart(FilterValueKey.From(argument.Value).ToString()));
-
-    private static string CountPart(int count) =>
-        count.ToString(CultureInfo.InvariantCulture) + ":";
-
-    private static string KeyPart(string? value) =>
-        value is null
-            ? "-1:"
-            : string.Concat(value.Length.ToString(CultureInfo.InvariantCulture), ":", value);
 
     private static bool IsDefaultProjectionField(FilterSchema schema, string name) =>
         !IsMetadataField(name) &&
