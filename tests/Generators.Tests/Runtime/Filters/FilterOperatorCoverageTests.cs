@@ -1,3 +1,4 @@
+using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Kernel;
@@ -86,6 +87,20 @@ public sealed class FilterOperatorCoverageTests
                 FilterValue.From(accepted)),
             new OperatorSubject { Tokens = [Guid.NewGuid(), accepted] },
             true);
+    }
+
+    [Fact]
+    public void NumericCompareRejectsUnknownOperator()
+    {
+        var filter = FilterExpression.Compare(
+            nameof(OperatorSubject.Count),
+            (FilterOperator)999,
+            FilterValue.From(10));
+
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(typeof(OperatorSubject), filter, FilterCompilerOptions.Immediate));
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(typeof(OperatorSubject), filter, FilterCompilerOptions.Tiered));
     }
 
     [Fact]
