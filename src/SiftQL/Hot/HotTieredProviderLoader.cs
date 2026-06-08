@@ -172,7 +172,10 @@ public static class HotTieredProviderLoader
         Assembly? assembly)
     {
         if (assembly is not null)
+        {
             FilterSchema.UnregisterGeneratedProvider(assembly);
+            PrecompiledTieredProviderRegistry.RemoveAssembly(assembly);
+        }
 
         loadContext.Unload();
     }

@@ -55,9 +55,8 @@ public sealed class HotTieredProviderLoadResult : IDisposable
         if (Assembly is not null)
             FilterSchema.UnregisterGeneratedProvider(Assembly);
 
-        if (_registration is not null)
-            _registration.Dispose();
-        else if (Assembly is not null)
+        _registration?.Dispose();
+        if (Assembly is not null)
             PrecompiledTieredProviderRegistry.RemoveAssembly(Assembly);
         _loadContext?.Unload();
     }
