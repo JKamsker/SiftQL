@@ -1,6 +1,7 @@
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Projected;
 using SiftQL.Schema;
 using SiftQL.Values;
 
@@ -105,6 +106,9 @@ public static class FilterIndexExtractor
         out FilterIndexValue key)
     {
         key = default;
+        if (field.ValueType == typeof(ProjectedEventValue))
+            return false;
+
         Type type = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
         if (type == typeof(decimal) || value.Kind == FilterValueKind.Decimal)
             return false;
