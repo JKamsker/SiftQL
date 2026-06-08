@@ -25,7 +25,7 @@ public static class PrecompiledTieredProviderRegistry
     {
         ArgumentNullException.ThrowIfNull(provider);
         ProviderScope? scope = s_scope.Value;
-        if (scope is not null)
+        if (scope is { IsActive: true })
         {
             scope.Add(provider);
             IncrementGlobalVersion();
@@ -41,7 +41,7 @@ public static class PrecompiledTieredProviderRegistry
         return new Registration(provider);
     }
 
-    internal static bool IsolatedScopeActive => s_scope.Value is not null;
+    internal static bool IsolatedScopeActive => s_scope.Value is { IsActive: true };
     internal static int GlobalVersion => Volatile.Read(ref s_globalVersion);
     internal static bool HasProviders => Providers().Length != 0;
 
@@ -143,7 +143,9 @@ public static class PrecompiledTieredProviderRegistry
     }
 
     private static IPrecompiledTieredProvider[] Providers() =>
-        s_scope.Value?.Providers ?? Volatile.Read(ref s_providers);
+        s_scope.Value is { IsActive: true } scope
+            ? scope.Providers
+            : Volatile.Read(ref s_providers);
 
     private static void IncrementGlobalVersion()
     {
@@ -155,27 +157,38 @@ public static class PrecompiledTieredProviderRegistry
     {
         private readonly object _gate = new();
         private IPrecompiledTieredProvider[] _providers = [];
+        private int _disposed;
+
+        public bool IsActive => Volatile.Read(ref _disposed) == 0;
 
         public IPrecompiledTieredProvider[] Providers
         {
             get
             {
                 lock (_gate)
-                    return _providers;
+                    return _disposed == 0 ? _providers : [];
             }
         }
 
         public void Add(IPrecompiledTieredProvider provider)
         {
             lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed != 0, this);
                 _providers = [.. _providers, provider];
+            }
         }
 
         public void Remove(IPrecompiledTieredProvider provider)
         {
             bool changed;
             lock (_gate)
+            {
+                if (_disposed != 0)
+                    return;
+
                 changed = TryRemoveOne(ref _providers, provider);
+            }
 
             if (changed)
                 IncrementGlobalVersion();
@@ -186,6 +199,9 @@ public static class PrecompiledTieredProviderRegistry
             bool changed;
             lock (_gate)
             {
+                if (_disposed != 0)
+                    return;
+
                 int before = _providers.Length;
                 _providers = _providers
                     .Where(item => !ReferenceEquals(item.GetType().Assembly, assembly))
@@ -199,13 +215,19 @@ public static class PrecompiledTieredProviderRegistry
 
         public void Dispose()
         {
-            if (!ReferenceEquals(s_scope.Value, this))
-                return;
-
-            bool hadProviders;
+            bool hadProviders = false;
             lock (_gate)
-                hadProviders = _providers.Length > 0;
-            s_scope.Value = parent;
+            {
+                if (_disposed == 0)
+                {
+                    _disposed = 1;
+                    hadProviders = _providers.Length > 0;
+                    _providers = [];
+                }
+            }
+
+            if (ReferenceEquals(s_scope.Value, this))
+                s_scope.Value = parent;
             if (hadProviders)
                 IncrementGlobalVersion();
         }
