@@ -60,15 +60,26 @@ public sealed class FilterSubscriptionIndex<TSubscription>
             if (!_entries.TryGetValue(subscription, out var entries))
                 return;
 
-            var entry = SelectRemovalEntry(entries);
-            bool removed = entry.Key is null
-                ? TryRemoveUnindexed(entry)
-                : TryRemoveIndexed(entry);
-            if (!removed)
+            int removed = 0;
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                var entry = entries[i];
+                bool removedEntry = entry.Key is null
+                    ? TryRemoveUnindexed(entry)
+                    : TryRemoveIndexed(entry);
+                if (!removedEntry)
+                    continue;
+
+                entries.RemoveAt(i);
+                removed++;
+            }
+
+            if (removed == 0)
                 return;
 
-            Untrack(subscription, entries, entry);
-            _count--;
+            if (entries.Count == 0)
+                _entries.Remove(subscription);
+            _count -= removed;
             PublishSnapshot();
         }
     }
@@ -105,16 +116,21 @@ public sealed class FilterSubscriptionIndex<TSubscription>
             return;
 
         Snapshot snapshot = Volatile.Read(ref _snapshot);
+        var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
         {
             var entry = snapshot.Unindexed[i];
-            if (entry.Matches(subject) && !visitor(entry.Subscription, ref state))
+            if (entry.Matches(subject) &&
+                seen.Add(entry.Subscription) &&
+                !visitor(entry.Subscription, ref state))
+            {
                 return;
+            }
         }
 
         for (int i = 0; i < snapshot.Fields.Length; i++)
         {
-            if (!snapshot.Fields[i].VisitMatches(subject, ref state, visitor))
+            if (!snapshot.Fields[i].VisitMatches(subject, ref state, visitor, seen))
                 return;
         }
     }
@@ -140,15 +156,16 @@ public sealed class FilterSubscriptionIndex<TSubscription>
 
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var matches = new List<TSubscription>(snapshot.Unindexed.Length);
+        var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
         {
             var entry = snapshot.Unindexed[i];
-            if (entry.Matches(subject))
+            if (entry.Matches(subject) && seen.Add(entry.Subscription))
                 matches.Add(entry.Subscription);
         }
 
         for (int i = 0; i < snapshot.Fields.Length; i++)
-            snapshot.Fields[i].AddMatches(subject, matches);
+            snapshot.Fields[i].AddMatches(subject, matches, seen);
         return matches.ToArray();
     }
 
@@ -175,16 +192,6 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         entries.Add(entry);
     }
 
-    private void Untrack(
-        TSubscription subscription,
-        List<SubscriptionEntry<TSubscription>> entries,
-        SubscriptionEntry<TSubscription> entry)
-    {
-        entries.Remove(entry);
-        if (entries.Count == 0)
-            _entries.Remove(subscription);
-    }
-
     private bool TryRemoveUnindexed(SubscriptionEntry<TSubscription> entry)
         => _unindexed.Remove(entry);
 
@@ -200,18 +207,6 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         foreach (var field in _fields.Values)
             fields[index++] = field.ToSnapshot();
         Volatile.Write(ref _snapshot, new Snapshot(_unindexed.Snapshot(), fields, _count));
-    }
-
-    private static SubscriptionEntry<TSubscription> SelectRemovalEntry(
-        IReadOnlyList<SubscriptionEntry<TSubscription>> entries)
-    {
-        for (int i = 0; i < entries.Count; i++)
-        {
-            if (entries[i].Key is null)
-                return entries[i];
-        }
-
-        return entries[0];
     }
 
     private sealed record Snapshot(

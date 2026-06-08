@@ -34,7 +34,8 @@ internal sealed class SubscriptionFieldSnapshot<TSubscription>
     public bool VisitMatches<TState>(
         object subject,
         ref TState state,
-        FilterCandidateVisitor<TSubscription, TState> visitor)
+        FilterCandidateVisitor<TSubscription, TState> visitor,
+        HashSet<TSubscription> seen)
     {
         if (!TryGetEntries(subject, out var items))
             return true;
@@ -42,8 +43,12 @@ internal sealed class SubscriptionFieldSnapshot<TSubscription>
         for (int i = 0; i < items.Length; i++)
         {
             var entry = items[i];
-            if (entry.Matches(subject) && !visitor(entry.Subscription, ref state))
+            if (entry.Matches(subject) &&
+                seen.Add(entry.Subscription) &&
+                !visitor(entry.Subscription, ref state))
+            {
                 return false;
+            }
         }
 
         return true;
@@ -57,14 +62,17 @@ internal sealed class SubscriptionFieldSnapshot<TSubscription>
             candidates.Add(items[i].Subscription);
     }
 
-    public void AddMatches(object subject, List<TSubscription> matches)
+    public void AddMatches(
+        object subject,
+        List<TSubscription> matches,
+        HashSet<TSubscription> seen)
     {
         if (!TryGetEntries(subject, out var items))
             return;
         for (int i = 0; i < items.Length; i++)
         {
             var entry = items[i];
-            if (entry.Matches(subject))
+            if (entry.Matches(subject) && seen.Add(entry.Subscription))
                 matches.Add(entry.Subscription);
         }
     }
