@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using SiftQL.Compiler;
 
 namespace SiftQL.Schema;
 
@@ -65,7 +66,7 @@ public sealed class FilterSchema
     private static FilterSchema Build(Type subjectType)
     {
         if (GeneratedFilterSchemaProvider.TryCreate(subjectType, out var schema))
-            return MergeRegisteredValueObjectFields(schema!);
+            return MergeRegisteredValueObjectFields(ValidateProviderSchema(subjectType, schema));
 
         return TryCreateRegistered(subjectType, out schema)
             ? MergeRegisteredValueObjectFields(schema!)
@@ -77,6 +78,7 @@ public sealed class FilterSchema
         if (s_generatedProviders.TryGetValue(subjectType.Assembly, out var provider) &&
             provider(subjectType, out schema))
         {
+            schema = ValidateProviderSchema(subjectType, schema);
             return true;
         }
 
@@ -108,6 +110,18 @@ public sealed class FilterSchema
 
     private static FilterSchema BuildFallback(Type subjectType) =>
         FilterSchemaFallbackBuilder.Build(subjectType, IsRegisteredValueObject, s_nullability);
+
+    private static FilterSchema ValidateProviderSchema(
+        Type requestedType,
+        FilterSchema? schema)
+    {
+        if (schema is not null && schema.SubjectType == requestedType)
+            return schema;
+
+        string actual = schema?.SubjectType.FullName ?? "<null>";
+        throw new FilterValidationException(
+            $"Generated filter schema provider for '{requestedType.FullName}' returned schema for '{actual}'.");
+    }
 
     private static bool IsRegisteredValueObject(Type type) =>
         s_valueObjects.ContainsKey(type);
