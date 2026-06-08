@@ -70,7 +70,15 @@ public sealed record QueryKernel<TSubject>
         get => _pipeline.IsDefault
             ? EventPipelineExpression.From(Filter, Projection)
             : _pipeline;
-        init => _pipeline = value ?? throw new ArgumentNullException(nameof(value));
+        init
+        {
+            _pipeline = value ?? throw new ArgumentNullException(nameof(value));
+            if (_pipeline.IsDefault)
+                return;
+
+            _filter = QueryKernelPipelineState.SourceFilter(_pipeline);
+            _projection = QueryKernelPipelineState.LastProjectionOrDefault(_pipeline);
+        }
     }
 
     public QueryKernel<TSubject> WithSourceFilter(FilterExpression filter)
@@ -126,7 +134,7 @@ public sealed record QueryKernel<TSubject>
         EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(translated);
         return new QueryKernel<TSubject>(
             Filter,
-            LastProjectionOrDefault(pipeline),
+            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
             pipeline);
     }
 
@@ -143,7 +151,7 @@ public sealed record QueryKernel<TSubject>
         EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(projection);
         return new QueryKernel<TSubject>(
             Filter,
-            LastProjectionOrDefault(pipeline),
+            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
             pipeline);
     }
 
@@ -156,19 +164,8 @@ public sealed record QueryKernel<TSubject>
         EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(projection);
         return new QueryKernel<TSubject>(
             Filter,
-            LastProjectionOrDefault(pipeline),
+            QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
             pipeline);
-    }
-
-    private static EventProjectionExpression LastProjectionOrDefault(EventPipelineExpression pipeline)
-    {
-        for (int i = pipeline.Stages.Length - 1; i >= 0; i--)
-        {
-            if (pipeline.Stages[i].Kind == EventPipelineStageKind.Projection)
-                return pipeline.Stages[i].Projection;
-        }
-
-        return EventProjectionExpression.Default;
     }
 
     private static EventPipelineExpression EnsureProjection(EventPipelineExpression pipeline) =>
@@ -210,7 +207,7 @@ public sealed record QueryKernel<TSubject>
 
     private string ProjectedFieldName(string sourcePath)
     {
-        EventProjectionExpression previous = LastProjectionOrDefault(Pipeline);
+        EventProjectionExpression previous = QueryKernelPipelineState.LastProjectionOrDefault(Pipeline);
         for (int i = previous.Fields.Length - 1; i >= 0; i--)
         {
             EventProjectionField field = previous.Fields[i];
