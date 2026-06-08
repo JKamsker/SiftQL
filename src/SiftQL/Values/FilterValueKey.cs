@@ -121,10 +121,12 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
                 builder.Append(UnsignedInteger.ToString(CultureInfo.InvariantCulture));
                 break;
             case FilterValueKind.Number:
-                builder.Append(Number.ToString("R", CultureInfo.InvariantCulture));
+                builder.Append(Number == 0D
+                    ? "0"
+                    : Number.ToString("R", CultureInfo.InvariantCulture));
                 break;
             case FilterValueKind.Decimal:
-                builder.Append(Decimal.ToString(CultureInfo.InvariantCulture));
+                builder.Append(Decimal.ToString("G29", CultureInfo.InvariantCulture));
                 break;
             case FilterValueKind.String:
                 FilterKeyText.AppendText(builder, Text);
