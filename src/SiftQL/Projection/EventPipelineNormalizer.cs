@@ -15,26 +15,28 @@ internal static class EventPipelineNormalizer
         ValidateStages(pipeline, errorFactory);
         return HasProjection(pipeline)
             ? pipeline
-            : pipeline.AppendProjection(DefaultProjection(subjectType, pipeline));
+            : pipeline.AppendProjection(DefaultProjection(subjectType, pipeline, errorFactory));
     }
 
     private static EventProjectionExpression DefaultProjection(
         Type subjectType,
-        EventPipelineExpression pipeline) =>
+        EventPipelineExpression pipeline,
+        Func<string, Exception>? errorFactory) =>
         subjectType == typeof(ProjectedEvent)
-            ? ProjectedFilterFieldProjection(pipeline)
+            ? ProjectedFilterFieldProjection(pipeline, errorFactory)
             : EventProjectionExpression.Default;
 
     private static EventProjectionExpression ProjectedFilterFieldProjection(
-        EventPipelineExpression pipeline)
+        EventPipelineExpression pipeline,
+        Func<string, Exception>? errorFactory)
     {
         var fields = new List<EventProjectionField>();
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {
             EventPipelineStage stage = pipeline.Stages[i];
             if (stage.Kind == EventPipelineStageKind.Filter)
-                CollectProjectedFields(stage.Filter, fields, names);
+                CollectProjectedFields(stage.Filter, fields, names, errorFactory);
         }
 
         return fields.Count == 0
@@ -45,16 +47,25 @@ internal static class EventPipelineNormalizer
     private static void CollectProjectedFields(
         FilterExpression expression,
         List<EventProjectionField> fields,
-        HashSet<string> names)
+        Dictionary<string, string> names,
+        Func<string, Exception>? errorFactory)
     {
-        if (ProjectedEventPaths.TrySplit(expression.Field, out _, out string name) &&
-            names.Add(name))
+        if (ProjectedEventPaths.TrySplit(expression.Field, out _, out string name))
         {
-            fields.Add(new EventProjectionField(expression.Field, name));
+            if (names.TryGetValue(name, out string? existing))
+            {
+                if (!string.Equals(existing, expression.Field, StringComparison.OrdinalIgnoreCase))
+                    throw Error(errorFactory, $"Projected filter field '{name}' is ambiguous.");
+            }
+            else
+            {
+                names.Add(name, expression.Field);
+                fields.Add(new EventProjectionField(expression.Field, name));
+            }
         }
 
         for (int i = 0; i < expression.Children.Length; i++)
-            CollectProjectedFields(expression.Children[i], fields, names);
+            CollectProjectedFields(expression.Children[i], fields, names, errorFactory);
     }
 
     private static void ValidateStages(
