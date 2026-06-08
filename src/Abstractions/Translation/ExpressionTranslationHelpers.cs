@@ -98,17 +98,24 @@ internal static class ExpressionTranslationHelpers
     private static bool IsExactNumericWidening(Type source, Type target) =>
         Type.GetTypeCode(source) switch
         {
-            TypeCode.SByte => target == typeof(short) || target == typeof(int) || target == typeof(long),
+            TypeCode.SByte => target == typeof(short) || target == typeof(int) ||
+                target == typeof(long) || target == typeof(double),
             TypeCode.Byte => target == typeof(short) || target == typeof(ushort) ||
                 target == typeof(int) || target == typeof(uint) ||
-                target == typeof(long) || target == typeof(ulong),
-            TypeCode.Int16 => target == typeof(int) || target == typeof(long),
+                target == typeof(long) || target == typeof(ulong) ||
+                target == typeof(double),
+            TypeCode.Int16 => target == typeof(int) || target == typeof(long) ||
+                target == typeof(double),
             TypeCode.UInt16 => target == typeof(int) || target == typeof(uint) ||
-                target == typeof(long) || target == typeof(ulong),
-            TypeCode.Int32 => target == typeof(long),
-            TypeCode.UInt32 => target == typeof(long) || target == typeof(ulong),
+                target == typeof(long) || target == typeof(ulong) ||
+                target == typeof(double),
+            TypeCode.Int32 => target == typeof(long) || target == typeof(double),
+            TypeCode.UInt32 => target == typeof(long) || target == typeof(ulong) ||
+                target == typeof(double),
+            TypeCode.Single => target == typeof(double),
             TypeCode.Char => target == typeof(ushort) || target == typeof(int) ||
-                target == typeof(uint) || target == typeof(long) || target == typeof(ulong),
+                target == typeof(uint) || target == typeof(long) ||
+                target == typeof(ulong) || target == typeof(double),
             _ => false,
         };
 

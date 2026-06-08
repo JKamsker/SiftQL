@@ -95,10 +95,6 @@ internal static class KernelExpressionEvaluator
 
     private static bool TryEvaluateConversion(UnaryExpression expression, out object? value)
     {
-        Type operandType = Nullable.GetUnderlyingType(expression.Operand.Type) ?? expression.Operand.Type;
-        if (operandType.IsEnum)
-            return TryEvaluateConstant(expression.Operand, out value);
-
         if (!TryEvaluateConstant(expression.Operand, out object? operand))
         {
             value = null;
