@@ -34,6 +34,14 @@ public static class FilterValues
         if (op is FilterOperator.Equal or FilterOperator.NotEqual)
             return;
 
+        if (op is not FilterOperator.GreaterThan and
+            not FilterOperator.GreaterThanOrEqual and
+            not FilterOperator.LessThan and
+            not FilterOperator.LessThanOrEqual)
+        {
+            throw Error(errorFactory, $"Filter operator '{op}' is not supported.");
+        }
+
         if (IsProjectedDynamic(field.ValueType) &&
             value.Kind is (FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
