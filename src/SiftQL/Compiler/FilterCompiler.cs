@@ -97,7 +97,10 @@ public static class FilterCompiler
         string fingerprint = expressionKey.ToString();
         TieredFilterPromotionPolicy promotionPolicy = options.CreateFilterPromotionPolicy(expression);
 
-        if (hasParameters || PrecompiledTieredProviderRegistry.IsolatedScopeActive)
+        if (hasParameters ||
+            options.Mode == FilterCompilationMode.Tiered ||
+            PrecompiledTieredProviderRegistry.IsolatedScopeActive)
+        {
             return CompileCacheMiss(
                 subjectType,
                 expression,
@@ -108,6 +111,7 @@ public static class FilterCompiler
                 fingerprint,
                 promotionPolicy,
                 cacheKey: null);
+        }
 
         var key = FilterCompilationCacheKey.Create(
             subjectType,
