@@ -89,11 +89,14 @@ internal static class HotManifestFingerprint
         {
             AppendText(builder, arguments[i].Name);
             builder.Append('=');
-            AppendValue(builder, arguments[i].Value);
+            AppendValue(builder, arguments[i].Value, ValueMode.ProjectionArgument);
         }
     }
 
-    private static void AppendValue(StringBuilder builder, HotFilterValue? value)
+    private static void AppendValue(
+        StringBuilder builder,
+        HotFilterValue? value,
+        ValueMode mode = ValueMode.Filter)
     {
         if (value is null)
         {
@@ -110,11 +113,14 @@ internal static class HotManifestFingerprint
             return;
         }
 
-        AppendLiteral(builder, value);
+        AppendLiteral(builder, value, mode);
         builder.Append('}');
     }
 
-    private static void AppendLiteral(StringBuilder builder, HotFilterValue value)
+    private static void AppendLiteral(
+        StringBuilder builder,
+        HotFilterValue value,
+        ValueMode mode)
     {
         switch (value.Kind)
         {
@@ -128,10 +134,10 @@ internal static class HotManifestFingerprint
                 builder.Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture));
                 break;
             case HotFilterValueKind.Number:
-                builder.Append(value.Number.ToString("R", CultureInfo.InvariantCulture));
+                AppendNumber(builder, value.Number, mode);
                 break;
             case HotFilterValueKind.Decimal:
-                builder.Append(value.Decimal.ToString(CultureInfo.InvariantCulture));
+                builder.Append(value.Decimal.ToString("G29", CultureInfo.InvariantCulture));
                 break;
             case HotFilterValueKind.String:
                 AppendText(builder, value.String);
@@ -140,6 +146,23 @@ internal static class HotManifestFingerprint
                 builder.Append(value.Guid);
                 break;
         }
+    }
+
+    private static void AppendNumber(
+        StringBuilder builder,
+        double value,
+        ValueMode mode)
+    {
+        if (mode == ValueMode.ProjectionArgument)
+        {
+            builder.Append("bits:");
+            builder.Append(BitConverter.DoubleToInt64Bits(value).ToString("X16", CultureInfo.InvariantCulture));
+            return;
+        }
+
+        builder.Append(value == 0D
+            ? "0"
+            : value.ToString("R", CultureInfo.InvariantCulture));
     }
 
     private static void AppendText(StringBuilder builder, string? value)
@@ -163,5 +186,11 @@ internal static class HotManifestFingerprint
         for (int i = 0; i < hash.Length; i++)
             builder.Append(hash[i].ToString("X2", CultureInfo.InvariantCulture));
         return builder.ToString();
+    }
+
+    private enum ValueMode
+    {
+        Filter,
+        ProjectionArgument,
     }
 }
