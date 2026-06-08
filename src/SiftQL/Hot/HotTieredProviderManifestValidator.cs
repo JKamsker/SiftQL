@@ -63,18 +63,26 @@ internal static class HotTieredProviderManifestValidator
         {
             if (string.Equals(entry.Kind, "filter", StringComparison.OrdinalIgnoreCase))
             {
-                return provider.TryGetFilter(subjectType, fingerprint, out var predicate) &&
-                    predicate is not null ||
-                    provider.TryGetParameterizedFilter(subjectType, fingerprint, out var hot) &&
-                    hot is not null;
+                if (!TryEntryHasParameters(entry, out bool hasParameters))
+                    return false;
+
+                return hasParameters
+                    ? provider.TryGetParameterizedFilter(subjectType, fingerprint, out var hot) &&
+                        hot is not null
+                    : provider.TryGetFilter(subjectType, fingerprint, out var predicate) &&
+                        predicate is not null;
             }
 
             if (string.Equals(entry.Kind, "projection", StringComparison.OrdinalIgnoreCase))
             {
-                return provider.TryGetProjection(subjectType, fingerprint, out var projectFields) &&
-                    projectFields is not null ||
-                    provider.TryGetParameterizedProjection(subjectType, fingerprint, out var hot) &&
-                    hot is not null;
+                if (!TryEntryHasParameters(entry, out bool hasParameters))
+                    return false;
+
+                return hasParameters
+                    ? provider.TryGetParameterizedProjection(subjectType, fingerprint, out var hot) &&
+                        hot is not null
+                    : provider.TryGetProjection(subjectType, fingerprint, out var projectFields) &&
+                        projectFields is not null;
             }
         }
         catch
@@ -84,6 +92,76 @@ internal static class HotTieredProviderManifestValidator
 
         return false;
     }
+
+    private static bool TryEntryHasParameters(
+        HotCompilationManifestEntry entry,
+        out bool hasParameters)
+    {
+        try
+        {
+            if (string.Equals(entry.Kind, "filter", StringComparison.OrdinalIgnoreCase))
+            {
+                FilterExpression? filter = entry.Definition.Deserialize<FilterExpression>();
+                hasParameters = filter is not null && HasParameters(filter);
+                return filter is not null;
+            }
+
+            if (string.Equals(entry.Kind, "projection", StringComparison.OrdinalIgnoreCase))
+            {
+                EventProjectionExpression? projection =
+                    entry.Definition.Deserialize<EventProjectionExpression>();
+                hasParameters = projection is not null && HasParameters(projection);
+                return projection is not null;
+            }
+        }
+        catch
+        {
+        }
+
+        hasParameters = false;
+        return false;
+    }
+
+    private static bool HasParameters(FilterExpression expression)
+    {
+        if (HasParameter(expression.Value))
+            return true;
+
+        for (int i = 0; i < expression.Values.Length; i++)
+        {
+            if (HasParameter(expression.Values[i]))
+                return true;
+        }
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (HasParameters(expression.Children[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasParameters(EventProjectionExpression projection)
+    {
+        for (int i = 0; i < projection.Includes.Length; i++)
+        {
+            EventProjectionArgument[] arguments = projection.Includes[i].Arguments;
+            for (int j = 0; j < arguments.Length; j++)
+            {
+                if (arguments[j].Kind == EventProjectionArgumentKind.Value &&
+                    HasParameter(arguments[j].Value))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasParameter(FilterValue? value) =>
+        !string.IsNullOrWhiteSpace(value?.ParameterKey);
 
     private static string[] CandidateFingerprints(
         HotCompilationManifestEntry entry,
