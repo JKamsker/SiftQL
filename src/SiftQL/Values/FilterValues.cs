@@ -94,22 +94,15 @@ public static class FilterValues
             throw TooManyRuntimeArrayItems();
 
         int seen = 0;
-        bool canReturnEarly = actual is ICollection;
-        bool found = false;
         foreach (object? item in enumerable)
         {
-            if (!canReturnEarly && ++seen > MaxRuntimeArrayItems)
+            if (actual is not ICollection && ++seen > MaxRuntimeArrayItems)
                 throw TooManyRuntimeArrayItems();
             if (AreEqual(item, expected))
-            {
-                if (canReturnEarly)
-                    return true;
-
-                found = true;
-            }
+                return true;
         }
 
-        return found;
+        return false;
     }
 
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
