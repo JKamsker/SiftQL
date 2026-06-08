@@ -21,7 +21,7 @@ internal static class HotProviderResolver
         {
             cancellationToken.ThrowIfCancellationRequested();
             HotManifestEntry entry = manifest.Entries[i];
-            INamedTypeSymbol? subject = ResolveSubject(compilation, entry.SubjectType);
+            INamedTypeSymbol? subject = HotSubjectTypeResolver.Resolve(compilation, entry.SubjectType);
             if (subject is null)
             {
                 Add(diagnostics, manifest.Path, $"Hot entry subject '{entry.SubjectType}' cannot be resolved.");
@@ -83,13 +83,6 @@ internal static class HotProviderResolver
             .ThenBy(static entry => entry.Fingerprint, StringComparer.Ordinal)
             .ThenBy(static entry => entry.SubjectTypeName, StringComparer.Ordinal)
             .ToImmutableArray();
-
-    private static INamedTypeSymbol? ResolveSubject(Compilation compilation, string subjectType)
-    {
-        string metadataName = subjectType.Split(',')[0].Trim();
-        return compilation.GetTypeByMetadataName(metadataName) ??
-            compilation.GetTypeByMetadataName(metadataName.Replace('+', '.'));
-    }
 
     private static EquatableArray<GeneratedField> DiscoverFields(INamedTypeSymbol subject)
     {
