@@ -60,6 +60,61 @@ public sealed class HotProviderLoaderManifestIsolationTests
     }
 
     [Fact]
+    public void SuccessfulLoadDoesNotKeepDirectProviderRegistrationsFromLoadedAssembly()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        const string assemblyName = "Plugin.Hot.ManifestDirectIsolation";
+        FilterExpression manifestFilter = Filter(nameof(ItemUsedEvent.ItemId), 100);
+        FilterExpression directFilter = Filter(nameof(ItemUsedEvent.Quantity), 2);
+        string manifestJson = ManifestJson(manifestFilter);
+        string manifestHash = HotManifestSemanticHash.Compute(manifestJson);
+        CSharpCompilation compilation = GeneratorTestCompilation.Create(
+            assemblyName,
+            Source(DirectRegistrationSource(
+                manifestHash,
+                Fingerprint(manifestFilter),
+                Fingerprint(directFilter))));
+
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "SiftQLHotManifestDirectIsolation",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string assemblyPath = Path.Combine(directory, assemblyName + ".dll");
+        string manifestPath = Path.Combine(directory, "hot.json");
+        EmitResult emit = compilation.Emit(assemblyPath);
+        AssertEx.True(emit.Success, "manifest direct-isolation provider emitted: " + string.Join(" | ", emit.Diagnostics));
+        File.WriteAllText(manifestPath, manifestJson);
+
+        try
+        {
+            using HotTieredProviderLoadResult result = HotTieredProviderLoader.TryLoad(new()
+            {
+                AssemblyPath = assemblyPath,
+                ManifestPath = manifestPath,
+                RequireExactRuntimeVersion = false,
+            });
+
+            AssertEx.True(result.Loaded, "manifest direct-isolation provider loaded: " + result.Message);
+            CompiledKernel manifest = FilterCompiler.Compile(
+                typeof(ItemUsedEvent),
+                manifestFilter,
+                FilterCompilerOptions.Tiered);
+            CompiledKernel direct = FilterCompiler.Compile(
+                typeof(ItemUsedEvent),
+                directFilter,
+                FilterCompilerOptions.Tiered);
+
+            AssertEx.True(!manifest.IsTiered, "manifest-scoped provider was registered");
+            AssertEx.True(direct.IsTiered, "direct provider from loaded assembly was quarantined");
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    [Fact]
     public void GeneratedRegistrationChecksManifestBeforeProviderConstruction()
     {
         const string assemblyName = "Plugin.Hot.ManifestIsolation.Source";
@@ -107,6 +162,73 @@ public sealed class HotProviderLoaderManifestIsolationTests
         return JsonSerializer.Serialize(manifest);
     }
 
+    private static string DirectRegistrationSource(
+        string manifestHash,
+        string manifestFingerprint,
+        string directFingerprint) =>
+        $$"""
+        using System;
+        using System.Runtime.CompilerServices;
+        using SiftQL.Hot;
+        using SiftQL.Projected;
+
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotManifestHash", "{{manifestHash}}")]
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotManifestSchema", "siftql.hot.v1")]
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotFilterEngine", "tiered-v1")]
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotGenerator", "hot-sourcegen-v1")]
+
+        namespace Plugin.Hot;
+
+        internal static class DirectRegistration
+        {
+            [ModuleInitializer]
+            internal static void Register()
+            {
+                HotProviderRegistrationContext.RegisterFactory(
+                    static () => new ManifestProvider(),
+                    "{{manifestHash}}");
+                PrecompiledTieredProviderRegistry.Register(new DirectProvider());
+            }
+        }
+
+        internal sealed class ManifestProvider : Provider
+        {
+            public ManifestProvider() : base("{{manifestFingerprint}}") { }
+        }
+
+        internal sealed class DirectProvider : Provider
+        {
+            public DirectProvider() : base("{{directFingerprint}}") { }
+        }
+
+        internal abstract class Provider(string acceptedFingerprint) : IPrecompiledTieredProvider
+        {
+            public bool TryGetFilter(Type subjectType, string key, out Func<object, bool>? predicate)
+            {
+                if (string.Equals(subjectType.FullName, "SiftQL.Generators.Tests.ItemUsedEvent", StringComparison.Ordinal) &&
+                    string.Equals(key, acceptedFingerprint, StringComparison.Ordinal))
+                {
+                    predicate = static _ => true;
+                    return true;
+                }
+
+                predicate = null;
+                return false;
+            }
+
+            public bool TryGetProjection(
+                Type subjectType,
+                string key,
+                out Func<object, ProjectedEventField[]>? projectFields)
+            {
+                _ = subjectType;
+                _ = key;
+                projectFields = null;
+                return false;
+            }
+        }
+        """;
+
     private static GeneratorRun RunGenerator(string assemblyName, params AdditionalText[] manifests)
     {
         CSharpCompilation compilation = GeneratorTestCompilation.Create(assemblyName);
@@ -128,6 +250,18 @@ public sealed class HotProviderLoaderManifestIsolationTests
             throwOnError: true)!;
         return (string)type.GetMethod("Create", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
             .Invoke(null, [expression])!;
+    }
+
+    private static SyntaxTree Source(string source) =>
+        CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
+
+    private static void TryDeleteDirectory(string directory)
+    {
+        try { Directory.Delete(directory, recursive: true); }
+        catch
+        {
+            // Best-effort cleanup; loaded assemblies can briefly keep files open on Windows.
+        }
     }
 
     private sealed class InMemoryAdditionalText(string path, string text) : AdditionalText
