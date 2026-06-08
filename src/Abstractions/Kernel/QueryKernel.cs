@@ -214,7 +214,7 @@ public sealed record QueryKernel<TSubject>
         for (int i = previous.Fields.Length - 1; i >= 0; i--)
         {
             EventProjectionField field = previous.Fields[i];
-            if (string.Equals(field.Path, sourcePath, StringComparison.Ordinal))
+            if (string.Equals(field.Path, sourcePath, StringComparison.OrdinalIgnoreCase))
                 return field.Name;
         }
 
