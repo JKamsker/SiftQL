@@ -82,6 +82,74 @@ public sealed class FilterSchemaGeneratorRegressionTests
     }
 
     [Fact]
+    public void UnreadableHiddenDerivedPropertyUsesReadableBaseSchemaField()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.HiddenUnreadableProperty",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public class BaseEvent
+                {
+                    public Guid EventId { get; } = Guid.Empty;
+                    public string Code { get; } = "base";
+                }
+
+                public sealed class DerivedEvent : BaseEvent, IFilterSubject
+                {
+                    public new int Code { set { } }
+                }
+                """));
+
+        AssertNoCompilationErrors(run, "hidden unreadable property schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "hidden unreadable property schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type eventType = assembly.GetType("Plugin.Events.DerivedEvent", throwOnError: true)!;
+        object ev = Activator.CreateInstance(eventType)!;
+
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        AssertEx.True(schema.TryGetField("Code", out var field), "base Code field is registered");
+        AssertEx.Equal("base", field.Getter(ev), "base Code getter is used");
+    }
+
+    [Fact]
+    public void GeneratedSchemaHonorsRuntimeRegisteredNonRecordValueObject()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.RegisteredClassValueObject",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed class Location
+                {
+                    public long MapId { get; init; }
+                }
+
+                public sealed record MovedEvent(
+                    Guid EventId,
+                    Location Location) : IFilterSubject;
+                """));
+
+        AssertNoCompilationErrors(run, "registered class value object schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "registered class value object schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type locationType = assembly.GetType("Plugin.Events.Location", throwOnError: true)!;
+        Type eventType = assembly.GetType("Plugin.Events.MovedEvent", throwOnError: true)!;
+
+        FilterSchema.RegisterValueObject(locationType);
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        AssertEx.True(schema.TryGetField("Location.MapId", out _), "registered non-record value object is expanded");
+    }
+
+    [Fact]
     public void NullableReferenceValueObjectDoesNotEmitUnsafeNestedFields()
     {
         GeneratorRun run = RunGenerator(

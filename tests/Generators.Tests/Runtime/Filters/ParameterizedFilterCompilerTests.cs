@@ -85,6 +85,55 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
     }
 
     [Fact]
+    public void TieredParameterizedFilterRejectsConflictingDuplicateParameterKeys()
+    {
+        FilterValue itemId = FilterValue.From(100L) with { ParameterKey = "p0" };
+        FilterValue quantity = FilterValue.From(2L) with { ParameterKey = "p0" };
+        FilterExpression filter = FilterExpression.And(
+            FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.Equal,
+                itemId),
+            FilterExpression.Compare(
+                nameof(ItemUsedEvent.Quantity),
+                FilterOperator.Equal,
+                quantity));
+
+        var exception = Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(
+                typeof(ItemUsedEvent),
+                filter,
+                FilterCompilerOptions.Tiered));
+
+        Assert.Contains("p0", exception.Message);
+    }
+
+    [Fact]
+    public async Task TieredFilterPromotionUsesCompileTimeExpressionSnapshot()
+    {
+        FilterExpression filter = FilterExpression.In(
+            nameof(ItemUsedEvent.ItemId),
+            [FilterValue.From(100L)]);
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            filter,
+            FilterCompilerOptions.Tiered with
+            {
+                TieredPromotionMinimumAge = TimeSpan.Zero,
+                TieredPromotionMinimumEvaluations = 2,
+            });
+
+        Assert.True(kernel.Matches(Event(itemId: 100)));
+        filter.Values[0] = FilterValue.From(200L);
+        Assert.True(kernel.Matches(Event(itemId: 100)));
+
+        await WaitForSnapshotAsync(kernel, static item => item.Tier == TieredKernelTier.Compiled);
+
+        Assert.True(kernel.Matches(Event(itemId: 100)));
+        Assert.False(kernel.Matches(Event(itemId: 200)));
+    }
+
+    [Fact]
     public async Task QueryKernelCapturedVariableAndPropertyRebindsAndKeepsSingleSourceFilter()
     {
         var criteria = new MutableCriteria { CharacterId = 7 };

@@ -144,6 +144,32 @@ public sealed class EventPipelineRegressionTests
     }
 
     [Fact]
+    public async Task CompiledPipelineIndexFilterUsesCompileTimeExpressionSnapshot()
+    {
+        FilterExpression filter = FilterExpression.In(
+            nameof(ItemUsedEvent.ItemId),
+            [FilterValue.From(100L)]);
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendFilter(filter)
+            .AppendProjection(EventProjectionExpression.Select(nameof(ItemUsedEvent.ItemId)));
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ItemUsedEvent),
+            pipeline,
+            ProjectionRuntimeTestSupport.RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        filter.Values[0] = FilterValue.From(200L);
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new ItemUsedEvent(Guid.NewGuid(), 7, 100, 1),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(100, projected!.Field(nameof(ItemUsedEvent.ItemId)).Integer);
+        Assert.Equal(100, compiled.IndexFilter.Values.Single().Integer);
+    }
+
+    [Fact]
     public async Task ProjectedEventPipelineStartsWithProjectedSchema()
     {
         EventPipelineExpression pipeline = EventPipelineExpression.Default

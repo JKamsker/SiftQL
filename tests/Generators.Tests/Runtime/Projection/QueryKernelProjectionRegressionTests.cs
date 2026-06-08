@@ -78,6 +78,76 @@ public sealed class QueryKernelProjectionRegressionTests
     }
 
     [Fact]
+    public void RepeatedSelectKeepsStoredProjectionInSyncWithPipeline()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.ItemId))
+            .Select(nameof(ItemUsedEvent.Quantity));
+
+        string[] pipelineFields = LastProjection(kernel).Fields.Select(static field => field.Path).ToArray();
+        string[] storedFields = kernel.Projection.Fields.Select(static field => field.Path).ToArray();
+
+        Assert.Equal([nameof(ItemUsedEvent.ItemId), nameof(ItemUsedEvent.Quantity)], pipelineFields);
+        Assert.Equal(pipelineFields, storedFields);
+    }
+
+    [Fact]
+    public void RepeatedProjectedSelectKeepsStoredProjectionInSyncWithPipeline()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Select(
+                nameof(ItemUsedEvent.ItemId),
+                nameof(ItemUsedEvent.Quantity),
+                nameof(ItemUsedEvent.CharacterId))
+            .WhereProjected(static projected =>
+                projected.Field(nameof(ItemUsedEvent.ItemId)).Integer == 100)
+            .Select(nameof(ItemUsedEvent.Quantity))
+            .Select(nameof(ItemUsedEvent.CharacterId));
+
+        string[] pipelineFields = LastProjection(kernel).Fields.Select(static field => field.Path).ToArray();
+        string[] storedFields = kernel.Projection.Fields.Select(static field => field.Path).ToArray();
+
+        Assert.Equal(
+            [
+                ProjectedEventPaths.Field(nameof(ItemUsedEvent.Quantity)),
+                ProjectedEventPaths.Field(nameof(ItemUsedEvent.CharacterId)),
+            ],
+            pipelineFields);
+        Assert.Equal(pipelineFields, storedFields);
+    }
+
+    [Fact]
+    public void WithProjectionRecomputesPipelineFromChangedProjection()
+    {
+        QueryKernel<ItemUsedEvent> original = QueryKernel.For<ItemUsedEvent>()
+            .Select(nameof(ItemUsedEvent.ItemId));
+        QueryKernel<ItemUsedEvent> changed = original with
+        {
+            Projection = EventProjectionExpression.Select(nameof(ItemUsedEvent.Quantity)),
+        };
+
+        EventProjectionField field = LastProjection(changed).Fields.Single();
+
+        Assert.Equal(nameof(ItemUsedEvent.Quantity), changed.Projection.Fields.Single().Path);
+        Assert.Equal(nameof(ItemUsedEvent.Quantity), field.Path);
+    }
+
+    [Fact]
+    public void WithFilterRecomputesPipelineFromChangedFilter()
+    {
+        QueryKernel<ItemUsedEvent> original = QueryKernel.For<ItemUsedEvent>()
+            .Where(static item => item.ItemId == 100)
+            .Select(nameof(ItemUsedEvent.Quantity));
+        QueryKernel<ItemUsedEvent> changed = original with
+        {
+            Filter = FilterExpression.Any,
+        };
+
+        Assert.DoesNotContain(changed.Pipeline.Stages, static stage => stage.Kind == EventPipelineStageKind.Filter);
+        Assert.Single(changed.Pipeline.Stages, static stage => stage.Kind == EventPipelineStageKind.Projection);
+    }
+
+    [Fact]
     public void SelectorProjectionAfterProjectedFilterReadsProjectedFields()
     {
         QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()

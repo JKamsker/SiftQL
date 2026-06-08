@@ -49,6 +49,44 @@ public sealed class ProjectionCompilerRuntimeTests
                 _ => schema));
     }
 
+    [Fact]
+    public void ProjectionWithNullFieldArrayThrowsValidationException()
+    {
+        var projection = EventProjectionExpression.Default with { Fields = null! };
+
+        Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.Compile<object?>(
+                typeof(DefaultProjectionEvent),
+                projection,
+                RejectInclude));
+    }
+
+    [Fact]
+    public void ProjectionWithNullIncludeArrayThrowsValidationException()
+    {
+        var projection = EventProjectionExpression.Default with { Includes = null! };
+
+        Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.Compile<object?>(
+                typeof(DefaultProjectionEvent),
+                projection,
+                RejectInclude));
+    }
+
+    [Fact]
+    public void PipelineProjectionWithNullFieldArrayThrowsValidationException()
+    {
+        var projection = EventProjectionExpression.Default with { Fields = null! };
+        var pipeline = EventPipelineExpression.Default.AppendProjection(projection);
+
+        Assert.Throws<FilterValidationException>(() =>
+            EventPipelineCompiler.Compile<object?>(
+                typeof(DefaultProjectionEvent),
+                pipeline,
+                RejectInclude,
+                EventPipelineCompilerOptions.Immediate));
+    }
+
     private static CompiledProjection<object?>.IncludeProjector RejectInclude(
         FilterSchema schema,
         EventProjectionInclude include)

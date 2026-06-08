@@ -176,6 +176,28 @@ public sealed class FilterNumericPrecisionRegressionTests
     }
 
     [Fact]
+    public void DecimalLiteralDoesNotRoundToDoubleInMatch()
+    {
+        FilterValue value = FilterValue.From(1.0000000000000000000000000001m);
+
+        Assert.False(FilterValues.In(1.0D, [value]));
+        AssertFilter(
+            FilterExpression.In(nameof(DoubleSubject.Score), [value]),
+            new FilterCase<DoubleSubject>(new(1.0D), false));
+    }
+
+    [Fact]
+    public void DecimalLiteralDoesNotRoundToSingleInMatch()
+    {
+        FilterValue value = FilterValue.From(1.0000000000000000000000000001m);
+
+        Assert.False(FilterValues.In(1.0F, [value]));
+        AssertFilter(
+            FilterExpression.In(nameof(SingleSubject.Score), [value]),
+            new FilterCase<SingleSubject>(new(1.0F), false));
+    }
+
+    [Fact]
     public void ExactNumericOrderedNumberFallsBackConsistentlyAcrossModes()
     {
         var filter = FilterExpression.Compare(
@@ -346,6 +368,7 @@ public sealed class FilterNumericPrecisionRegressionTests
     private sealed record IntArraySubject(int[] Counts) : IFilterSubject;
     private sealed record FloatArraySubject(float[] Values) : IFilterSubject;
     private sealed record DoubleSubject(double Score) : IFilterSubject;
+    private sealed record SingleSubject(float Score) : IFilterSubject;
     private sealed record FloatingSubject(double Score) : IFilterSubject;
     private sealed record IntegralSubject(int Count) : IFilterSubject;
     private sealed record UIntIndexSubject(uint Id) : IFilterSubject;

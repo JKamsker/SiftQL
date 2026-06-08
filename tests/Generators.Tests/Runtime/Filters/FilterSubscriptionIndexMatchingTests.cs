@@ -196,6 +196,99 @@ public sealed class FilterSubscriptionIndexMatchingTests
         Assert.Equal(["sub"], visited);
     }
 
+    [Fact]
+    public void FSubIdx_SnapshotCandidates_ReturnsSubscriptionOnlyOnce()
+    {
+        var index = new FilterSubscriptionIndex<string>(typeof(SubjectA));
+        index.Add("sub", null);
+        index.Add("sub", FilterExpression.Compare(
+            nameof(SubjectA.Region),
+            FilterOperator.Equal,
+            FilterValue.From("A")));
+
+        string[] candidates = index.SnapshotCandidates(new SubjectA(Region: "A"));
+
+        Assert.Equal(["sub"], candidates);
+    }
+
+    [Fact]
+    public void TypedIdx_SnapshotCandidates_ReturnsSubscriptionOnlyOnce()
+    {
+        var index = new TypedFilterSubscriptionIndex<string, SubjectA>();
+        index.Add("sub", null);
+        index.Add("sub", FilterExpression.Compare(
+            nameof(SubjectA.Region),
+            FilterOperator.Equal,
+            FilterValue.From("A")));
+
+        string[] candidates = index.SnapshotCandidates(new SubjectA(Region: "A"));
+
+        Assert.Equal(["sub"], candidates);
+    }
+
+    [Fact]
+    public void FSubIdx_ForEachCandidate_ReturnsSubscriptionOnlyOnce()
+    {
+        var index = new FilterSubscriptionIndex<string>(typeof(SubjectA));
+        index.Add("sub", null);
+        index.Add("sub", FilterExpression.Compare(
+            nameof(SubjectA.Region),
+            FilterOperator.Equal,
+            FilterValue.From("A")));
+        var visited = new List<string>();
+
+        bool Visitor(string subscription, ref List<string> state)
+        {
+            state.Add(subscription);
+            return true;
+        }
+
+        index.ForEachCandidate(new SubjectA(Region: "A"), ref visited, Visitor);
+
+        Assert.Equal(["sub"], visited);
+    }
+
+    [Fact]
+    public void TypedIdx_ForEachCandidate_ReturnsSubscriptionOnlyOnce()
+    {
+        var index = new TypedFilterSubscriptionIndex<string, SubjectA>();
+        index.Add("sub", null);
+        index.Add("sub", FilterExpression.Compare(
+            nameof(SubjectA.Region),
+            FilterOperator.Equal,
+            FilterValue.From("A")));
+        var visited = new List<string>();
+
+        bool Visitor(string subscription, ref List<string> state)
+        {
+            state.Add(subscription);
+            return true;
+        }
+
+        index.ForEachCandidate(new SubjectA(Region: "A"), ref visited, Visitor);
+
+        Assert.Equal(["sub"], visited);
+    }
+
+    [Fact]
+    public void TypedIdx_NullSubjectsThrow()
+    {
+        var index = new TypedFilterSubscriptionIndex<string, SubjectA>();
+        index.Add("sub", null);
+        var visited = new List<string>();
+
+        bool Visitor(string subscription, ref List<string> state)
+        {
+            state.Add(subscription);
+            return true;
+        }
+
+        Assert.Throws<ArgumentNullException>(() => index.SnapshotCandidates(null!));
+        Assert.Throws<ArgumentNullException>(() => index.SnapshotMatches(null!));
+        Assert.Throws<ArgumentNullException>(() => index.ForEachCandidate(null!, ref visited, Visitor));
+        Assert.Throws<ArgumentNullException>(() => index.ForEachMatch(null!, ref visited, Visitor));
+    }
+
     private sealed record SubjectA(string Region = "", double Score = 0.0) : IFilterSubject;
 
     private sealed record NestedSubject(NestedLocation Location) : IFilterSubject;

@@ -73,6 +73,44 @@ public sealed class ProjectedHotProviderSourceGeneratorTests
     }
 
     [Fact]
+    public void GeneratorUsesProjectedSubjectTypeAliasFromEventMetadata()
+    {
+        var filter = FilterExpression.Compare(
+            "subjectType",
+            FilterOperator.Equal,
+            FilterValue.From(typeof(ItemUsedEvent).FullName!));
+        string manifestJson = HotManifestJson(
+            "Projected.Hot",
+            filter,
+            EventProjectionExpression.Default);
+        GeneratorRun run = RunGenerator(HotManifest(manifestJson));
+
+        AssertEx.Equal(0, run.Diagnostics.Length, "projected subjectType generator diagnostics");
+        AssertNoCompilationErrors(run, "projected subjectType hot provider");
+
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using var loaded = HotProviderTestLoader.Load(
+            run.OutputCompilation,
+            "Projected.Hot",
+            manifestJson,
+            "projected subjectType hot provider");
+        IPrecompiledTieredProvider provider = Provider(loaded.Assembly);
+
+        AssertEx.True(
+            provider.TryGetFilter(typeof(ProjectedEvent), Fingerprint(filter), out var predicate) &&
+            predicate is not null,
+            "projected subjectType hot filter exposed");
+
+        var projected = new ProjectedEvent
+        {
+            EventType = typeof(ItemUsedEvent).FullName!,
+            EventName = nameof(ItemUsedEvent),
+        };
+
+        Assert.True(predicate!(projected));
+    }
+
+    [Fact]
     public async Task GeneratorDefaultProjectedEventProjectionMatchesRuntime()
     {
         EventProjectionExpression projection = EventProjectionExpression.Default;

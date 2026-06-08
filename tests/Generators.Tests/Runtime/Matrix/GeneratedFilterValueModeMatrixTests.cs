@@ -88,6 +88,26 @@ public sealed class GeneratedFilterValueModeMatrixTests
         Assert.False(kernel.Matches(Event(context.EventType, score: 1.0, name: "alpha", tags: ["alpha"])));
     }
 
+    [Theory]
+    [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
+    public void DecimalLiteralInDoesNotRoundToDoubleMatch(GeneratedExecutionMode mode)
+    {
+        string assemblyName = "Plugin.Matrix.ValueDecimalIn." + mode;
+        FilterValue value = FilterValue.From(1.0000000000000000000000000001m);
+        FilterExpression filter = FilterExpression.In("Score", [value]);
+        using var context = LoadContext(
+            mode,
+            assemblyName,
+            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), filter));
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            context.EventType,
+            filter,
+            GeneratedModeMatrixSupport.FilterOptions(mode));
+
+        Assert.False(kernel.Matches(Event(context.EventType, score: 1.0, name: "alpha")));
+    }
+
     private static GeneratedModeContext LoadContext(
         GeneratedExecutionMode mode,
         string assemblyName,

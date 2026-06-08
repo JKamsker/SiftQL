@@ -40,6 +40,29 @@ public sealed class FilterCompilerCacheRegressionTests
     }
 
     [Fact]
+    public void DuplicateProviderRegistrationDisposesOnlyOneRegistration()
+    {
+        var filter = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(999L));
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        var provider = new Provider(static _ => true);
+        using IDisposable first = PrecompiledTieredProviderRegistry.Register(provider);
+        using IDisposable second = PrecompiledTieredProviderRegistry.Register(provider);
+
+        first.Dispose();
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            filter,
+            FilterCompilerOptions.Tiered);
+
+        Assert.False(kernel.IsTiered);
+        Assert.True(kernel.Matches(new ItemUsedEvent(Guid.NewGuid(), 1, 1, 1)));
+    }
+
+    [Fact]
     public void ImmediateFilterCacheIgnoresHotSinkReferenceIdentity()
     {
         var filter = FilterExpression.Compare(
