@@ -64,6 +64,29 @@ public sealed class FilterSchemaProviderReservedMetadataRegressionTests
     }
 
     [Fact]
+    public void RegisteredProviderCannotUseConstantAccessForInterfaceReservedMetadata()
+    {
+        GeneratedFilterSchemaRegistry.Register(
+            typeof(InterfaceReservedProviderSubject).Assembly,
+            static (Type candidate, out FilterSchema? schema) =>
+            {
+                if (candidate != typeof(InterfaceReservedProviderSubject))
+                {
+                    schema = null;
+                    return false;
+                }
+
+                schema = GeneratedFilterSchemaRegistry.Create(
+                    candidate,
+                    [ReservedSubjectName(access: FilterFieldAccess.ForConstant(nameof(InterfaceReservedProviderSubject)))]);
+                return true;
+            });
+
+        Assert.Throws<FilterValidationException>(() =>
+            FilterSchema.For(typeof(InterfaceReservedProviderSubject)));
+    }
+
+    [Fact]
     public void RegisteredProviderCannotUseStaleProjectionAccessorForReservedMetadata()
     {
         GeneratedFilterSchemaRegistry.Register(
@@ -107,4 +130,9 @@ public sealed class FilterSchemaProviderReservedMetadataRegressionTests
     private sealed record ReservedProviderSubject(int Id) : IFilterSubject;
 
     private record UnsealedReservedProviderSubject(int Id) : IFilterSubject;
+
+    private interface InterfaceReservedProviderSubject : IFilterSubject
+    {
+        int Id { get; }
+    }
 }
