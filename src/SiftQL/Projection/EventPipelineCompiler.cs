@@ -95,7 +95,7 @@ public static class EventPipelineCompiler
                 filters.Add(stage.Filter);
         }
 
-        return FilterExpression.And(filters.ToArray());
+        return FilterExpressionSnapshot.Clone(FilterExpression.And(filters.ToArray()));
     }
 
     public static EventPipelineExpression ProjectionDispatchPipeline(EventPipelineExpression? pipeline)
