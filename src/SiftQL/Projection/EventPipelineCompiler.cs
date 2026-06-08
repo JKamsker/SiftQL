@@ -34,6 +34,7 @@ public static class EventPipelineCompiler
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
         if (HasInvalidProjectionShape(normalized) ||
             HasParameters(normalized) ||
+            HasTieredOptions(options) ||
             PrecompiledTieredProviderRegistry.IsolatedScopeActive)
         {
             return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
@@ -268,6 +269,10 @@ public static class EventPipelineCompiler
 
         return false;
     }
+
+    private static bool HasTieredOptions(EventPipelineCompilerOptions options) =>
+        options.FilterOptions.Mode == FilterCompilationMode.Tiered ||
+        options.ProjectionOptions.Mode == ProjectionCompilationMode.Tiered;
 
     private static bool HasInvalidProjectionShape(EventPipelineExpression pipeline)
     {
