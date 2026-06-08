@@ -82,7 +82,7 @@ public static class FilterIndexExtractor
         FilterExpression expression,
         Func<string, Exception>? errorFactory)
     {
-        if (expression.Operator != FilterOperator.Equal || expression.Value is null)
+        if (expression.Value is null)
             return null;
         if (!schema.TryGetField(expression.Field, out FilterField? field) ||
             field.Kind != FilterFieldKind.Scalar)
@@ -91,6 +91,9 @@ public static class FilterIndexExtractor
         }
 
         FilterValues.ValidateComparison(field, expression.Operator, expression.Value, errorFactory);
+        if (expression.Operator != FilterOperator.Equal)
+            return null;
+
         return TryCreateFieldValue(field, expression.Value, out FilterIndexValue value)
             ? new FilterIndexKey(field.Name, value)
             : null;
