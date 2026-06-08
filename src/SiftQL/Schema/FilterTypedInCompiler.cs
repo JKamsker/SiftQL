@@ -1,5 +1,6 @@
 using SiftQL;
 using SiftQL.Expressions;
+using SiftQL.Values;
 
 namespace SiftQL.Schema;
 
@@ -22,6 +23,9 @@ internal static class FilterTypedInCompiler
 
     public static Func<object, bool> CompileNumber(Func<object, double?> getter, FilterValue[] values)
     {
+        if (values.Any(static value => value.Kind == FilterValueKind.Decimal))
+            return subject => FilterValues.In(getter(subject), values);
+
         bool hasNull = HasNull(values);
         double[] expected = values
             .Where(static value => value.Kind != FilterValueKind.Null)
@@ -29,7 +33,6 @@ internal static class FilterTypedInCompiler
             {
                 FilterValueKind.Integer => value.Integer,
                 FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-                FilterValueKind.Decimal => (double)value.Decimal,
                 _ => value.Number,
             })
             .Where(static value => !double.IsNaN(value))

@@ -49,11 +49,14 @@ internal static class FilterExpressionInBuilder
                 Expression.Constant(hasNull));
     }
 
-    private static Expression BuildNumberIn(Expression actual, FilterValue[] values)
+    private static Expression? BuildNumberIn(Expression actual, FilterValue[] values)
     {
         Type type = Nullable.GetUnderlyingType(actual.Type) ?? actual.Type;
         if (FilterNumeric.IsExactNumeric(type))
             return BuildExactNumberIn(actual, values);
+
+        if (values.Any(static value => value.Kind == FilterValueKind.Decimal))
+            return null;
 
         if (values.All(static value => value.Kind is FilterValueKind.Integer or FilterValueKind.Null))
         {
@@ -94,7 +97,6 @@ internal static class FilterExpressionInBuilder
             {
                 FilterValueKind.Integer => value.Integer,
                 FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-                FilterValueKind.Decimal => (double)value.Decimal,
                 _ => value.Number,
             })
             .Where(static value => !double.IsNaN(value))
