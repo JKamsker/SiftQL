@@ -35,6 +35,12 @@ internal static class HotProviderResolver
                 continue;
             }
 
+            if (!projectedEvent && !SupportedSubjectShape(subject))
+            {
+                Add(diagnostics, manifest.Path, $"Hot entry subject '{entry.SubjectType}' has an unsupported type shape.");
+                continue;
+            }
+
             if (!projectedEvent &&
                 SchemaFieldDiscovery.ReservedTopLevelPropertyCollision(subject) is { } collision)
             {
@@ -251,6 +257,28 @@ internal static class HotProviderResolver
         !subject.IsGenericType &&
         !subject.IsAbstract &&
         subject.TypeKind is TypeKind.Class or TypeKind.Struct;
+
+    private static bool SupportedSubjectShape(INamedTypeSymbol subject) =>
+        !ContainsTypeParameter(subject) &&
+        !subject.IsRefLikeType;
+
+    private static bool ContainsTypeParameter(ITypeSymbol symbol)
+    {
+        if (symbol.TypeKind == TypeKind.TypeParameter)
+            return true;
+
+        if (symbol is not INamedTypeSymbol named)
+            return false;
+
+        for (int i = 0; i < named.TypeArguments.Length; i++)
+        {
+            if (ContainsTypeParameter(named.TypeArguments[i]))
+                return true;
+        }
+
+        return named.ContainingType is not null &&
+            ContainsTypeParameter(named.ContainingType);
+    }
 
     private static bool IsExternallyVisible(INamedTypeSymbol subject)
     {
