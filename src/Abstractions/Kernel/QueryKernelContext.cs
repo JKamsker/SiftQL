@@ -26,19 +26,25 @@ public sealed record QueryKernel<TSubject, TContext>
     public QueryKernel<TSubject, TContext> Where(
         Expression<Func<TSubject, TContext, bool>> predicate)
     {
+        ContextFilterTranslation sourceTranslated = ContextKernelExpressionTranslator.Translate(
+            predicate,
+            Pipeline,
+            _bindings,
+            KernelParameterKeyRewriter.ParameterOffset(Pipeline),
+            projectSubjectFields: false);
+        if (sourceTranslated.NewIncludes.Length == 0 &&
+            !ReferencesContextPath(sourceTranslated.Filter))
+        {
+            return new QueryKernel<TSubject, TContext>(
+                Kernel with { Pipeline = Pipeline.AppendSourceFilter(sourceTranslated.Filter) },
+                sourceTranslated.Bindings);
+        }
+
         ContextFilterTranslation translated = ContextKernelExpressionTranslator.Translate(
             predicate,
             Pipeline,
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
-        if (translated.NewIncludes.Length == 0 &&
-            !ReferencesContextPath(translated.Filter))
-        {
-            return new QueryKernel<TSubject, TContext>(
-                Kernel with { Pipeline = Pipeline.AppendSourceFilter(ToSourceFilter(translated.Filter)) },
-                translated.Bindings);
-        }
-
         EventPipelineExpression pipeline = ContextProjectionPipeline
             .AddIncludes(Pipeline, translated.NewIncludes)
             .AppendFilter(translated.Filter);

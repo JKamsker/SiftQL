@@ -177,7 +177,8 @@ public sealed record QueryKernel<TSubject>
 
     private QueryKernel<TSubject> SelectProjection(EventProjectionExpression projection)
     {
-        projection = ProjectedFieldProjection(projection);
+        bool appendSelectorProjection = projection.Includes.Length != 0;
+        projection = ProjectedFieldProjection(projection, appendSelectorProjection);
         EventPipelineExpression pipeline = projection.Includes.Length == 0
             ? Pipeline.AppendOrMergeLastProjection(projection)
             : ContextProjectionPipeline.AppendSelectorWithIncludes(
@@ -202,24 +203,36 @@ public sealed record QueryKernel<TSubject>
             fields.Select(ProjectedField).ToArray());
     }
 
-    private EventProjectionExpression ProjectedFieldProjection(EventProjectionExpression projection)
+    private EventProjectionExpression ProjectedFieldProjection(
+        EventProjectionExpression projection,
+        bool appendSelectorProjection = false)
     {
         if (!ProjectionWillReadProjectedEvent())
             return projection;
 
+        EventProjectionExpression projectedInput = appendSelectorProjection
+            ? QueryKernelPipelineState.LastProjectionOrDefault(Pipeline)
+            : QueryKernelPipelineState.ProjectionInputForNextProjection(Pipeline);
         return projection with
         {
             Fields = projection.Fields
-                .Select(ProjectedField)
+                .Select(field => ProjectedField(field, projectedInput))
                 .ToArray(),
         };
     }
 
-    private EventProjectionField ProjectedField(EventProjectionField field)
+    private EventProjectionField ProjectedField(EventProjectionField field) =>
+        ProjectedField(
+            field,
+            QueryKernelPipelineState.ProjectionInputForNextProjection(Pipeline));
+
+    private EventProjectionField ProjectedField(
+        EventProjectionField field,
+        EventProjectionExpression projectedInput)
     {
         if (ProjectedEventPaths.TrySplit(field.Path, out _, out _))
             return field;
-        if (TryProjectedFieldName(field.Path, out string projectedFieldName))
+        if (TryProjectedFieldName(projectedInput, field.Path, out string projectedFieldName))
         {
             return new EventProjectionField(
                 ProjectedEventPaths.Field(projectedFieldName),
@@ -234,9 +247,11 @@ public sealed record QueryKernel<TSubject>
             field.Name);
     }
 
-    private bool TryProjectedFieldName(string sourcePath, out string fieldName)
+    private static bool TryProjectedFieldName(
+        EventProjectionExpression previous,
+        string sourcePath,
+        out string fieldName)
     {
-        EventProjectionExpression previous = QueryKernelPipelineState.ProjectionInputForNextProjection(Pipeline);
         for (int i = previous.Fields.Length - 1; i >= 0; i--)
         {
             EventProjectionField field = previous.Fields[i];

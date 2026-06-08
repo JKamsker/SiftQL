@@ -75,6 +75,13 @@ internal static class ContextProjectionPipeline
             EventProjectionField field = previous.Fields[i];
             if (string.Equals(field.Path, sourcePath, StringComparison.OrdinalIgnoreCase))
                 return field.Name;
+
+            if (sourcePath.Length > field.Path.Length &&
+                sourcePath[field.Path.Length] == '.' &&
+                sourcePath.StartsWith(field.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                return field.Name + sourcePath[field.Path.Length..];
+            }
         }
 
         return sourcePath;

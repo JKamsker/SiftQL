@@ -12,7 +12,8 @@ internal static class ContextKernelExpressionTranslator
         Expression<Func<TSubject, TContext, bool>> predicate,
         EventPipelineExpression pipeline,
         IReadOnlyList<ContextProjectionBinding> bindings,
-        int parameterOffset)
+        int parameterOffset,
+        bool projectSubjectFields = true)
     {
         ArgumentNullException.ThrowIfNull(predicate);
         var translator = new Translator(
@@ -20,7 +21,8 @@ internal static class ContextKernelExpressionTranslator
             predicate.Parameters[1],
             pipeline,
             bindings,
-            parameterOffset);
+            parameterOffset,
+            projectSubjectFields);
         FilterExpression filter = translator.Translate(StripConvert(predicate.Body));
         return new ContextFilterTranslation(
             filter,
@@ -33,6 +35,7 @@ internal static class ContextKernelExpressionTranslator
         private readonly ParameterExpression _subject;
         private readonly ParameterExpression _context;
         private readonly EventPipelineExpression _pipeline;
+        private readonly bool _projectSubjectFields;
         private int _parameterIndex;
 
         public Translator(
@@ -40,11 +43,13 @@ internal static class ContextKernelExpressionTranslator
             ParameterExpression context,
             EventPipelineExpression pipeline,
             IReadOnlyList<ContextProjectionBinding> bindings,
-            int parameterOffset)
+            int parameterOffset,
+            bool projectSubjectFields)
         {
             _subject = subject;
             _context = context;
             _pipeline = pipeline;
+            _projectSubjectFields = projectSubjectFields;
             _parameterIndex = parameterOffset;
             Includes = new ContextExpressionIncludes(subject, context, bindings, NextParameterKey);
         }
@@ -149,7 +154,9 @@ internal static class ContextKernelExpressionTranslator
             expression = StripConvert(expression);
             if (TryGetSubjectFieldPath(expression, out string? sourcePath))
             {
-                path = ContextProjectionPipeline.ProjectedPath(_pipeline, sourcePath);
+                path = _projectSubjectFields
+                    ? ContextProjectionPipeline.ProjectedPath(_pipeline, sourcePath)
+                    : sourcePath;
                 return true;
             }
 
