@@ -179,13 +179,15 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         TSubscription subscription,
         FilterExpression expression)
     {
-        FilterIndexKey? key = FilterIndexExtractor.Extract(schema, expression);
+        FilterExpressionShapeValidator.Validate(expression);
+        FilterExpression snapshot = FilterExpressionSnapshot.Clone(expression);
+        FilterIndexKey? key = FilterIndexExtractor.Extract(schema, snapshot);
         return new TypedSubscriptionEntry<TSubscription, TSubject>(
             subscription,
-            expression,
+            snapshot,
             key,
             FilterCompiler
-                .Compile(schema.SubjectType, expression, FilterCompilerOptions.Immediate)
+                .Compile(schema.SubjectType, snapshot, FilterCompilerOptions.Immediate)
                 .CreateMatcher<TSubject>());
     }
 

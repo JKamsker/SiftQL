@@ -197,12 +197,14 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         TSubscription subscription,
         FilterExpression expression)
     {
-        FilterIndexKey? key = FilterIndexExtractor.Extract(schema, expression);
+        FilterExpressionShapeValidator.Validate(expression);
+        FilterExpression snapshot = FilterExpressionSnapshot.Clone(expression);
+        FilterIndexKey? key = FilterIndexExtractor.Extract(schema, snapshot);
         return new SubscriptionEntry<TSubscription>(
             subscription,
-            expression,
+            snapshot,
             key,
-            FilterCompiler.Compile(schema.SubjectType, expression, FilterCompilerOptions.Immediate));
+            FilterCompiler.Compile(schema.SubjectType, snapshot, FilterCompilerOptions.Immediate));
     }
 
     private void AddEntry(SubscriptionEntry<TSubscription> entry)
