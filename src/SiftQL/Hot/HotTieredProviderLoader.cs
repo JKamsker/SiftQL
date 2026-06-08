@@ -8,9 +8,9 @@ namespace SiftQL.Hot;
 
 public static class HotTieredProviderLoader
 {
-    private const string Schema = "siftql.hot.v1";
-    private const string Engine = "tiered-v1";
-    private const string Generator = "hot-sourcegen-v1";
+    private const string Schema = HotCompilationManifestCompatibility.Schema;
+    private const string Engine = HotCompilationManifestCompatibility.Engine;
+    private const string Generator = HotCompilationManifestCompatibility.Generator;
     private const string HashKey = "SiftQLHotManifestHash";
     private const string SchemaKey = "SiftQLHotManifestSchema";
     private const string EngineKey = "SiftQLHotFilterEngine";
@@ -91,7 +91,9 @@ public static class HotTieredProviderLoader
     }
 
     private static HotCompilationManifest? DeserializeManifest(string manifestJson) =>
-        JsonSerializer.Deserialize<HotCompilationManifest>(manifestJson);
+        HotCompilationManifestCompatibility.HasRequiredFields(manifestJson)
+            ? JsonSerializer.Deserialize<HotCompilationManifest>(manifestJson)
+            : null;
 
     private static HotTieredProviderLoadResult? ValidateManifest(
         HotCompilationManifest manifest,
