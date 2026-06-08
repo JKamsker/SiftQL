@@ -59,7 +59,7 @@ internal static class FilterExpressionScalarBuilder
         return op == FilterOperator.Equal ? equals : Expression.Not(equals);
     }
 
-    private static Expression BuildNumberCompare(Expression actual, FilterValue value, FilterOperator op)
+    private static Expression? BuildNumberCompare(Expression actual, FilterValue value, FilterOperator op)
     {
         Type type = Nullable.GetUnderlyingType(actual.Type) ?? actual.Type;
         if (value.Kind == FilterValueKind.Integer)
@@ -118,11 +118,13 @@ internal static class FilterExpressionScalarBuilder
                 static item => Expression.Convert(item, typeof(decimal)));
         }
 
+        if (value.Kind == FilterValueKind.Decimal)
+            return null;
+
         double expected = value.Kind switch
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return BuildValueCompare(

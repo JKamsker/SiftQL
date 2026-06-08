@@ -1,5 +1,6 @@
 using SiftQL;
 using SiftQL.Expressions;
+using SiftQL.Values;
 
 namespace SiftQL.Schema;
 
@@ -78,11 +79,13 @@ internal static class FilterTypedPredicates
                 _ => static _ => false,
             };
 
+        if (value.Kind == FilterValueKind.Decimal)
+            return subject => FilterValues.Compare(getter(subject), value, op);
+
         double expected = value.Kind switch
         {
             FilterValueKind.Integer => value.Integer,
             FilterValueKind.UnsignedInteger => value.UnsignedInteger,
-            FilterValueKind.Decimal => (double)value.Decimal,
             _ => value.Number,
         };
         return op switch
