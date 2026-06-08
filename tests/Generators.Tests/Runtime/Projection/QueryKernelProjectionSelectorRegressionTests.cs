@@ -75,6 +75,19 @@ public sealed class QueryKernelProjectionSelectorRegressionTests
         Assert.Equal(name, projected.Field("Name").String);
     }
 
+    [Fact]
+    public async Task ProjectedSelectorProjectsStaticMemberAsField()
+    {
+        QueryKernel<ItemUsedEvent> query = QueryKernel
+            .For<ItemUsedEvent, object>()
+            .Select(static (ev, _) => new { ev.ItemId })
+            .Select(static _ => new { Value = StaticProjectionValue });
+
+        ProjectedEvent projected = await ProjectAsync(query);
+
+        Assert.Equal(42, projected.Field("Value").Integer);
+    }
+
     private static int StaticProjectionValue => 42;
 
     private static EventProjectionExpression FirstProjection(QueryKernel<ItemUsedEvent> query) =>

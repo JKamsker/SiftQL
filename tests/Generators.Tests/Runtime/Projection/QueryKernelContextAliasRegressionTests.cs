@@ -60,6 +60,29 @@ public sealed class QueryKernelContextAliasRegressionTests
         Assert.Equal(42, projected!.Field("PlayerId").Integer);
     }
 
+    [Fact]
+    public async Task ContextSelectorProjectsStaticMemberAsField()
+    {
+        QueryKernel<BuffActivatedEvent> query = QueryKernel
+            .For<BuffActivatedEvent, CombatContext>()
+            .Select(static (_, _) => new { Value = StaticProjectionValue });
+
+        CompiledEventPipeline<CombatContext> compiled = EventPipelineCompiler.Compile<CombatContext>(
+            typeof(BuffActivatedEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new BuffActivatedEvent(Guid.NewGuid(), Guid.NewGuid(), 7),
+            new CombatContext(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(42, projected!.Field("Value").Integer);
+    }
+
+    private static int StaticProjectionValue => 42;
+
     private sealed record BuffActivatedEvent(
         Guid TargetId,
         Guid SourceId,
