@@ -9,6 +9,7 @@ public static class PrecompiledTieredProviderRegistry
 {
     private static readonly object s_gate = new();
     private static readonly AsyncLocal<ProviderScope?> s_scope = new();
+    private static readonly AsyncLocal<RegistrationTrackingScope?> s_tracker = new();
     private static IPrecompiledTieredProvider[] s_providers = [];
     private static int s_globalVersion;
 
@@ -23,13 +24,33 @@ public static class PrecompiledTieredProviderRegistry
 
     public static IDisposable Register(IPrecompiledTieredProvider provider)
     {
+        return Register(provider, trackRegistration: true);
+    }
+
+    internal static IDisposable RegisterManifestProvider(IPrecompiledTieredProvider provider) =>
+        Register(provider, trackRegistration: false);
+
+    internal static RegistrationTrackingScope TrackRegistrations()
+    {
+        var scope = new RegistrationTrackingScope(s_tracker.Value);
+        s_tracker.Value = scope;
+        return scope;
+    }
+
+    private static IDisposable Register(
+        IPrecompiledTieredProvider provider,
+        bool trackRegistration)
+    {
         ArgumentNullException.ThrowIfNull(provider);
+        IDisposable registration;
         ProviderScope? scope = s_scope.Value;
         if (scope is { IsActive: true })
         {
             scope.Add(provider);
             IncrementGlobalVersion();
-            return new ScopedRegistration(scope, provider);
+            registration = new ScopedRegistration(scope, provider);
+            Track(registration, trackRegistration);
+            return registration;
         }
 
         lock (s_gate)
@@ -38,7 +59,9 @@ public static class PrecompiledTieredProviderRegistry
         }
 
         IncrementGlobalVersion();
-        return new Registration(provider);
+        registration = new Registration(provider);
+        Track(registration, trackRegistration);
+        return registration;
     }
 
     internal static bool IsolatedScopeActive => s_scope.Value is { IsActive: true };
@@ -161,6 +184,42 @@ public static class PrecompiledTieredProviderRegistry
     {
         Interlocked.Increment(ref s_globalVersion);
         Changed?.Invoke();
+    }
+
+    private static void Track(IDisposable registration, bool enabled)
+    {
+        if (enabled)
+            s_tracker.Value?.Add(registration);
+    }
+
+    internal sealed class RegistrationTrackingScope(RegistrationTrackingScope? parent) : IDisposable
+    {
+        private readonly List<IDisposable> _registrations = [];
+        private bool _disposed;
+
+        public void Add(IDisposable registration)
+        {
+            if (!_disposed)
+                _registrations.Add(registration);
+        }
+
+        public void DisposeTrackedRegistrations()
+        {
+            for (int i = _registrations.Count - 1; i >= 0; i--)
+                _registrations[i].Dispose();
+            _registrations.Clear();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            DisposeTrackedRegistrations();
+            if (ReferenceEquals(s_tracker.Value, this))
+                s_tracker.Value = parent;
+        }
     }
 
     private sealed class ProviderScope(ProviderScope? parent) : IDisposable

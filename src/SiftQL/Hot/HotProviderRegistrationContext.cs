@@ -57,6 +57,7 @@ public static class HotProviderRegistrationContext
     {
         private readonly List<PendingRegistration> _pending = [];
         private readonly List<IDisposable> _registrations = [];
+        private readonly List<IPrecompiledTieredProvider> _providers = [];
         private readonly HashSet<string> _acceptedManifestHashes = new(StringComparer.OrdinalIgnoreCase);
         private bool _committed;
         private bool _disposed;
@@ -96,6 +97,9 @@ public static class HotProviderRegistrationContext
             return committed;
         }
 
+        internal IPrecompiledTieredProvider[] CommittedProviders() =>
+            _providers.ToArray();
+
         internal IDisposable ClaimCommittedRegistrations()
         {
             if (!_committed || _registrations.Count == 0)
@@ -103,6 +107,7 @@ public static class HotProviderRegistrationContext
 
             var registrations = _registrations.ToArray();
             _registrations.Clear();
+            _providers.Clear();
             return new CompositeRegistration(registrations);
         }
 
@@ -118,18 +123,22 @@ public static class HotProviderRegistrationContext
                 _pending[i].Dispose();
             _pending.Clear();
 
-            if (!_committed)
-            {
-                for (int i = _registrations.Count - 1; i >= 0; i--)
-                    _registrations[i].Dispose();
-            }
+            for (int i = _registrations.Count - 1; i >= 0; i--)
+                _registrations[i].Dispose();
+            _registrations.Clear();
+            _providers.Clear();
         }
 
         private void RemovePending(PendingRegistration registration) =>
             _pending.Remove(registration);
 
-        private void AddCommitted(IDisposable registration) =>
+        private void AddCommitted(
+            IPrecompiledTieredProvider provider,
+            IDisposable registration)
+        {
+            _providers.Add(provider);
             _registrations.Add(registration);
+        }
 
         private bool AcceptManifestHash(string manifestHash) =>
             _acceptedManifestHashes.Add(manifestHash);
@@ -162,9 +171,9 @@ public static class HotProviderRegistrationContext
                     return false;
 
                 IPrecompiledTieredProvider item = provider ?? providerFactory!();
-                IDisposable registration = PrecompiledTieredProviderRegistry.Register(item);
+                IDisposable registration = PrecompiledTieredProviderRegistry.RegisterManifestProvider(item);
                 _committed = registration;
-                owner.AddCommitted(registration);
+                owner.AddCommitted(item, registration);
                 return true;
             }
 
