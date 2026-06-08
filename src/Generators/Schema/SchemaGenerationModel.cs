@@ -23,7 +23,8 @@ internal sealed record GeneratedSchema(
     string HelperName,
     EquatableArray<GeneratedField> Fields,
     string? ReservedFieldCollision,
-    bool IsSealed);
+    bool IsSealed,
+    bool AllowsReservedProjectionAccessor);
 
 internal sealed record GeneratedProvider(
     EquatableArray<GeneratedSchema> Schemas,

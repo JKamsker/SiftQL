@@ -82,8 +82,26 @@ internal static class FilterSchemaDiscovery
             HelperName(type),
             new EquatableArray<GeneratedField>(fields.ToImmutable()),
             SchemaFieldDiscovery.ReservedTopLevelPropertyCollision(type),
-            type.IsSealed);
+            type.IsSealed,
+            AllowsReservedProjectionAccessor(type));
     }
+
+    private static bool AllowsReservedProjectionAccessor(INamedTypeSymbol type) =>
+        type.IsSealed ||
+        type.TypeKind == TypeKind.Struct ||
+        type.InstanceConstructors.Any(CanCreateDerivedProbe);
+
+    private static bool CanCreateDerivedProbe(IMethodSymbol constructor) =>
+        (constructor.DeclaredAccessibility is
+            Accessibility.Public or
+            Accessibility.Protected or
+            Accessibility.ProtectedOrInternal) &&
+        constructor.Parameters.All(CanEmitDefault);
+
+    private static bool CanEmitDefault(IParameterSymbol parameter) =>
+        parameter.RefKind == RefKind.None &&
+        !parameter.Type.IsRefLikeType &&
+        parameter.Type.TypeKind is not TypeKind.Pointer and not TypeKind.FunctionPointer;
 
     private static IAssemblySymbol? FindAbstractions(Compilation compilation) =>
         compilation.Assembly.Name == AbstractionsAssembly

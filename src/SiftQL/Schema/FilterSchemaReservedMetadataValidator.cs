@@ -66,11 +66,7 @@ internal static class FilterSchemaReservedMetadataValidator
 
         ValidateAccess(subjectType, field, name, expected);
         if (!hasProbe)
-        {
-            if (field.ProjectionAccessor is not null && !allowProjectionAccessor)
-                throw InvalidReservedMetadata(subjectType, name);
-            return;
-        }
+            throw InvalidReservedMetadata(subjectType, name);
 
         if (!TryReadString(() => field.Getter(probe!), out string? actual) ||
             !string.Equals(actual, expected, StringComparison.Ordinal))
