@@ -50,14 +50,10 @@ internal static class KernelExpressionTranslator
         FilterOperator op)
     {
         if (TryGetFieldPath(expression.Left, parameter, out string? leftField))
-        {
             return FilterExpression.Compare(leftField, op, ToValue(expression.Right, parameter, ref parameterIndex));
-        }
 
         if (TryGetFieldPath(expression.Right, parameter, out string? rightField))
-        {
             return FilterExpression.Compare(rightField, Flip(op), ToValue(expression.Left, parameter, ref parameterIndex));
-        }
 
         throw Unsupported(expression);
     }
@@ -74,14 +70,10 @@ internal static class KernelExpressionTranslator
         }
 
         if (IsKernelExists(expression.Method))
-        {
             return FilterExpression.Exists(RequireField(expression.Arguments[0], parameter));
-        }
 
         if (IsContains(expression.Method))
-        {
             return TranslateContains(expression, parameter, ref parameterIndex);
-        }
 
         throw Unsupported(expression);
     }
@@ -181,9 +173,7 @@ internal static class KernelExpressionTranslator
         Expression original = expression;
         expression = StripConvert(expression);
         if (expression is MethodCallExpression implicitCall && IsImplicitConversion(implicitCall))
-        {
             return TryGetFieldPath(implicitCall.Arguments[0], parameter, out field);
-        }
 
         var names = new Stack<string>();
         Expression? current = expression;
