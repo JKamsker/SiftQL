@@ -75,5 +75,5 @@ internal static class FilterTypedArrayPredicates
     }
 
     private static bool CanUseDoubleExpected(FilterValue value) =>
-        value.Kind != FilterValueKind.Decimal;
+        value.Kind == FilterValueKind.Number;
 }

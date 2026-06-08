@@ -76,6 +76,12 @@ internal static class FilterExpressionArrayBuilder
             expected = null;
             return null;
         }
+        if (IsFloating(type) &&
+            value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger)
+        {
+            expected = null;
+            return null;
+        }
 
         expected = value.Kind switch
         {
@@ -171,4 +177,7 @@ internal static class FilterExpressionArrayBuilder
         type == typeof(long) ? nameof(FilterArrayContains.ContainsInt64Value) :
         type == typeof(ulong) ? nameof(FilterArrayContains.ContainsUInt64Value) :
         null;
+
+    private static bool IsFloating(Type type) =>
+        type == typeof(float) || type == typeof(double);
 }

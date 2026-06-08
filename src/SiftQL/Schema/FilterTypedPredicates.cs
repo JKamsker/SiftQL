@@ -81,6 +81,8 @@ internal static class FilterTypedPredicates
 
         if (value.Kind == FilterValueKind.Decimal)
             return subject => FilterValues.Compare(getter(subject), value, op);
+        if (value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger)
+            return subject => FilterValues.Compare(getter(subject), value, op);
 
         double expected = value.Kind switch
         {
@@ -157,7 +159,16 @@ internal static class FilterTypedPredicates
         => FilterTypedInCompiler.CompileBoolean(getter, values);
 
     private static Func<object, bool> CompileNumberIn(Func<object, double?> getter, FilterValue[] values)
-        => FilterTypedInCompiler.CompileNumber(getter, values);
+    {
+        if (values.Any(static value => value.Kind is FilterValueKind.Integer or
+                FilterValueKind.UnsignedInteger or
+                FilterValueKind.Decimal))
+        {
+            return subject => FilterValues.In(getter(subject), values);
+        }
+
+        return FilterTypedInCompiler.CompileNumber(getter, values);
+    }
 
     private static Func<object, bool> CompileStringIn(Func<object, string?> getter, FilterValue[] values)
         => FilterTypedInCompiler.CompileString(getter, values);

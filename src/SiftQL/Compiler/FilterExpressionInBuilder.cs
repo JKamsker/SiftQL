@@ -58,6 +58,11 @@ internal static class FilterExpressionInBuilder
 
         if (values.Any(static value => value.Kind == FilterValueKind.Decimal))
             return null;
+        if (IsFloating(type) &&
+            values.Any(static value => value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
+        {
+            return null;
+        }
 
         if (values.All(static value => value.Kind is FilterValueKind.Integer or FilterValueKind.Null))
         {
@@ -226,5 +231,8 @@ internal static class FilterExpressionInBuilder
 
     private static bool HasNull(IEnumerable<FilterValue> values) =>
         values.Any(static value => value.Kind == FilterValueKind.Null);
+
+    private static bool IsFloating(Type type) =>
+        type == typeof(float) || type == typeof(double);
 
 }

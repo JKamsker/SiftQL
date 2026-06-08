@@ -120,6 +120,11 @@ internal static class FilterExpressionScalarBuilder
 
         if (value.Kind == FilterValueKind.Decimal)
             return null;
+        if (IsFloating(type) &&
+            value.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger)
+        {
+            return null;
+        }
 
         double expected = value.Kind switch
         {
@@ -266,5 +271,8 @@ internal static class FilterExpressionScalarBuilder
             _ => Expression.Constant(false),
         };
     }
+
+    private static bool IsFloating(Type type) =>
+        type == typeof(float) || type == typeof(double);
 
 }

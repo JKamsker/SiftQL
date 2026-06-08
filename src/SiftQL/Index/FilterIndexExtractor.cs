@@ -7,6 +7,9 @@ namespace SiftQL.Index;
 
 public static class FilterIndexExtractor
 {
+    private const double LongMaxExclusive = 9_223_372_036_854_775_808D;
+    private const double ULongMaxExclusive = 18_446_744_073_709_551_616D;
+
     public static FilterIndexKey? Extract(
         Type subjectType,
         FilterExpression? expression,
@@ -132,16 +135,12 @@ public static class FilterIndexExtractor
 
         if (IsFloating(type) && value.Kind == FilterValueKind.Integer)
         {
-            key = FilterIndexValue.ForNumber(value.Integer);
-            return true;
+            return TryCreateFloatingIntegerValue(value.Integer, out key);
         }
 
         if (IsFloating(type) && value.Kind == FilterValueKind.UnsignedInteger)
         {
-            if (type == typeof(decimal))
-                return false;
-            key = FilterIndexValue.ForNumber(value.UnsignedInteger);
-            return true;
+            return TryCreateFloatingUnsignedIntegerValue(value.UnsignedInteger, out key);
         }
 
         if (value.Kind == FilterValueKind.Number &&
@@ -205,4 +204,30 @@ public static class FilterIndexExtractor
 
     private static bool IsFloating(Type type) =>
         type == typeof(float) || type == typeof(double) || type == typeof(decimal);
+
+    private static bool TryCreateFloatingIntegerValue(
+        long value,
+        out FilterIndexValue key)
+    {
+        key = default;
+        double number = value;
+        if (number >= LongMaxExclusive || (long)number != value)
+            return false;
+
+        key = FilterIndexValue.ForNumber(number);
+        return true;
+    }
+
+    private static bool TryCreateFloatingUnsignedIntegerValue(
+        ulong value,
+        out FilterIndexValue key)
+    {
+        key = default;
+        double number = value;
+        if (number >= ULongMaxExclusive || (ulong)number != value)
+            return false;
+
+        key = FilterIndexValue.ForNumber(number);
+        return true;
+    }
 }
