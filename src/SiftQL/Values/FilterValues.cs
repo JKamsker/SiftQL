@@ -10,6 +10,8 @@ namespace SiftQL.Values;
 public static class FilterValues
 {
     private const int MaxRuntimeArrayItems = 256;
+    private const string TooManyRuntimeArrayItemsMessage =
+        "Runtime array filters support at most 256 items.";
 
     public static void ValidateComparison(
         FilterField field,
@@ -95,20 +97,31 @@ public static class FilterValues
         if (actual is ICollection collection && collection.Count > MaxRuntimeArrayItems)
             throw TooManyRuntimeArrayItems();
 
-        int seen = 0;
-        foreach (object? item in enumerable)
+        bool matched = false;
+        try
         {
-            if (actual is not ICollection && ++seen > MaxRuntimeArrayItems)
-                throw TooManyRuntimeArrayItems();
-            if (AreEqual(item, expected))
-                return true;
+            int seen = 0;
+            foreach (object? item in enumerable)
+            {
+                if (actual is not ICollection && ++seen > MaxRuntimeArrayItems)
+                    throw TooManyRuntimeArrayItems();
+                if (!matched && AreEqual(item, expected))
+                    matched = true;
+            }
+        }
+        catch (Exception ex) when (matched && !IsTooManyRuntimeArrayItems(ex))
+        {
+            return true;
         }
 
-        return false;
+        return matched;
     }
 
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
-        new($"Runtime array filters support at most {MaxRuntimeArrayItems} items.");
+        new(TooManyRuntimeArrayItemsMessage);
+
+    private static bool IsTooManyRuntimeArrayItems(Exception ex) =>
+        ex is InvalidOperationException { Message: TooManyRuntimeArrayItemsMessage };
 
     private static bool AreEqual(object? actual, FilterValue expected)
     {
