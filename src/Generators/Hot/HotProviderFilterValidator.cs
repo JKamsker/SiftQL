@@ -5,6 +5,8 @@ namespace SiftQL.Generators.Hot;
 
 internal static class HotProviderFilterValidator
 {
+    private const int StringContainsOperator = 6;
+
     public static bool Validate(
         HotFilterNode node,
         EquatableArray<GeneratedField> fields,
@@ -215,6 +217,13 @@ internal static class HotProviderFilterValidator
     {
         if (!ValidateValue(scalarKind, projectedDynamic, value, diagnostics, path))
             return false;
+        if (op == StringContainsOperator)
+        {
+            return value.Kind == HotFilterValueKind.String &&
+                (projectedDynamic || scalarKind == GeneratedScalarKind.String) ||
+                Unsupported(diagnostics, path, "Hot string contains filters require a string field and value.");
+        }
+
         if (op is 0 or 1)
             return true;
         if (projectedDynamic && IsNumeric(value.Kind))

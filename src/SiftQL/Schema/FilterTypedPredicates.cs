@@ -117,9 +117,13 @@ internal static class FilterTypedPredicates
                 : static _ => false;
 
         string expected = value.String;
-        return op == FilterOperator.Equal
-            ? subject => string.Equals(getter(subject), expected, StringComparison.Ordinal)
-            : subject => !string.Equals(getter(subject), expected, StringComparison.Ordinal);
+        return op switch
+        {
+            FilterOperator.Equal => subject => string.Equals(getter(subject), expected, StringComparison.Ordinal),
+            FilterOperator.NotEqual => subject => !string.Equals(getter(subject), expected, StringComparison.Ordinal),
+            FilterOperator.StringContains => subject => getter(subject)?.Contains(expected, StringComparison.Ordinal) == true,
+            _ => static _ => false,
+        };
     }
 
     private static Func<object, bool> CompileGuidCompare(

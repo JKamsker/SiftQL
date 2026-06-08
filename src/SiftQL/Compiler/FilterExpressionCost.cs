@@ -20,7 +20,12 @@ internal static class FilterExpressionCost
         };
 
     private static int CompareCost(FilterExpression expression) =>
-        expression.Operator == FilterOperator.Equal ? 1 : 2;
+        expression.Operator switch
+        {
+            FilterOperator.Equal => 1,
+            FilterOperator.StringContains => 8,
+            _ => 2,
+        };
 
     private static int ChildrenCost(FilterExpression expression)
     {

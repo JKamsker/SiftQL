@@ -12,6 +12,9 @@ internal static class FilterExpressionScalarBuilder
     private static readonly MethodInfo s_stringEquals = typeof(string).GetMethod(
         nameof(string.Equals),
         [typeof(string), typeof(string), typeof(StringComparison)])!;
+    private static readonly MethodInfo s_stringContains = typeof(string).GetMethod(
+        nameof(string.Contains),
+        [typeof(string), typeof(StringComparison)])!;
 
     public static Expression? BuildCompare(
         Expression actual,
@@ -56,7 +59,19 @@ internal static class FilterExpressionScalarBuilder
             actual,
             Expression.Constant(value.String, typeof(string)),
             Expression.Constant(StringComparison.Ordinal));
-        return op == FilterOperator.Equal ? equals : Expression.Not(equals);
+        if (op == FilterOperator.Equal)
+            return equals;
+        if (op == FilterOperator.NotEqual)
+            return Expression.Not(equals);
+        if (op != FilterOperator.StringContains)
+            return Expression.Constant(false);
+
+        var contains = Expression.Call(
+            actual,
+            s_stringContains,
+            Expression.Constant(value.String, typeof(string)),
+            Expression.Constant(StringComparison.Ordinal));
+        return Expression.AndAlso(Expression.NotEqual(actual, Expression.Constant(null, typeof(string))), contains);
     }
 
     private static Expression? BuildNumberCompare(Expression actual, FilterValue value, FilterOperator op)

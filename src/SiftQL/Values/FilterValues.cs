@@ -20,6 +20,17 @@ public static class FilterValues
         Func<string, Exception>? errorFactory = null)
     {
         ValidateValue(field, value, errorFactory);
+        if (op == FilterOperator.StringContains)
+        {
+            if (value.Kind == FilterValueKind.String &&
+                (field.ValueType == typeof(string) || IsProjectedDynamic(field.ValueType)))
+            {
+                return;
+            }
+
+            throw Error(errorFactory, $"Filter field '{field.Name}' does not support string contains.");
+        }
+
         if (op is FilterOperator.Equal or FilterOperator.NotEqual)
             return;
 
@@ -76,6 +87,7 @@ public static class FilterValues
             FilterOperator.GreaterThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison >= 0,
             FilterOperator.LessThan => TryCompareOrdered(actual, expected, out int comparison) && comparison < 0,
             FilterOperator.LessThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison <= 0,
+            FilterOperator.StringContains => ContainsString(actual, expected),
             _ => false,
         };
 
@@ -116,6 +128,12 @@ public static class FilterValues
 
         return matched;
     }
+
+    private static bool ContainsString(object? actual, FilterValue expected) =>
+        actual is string text &&
+        expected.Kind == FilterValueKind.String &&
+        expected.String is string substring &&
+        text.Contains(substring, StringComparison.Ordinal);
 
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
         new(TooManyRuntimeArrayItemsMessage);

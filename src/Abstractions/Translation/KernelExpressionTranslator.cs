@@ -16,10 +16,7 @@ internal static class KernelExpressionTranslator
         return Translate(predicate.Body, predicate.Parameters[0], ref parameterIndex);
     }
 
-    private static FilterExpression Translate(
-        Expression expression,
-        ParameterExpression parameter,
-        ref int parameterIndex)
+    private static FilterExpression Translate(Expression expression, ParameterExpression parameter, ref int parameterIndex)
     {
         expression = StripConvert(expression);
         return expression.NodeType switch
@@ -81,9 +78,6 @@ internal static class KernelExpressionTranslator
             return FilterExpression.Exists(RequireField(expression.Arguments[0], parameter));
         }
 
-        if (expression.Method.DeclaringType == typeof(string) && expression.Method.Name == nameof(string.Contains))
-            throw Unsupported(expression);
-
         if (IsContains(expression.Method))
         {
             return TranslateContains(expression, parameter, ref parameterIndex);
@@ -101,7 +95,13 @@ internal static class KernelExpressionTranslator
         {
             if (TryGetFieldPath(expression.Object, parameter, out string? field))
             {
-                return FilterExpression.Contains(field, ToValue(expression.Arguments[0], parameter, ref parameterIndex));
+                if (expression.Object.Type == typeof(string) && expression.Arguments.Count != 1)
+                    throw Unsupported(expression);
+
+                FilterValue value = ToValue(expression.Arguments[0], parameter, ref parameterIndex);
+                return expression.Object.Type == typeof(string)
+                    ? FilterExpression.StringContains(field, value)
+                    : FilterExpression.Contains(field, value);
             }
 
             return FilterExpression.In(
@@ -166,8 +166,7 @@ internal static class KernelExpressionTranslator
             parameter,
             NextParameterKey(ref parameterIndex));
 
-    private static string NextParameterKey(ref int parameterIndex) =>
-        "p" + parameterIndex++;
+    private static string NextParameterKey(ref int parameterIndex) => "p" + parameterIndex++;
 
     private static string RequireField(Expression expression, ParameterExpression parameter) =>
         TryGetFieldPath(expression, parameter, out string? field)

@@ -22,6 +22,7 @@ public enum FilterOperator
     GreaterThanOrEqual = 3,
     LessThan = 4,
     LessThanOrEqual = 5,
+    StringContains = 6,
 }
 
 public sealed record FilterExpression
@@ -68,6 +69,9 @@ public sealed record FilterExpression
             Field = RequireField(field),
             Value = value ?? throw new ArgumentNullException(nameof(value)),
         };
+
+    public static FilterExpression StringContains(string field, FilterValue value) =>
+        Compare(field, FilterOperator.StringContains, value);
 
     public static FilterExpression Exists(string field) =>
         new(FilterExpressionKind.Exists) { Field = RequireField(field) };
