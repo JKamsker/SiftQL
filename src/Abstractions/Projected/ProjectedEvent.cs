@@ -22,15 +22,23 @@ public sealed record ProjectedEvent
         TryGetContext(name, out var value) ? value : ProjectedEventValue.Null;
 
     private static bool TryGet(
-        IReadOnlyList<ProjectedEventField> fields,
+        IReadOnlyList<ProjectedEventField>? fields,
         string name,
         out ProjectedEventValue value)
     {
+        if (fields is null)
+        {
+            value = ProjectedEventValue.Null;
+            return false;
+        }
+
         for (int i = 0; i < fields.Count; i++)
         {
-            if (string.Equals(fields[i].Name, name, StringComparison.OrdinalIgnoreCase))
+            ProjectedEventField? field = fields[i];
+            if (field is not null &&
+                string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase))
             {
-                value = fields[i].Value;
+                value = field.Value;
                 return true;
             }
         }
