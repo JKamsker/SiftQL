@@ -52,6 +52,8 @@ internal static partial class HotManifestParser
                 Add(diagnostics, "FSFHOT003", text.Path, $"Hot manifest engine must be '{ExpectedEngine}'.");
             if (!HasString(root, "GeneratorVersion", ExpectedGenerator))
                 Add(diagnostics, "FSFHOT004", text.Path, $"Hot manifest generator must be '{ExpectedGenerator}'.");
+            if (!HasNonEmptyString(root, "RuntimeVersion"))
+                Add(diagnostics, "FSFHOT009", text.Path, "Hot manifest runtime version is required.");
             if (diagnostics.Count != 0)
                 return Result(text.Path, providerName, hintName, manifestHash, entries, diagnostics);
 
@@ -137,6 +139,11 @@ internal static partial class HotManifestParser
         element.TryGetProperty(name, out JsonElement value) &&
         value.ValueKind == JsonValueKind.String &&
         string.Equals(value.GetString(), expected, StringComparison.Ordinal);
+
+    private static bool HasNonEmptyString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out JsonElement value) &&
+        value.ValueKind == JsonValueKind.String &&
+        !string.IsNullOrWhiteSpace(value.GetString());
 
     private static string ReadString(JsonElement element, string name, string fallback = "") =>
         ReadNullableString(element, name) ?? fallback;

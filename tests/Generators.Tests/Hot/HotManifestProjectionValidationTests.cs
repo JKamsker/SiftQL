@@ -188,6 +188,7 @@ public sealed class HotManifestProjectionValidationTests
         $$"""
         {
           "Schema": "siftql.hot.v1",
+          "RuntimeVersion": "10.0.0",
           "FilterEngineVersion": "tiered-v1",
           "GeneratorVersion": "hot-sourcegen-v1",
           "Entries": [
