@@ -25,6 +25,12 @@ internal sealed class SubscriptionBucket<TEntry>
         return true;
     }
 
+    public void Clear()
+    {
+        _items.Clear();
+        _dirty = true;
+    }
+
     public TEntry[] Snapshot()
     {
         if (_dirty)

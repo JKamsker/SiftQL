@@ -14,18 +14,21 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     where TSubscription : class
 {
     private readonly object _sync = new();
-    private readonly FilterSchema _schema;
     private readonly Dictionary<string, SubscriptionFieldIndex<TSubscription>> _fields =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<TSubscription, List<SubscriptionEntry<TSubscription>>> _entries = [];
     private readonly SubscriptionBucket<SubscriptionEntry<TSubscription>> _unindexed = new();
+    private FilterSchema _schema;
+    private int _schemaVersion;
     private int _count;
     private Snapshot _snapshot = new([], [], 0);
 
     public FilterSubscriptionIndex(Type subjectType)
     {
         ArgumentNullException.ThrowIfNull(subjectType);
-        _schema = FilterSchema.For(subjectType);
+        FilterSchemaSnapshot snapshot = FilterSchemaSnapshot.For(subjectType);
+        _schema = snapshot.Schema;
+        _schemaVersion = snapshot.Version;
     }
 
     public int Count => Volatile.Read(ref _snapshot).Count;
@@ -34,20 +37,11 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     {
         ArgumentNullException.ThrowIfNull(subscription);
         FilterExpression expression = filter ?? FilterExpression.Any;
-        FilterIndexKey? key = FilterIndexExtractor.Extract(_schema, expression);
-        var entry = new SubscriptionEntry<TSubscription>(
-            subscription,
-            key,
-            FilterCompiler.Compile(_schema.SubjectType, expression, FilterCompilerOptions.Immediate));
 
         lock (_sync)
         {
-            _count++;
-            Track(entry);
-            if (key is null)
-                _unindexed.Add(entry);
-            else
-                GetOrAddField(key).Add(key.Value, entry);
+            EnsureCurrentSchemaLocked();
+            AddEntry(CreateEntry(_schema, subscription, expression));
             PublishSnapshot();
         }
     }
@@ -91,6 +85,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     {
         ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(visitor);
+        EnsureCurrentSchema();
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
@@ -114,6 +109,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     {
         ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(visitor);
+        EnsureCurrentSchema();
         if (!_schema.SubjectType.IsInstanceOfType(subject))
             return;
 
@@ -140,6 +136,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     public TSubscription[] SnapshotCandidates(object subject)
     {
         ArgumentNullException.ThrowIfNull(subject);
+        EnsureCurrentSchema();
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var candidates = new List<TSubscription>(snapshot.Unindexed.Length);
         var seen = new HashSet<TSubscription>();
@@ -158,6 +155,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     public TSubscription[] SnapshotMatches(object subject)
     {
         ArgumentNullException.ThrowIfNull(subject);
+        EnsureCurrentSchema();
         if (!_schema.SubjectType.IsInstanceOfType(subject))
             return [];
 
@@ -186,6 +184,63 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         var created = new SubscriptionFieldIndex<TSubscription>(_schema.SubjectType, field);
         _fields.Add(key.Field, created);
         return created;
+    }
+
+    private static SubscriptionEntry<TSubscription> CreateEntry(
+        FilterSchema schema,
+        TSubscription subscription,
+        FilterExpression expression)
+    {
+        FilterIndexKey? key = FilterIndexExtractor.Extract(schema, expression);
+        return new SubscriptionEntry<TSubscription>(
+            subscription,
+            expression,
+            key,
+            FilterCompiler.Compile(schema.SubjectType, expression, FilterCompilerOptions.Immediate));
+    }
+
+    private void AddEntry(SubscriptionEntry<TSubscription> entry)
+    {
+        _count++;
+        Track(entry);
+        if (entry.Key is not { } key)
+            _unindexed.Add(entry);
+        else
+            GetOrAddField(key).Add(key.Value, entry);
+    }
+
+    private void EnsureCurrentSchema()
+    {
+        if (_schemaVersion == FilterSchema.Version)
+            return;
+
+        lock (_sync)
+            EnsureCurrentSchemaLocked();
+    }
+
+    private void EnsureCurrentSchemaLocked()
+    {
+        if (_schemaVersion == FilterSchema.Version)
+            return;
+
+        FilterSchemaSnapshot current = FilterSchemaSnapshot.For(_schema.SubjectType);
+        if (_schemaVersion == current.Version)
+            return;
+
+        var existing = _entries.Values.SelectMany(static entries => entries).ToArray();
+        var rebuilt = new SubscriptionEntry<TSubscription>[existing.Length];
+        for (int i = 0; i < existing.Length; i++)
+            rebuilt[i] = CreateEntry(current.Schema, existing[i].Subscription, existing[i].Expression);
+
+        _schema = current.Schema;
+        _schemaVersion = current.Version;
+        _fields.Clear();
+        _entries.Clear();
+        _unindexed.Clear();
+        _count = 0;
+        for (int i = 0; i < rebuilt.Length; i++)
+            AddEntry(rebuilt[i]);
+        PublishSnapshot();
     }
 
     private void Track(SubscriptionEntry<TSubscription> entry)

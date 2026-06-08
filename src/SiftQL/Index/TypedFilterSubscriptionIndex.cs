@@ -9,13 +9,21 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     where TSubscription : class
 {
     private readonly object _sync = new();
-    private readonly FilterSchema _schema = FilterSchema.For(typeof(TSubject));
     private readonly Dictionary<string, TypedSubscriptionFieldIndex<TSubscription, TSubject>> _fields =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<TSubscription, List<TypedSubscriptionEntry<TSubscription, TSubject>>> _entries = [];
     private readonly SubscriptionBucket<TypedSubscriptionEntry<TSubscription, TSubject>> _unindexed = new();
+    private FilterSchema _schema;
+    private int _schemaVersion;
     private int _count;
     private Snapshot _snapshot = new([], [], 0);
+
+    public TypedFilterSubscriptionIndex()
+    {
+        FilterSchemaSnapshot snapshot = FilterSchemaSnapshot.For(typeof(TSubject));
+        _schema = snapshot.Schema;
+        _schemaVersion = snapshot.Version;
+    }
 
     public int Count => Volatile.Read(ref _snapshot).Count;
 
@@ -23,22 +31,11 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     {
         ArgumentNullException.ThrowIfNull(subscription);
         FilterExpression expression = filter ?? FilterExpression.Any;
-        FilterIndexKey? key = FilterIndexExtractor.Extract(_schema, expression);
-        var entry = new TypedSubscriptionEntry<TSubscription, TSubject>(
-            subscription,
-            key,
-            FilterCompiler
-                .Compile(typeof(TSubject), expression, FilterCompilerOptions.Immediate)
-                .CreateMatcher<TSubject>());
 
         lock (_sync)
         {
-            _count++;
-            Track(entry);
-            if (key is null)
-                _unindexed.Add(entry);
-            else
-                GetOrAddField(key).Add(key.Value, entry);
+            EnsureCurrentSchemaLocked();
+            AddEntry(CreateEntry(_schema, subscription, expression));
             PublishSnapshot();
         }
     }
@@ -82,6 +79,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     {
         ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(visitor);
+        EnsureCurrentSchema();
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
@@ -105,6 +103,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     {
         ArgumentNullException.ThrowIfNull(subject);
         ArgumentNullException.ThrowIfNull(visitor);
+        EnsureCurrentSchema();
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var seen = new HashSet<TSubscription>();
         for (int i = 0; i < snapshot.Unindexed.Length; i++)
@@ -128,6 +127,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     public TSubscription[] SnapshotCandidates(TSubject subject)
     {
         ArgumentNullException.ThrowIfNull(subject);
+        EnsureCurrentSchema();
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var candidates = new List<TSubscription>(snapshot.Unindexed.Length);
         var seen = new HashSet<TSubscription>();
@@ -146,6 +146,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     public TSubscription[] SnapshotMatches(TSubject subject)
     {
         ArgumentNullException.ThrowIfNull(subject);
+        EnsureCurrentSchema();
         Snapshot snapshot = Volatile.Read(ref _snapshot);
         var matches = new List<TSubscription>(snapshot.Unindexed.Length);
         var seen = new HashSet<TSubscription>();
@@ -171,6 +172,65 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         var created = new TypedSubscriptionFieldIndex<TSubscription, TSubject>(field);
         _fields.Add(key.Field, created);
         return created;
+    }
+
+    private static TypedSubscriptionEntry<TSubscription, TSubject> CreateEntry(
+        FilterSchema schema,
+        TSubscription subscription,
+        FilterExpression expression)
+    {
+        FilterIndexKey? key = FilterIndexExtractor.Extract(schema, expression);
+        return new TypedSubscriptionEntry<TSubscription, TSubject>(
+            subscription,
+            expression,
+            key,
+            FilterCompiler
+                .Compile(schema.SubjectType, expression, FilterCompilerOptions.Immediate)
+                .CreateMatcher<TSubject>());
+    }
+
+    private void AddEntry(TypedSubscriptionEntry<TSubscription, TSubject> entry)
+    {
+        _count++;
+        Track(entry);
+        if (entry.Key is not { } key)
+            _unindexed.Add(entry);
+        else
+            GetOrAddField(key).Add(key.Value, entry);
+    }
+
+    private void EnsureCurrentSchema()
+    {
+        if (_schemaVersion == FilterSchema.Version)
+            return;
+
+        lock (_sync)
+            EnsureCurrentSchemaLocked();
+    }
+
+    private void EnsureCurrentSchemaLocked()
+    {
+        if (_schemaVersion == FilterSchema.Version)
+            return;
+
+        FilterSchemaSnapshot current = FilterSchemaSnapshot.For(typeof(TSubject));
+        if (_schemaVersion == current.Version)
+            return;
+
+        var existing = _entries.Values.SelectMany(static entries => entries).ToArray();
+        var rebuilt = new TypedSubscriptionEntry<TSubscription, TSubject>[existing.Length];
+        for (int i = 0; i < existing.Length; i++)
+            rebuilt[i] = CreateEntry(current.Schema, existing[i].Subscription, existing[i].Expression);
+
+        _schema = current.Schema;
+        _schemaVersion = current.Version;
+        _fields.Clear();
+        _entries.Clear();
+        _unindexed.Clear();
+        _count = 0;
+        for (int i = 0; i < rebuilt.Length; i++)
+            AddEntry(rebuilt[i]);
+        PublishSnapshot();
     }
 
     private void Track(TypedSubscriptionEntry<TSubscription, TSubject> entry)
