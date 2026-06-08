@@ -62,12 +62,13 @@ public sealed class FilterRuntimeRegressionTests
     }
 
     [Fact]
-    public void RuntimeContainsRejectsOversizedEnumerableEvenWhenFirstItemMatches()
+    public void RuntimeContainsShortCircuitsOversizedEnumerableAfterFirstMatch()
     {
-        Assert.Throws<InvalidOperationException>(() =>
-            FilterValues.Contains(
-                OversizedEnumerable(first: 42, count: 257),
-                FilterValue.From(42L)));
+        bool matched = FilterValues.Contains(
+            OversizedEnumerable(first: 42, count: 257),
+            FilterValue.From(42L));
+
+        Assert.True(matched);
     }
 
     [Fact]
