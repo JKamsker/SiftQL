@@ -239,7 +239,9 @@ internal static class HotProviderFilterValidator
             GeneratedScalarKind.Number => IsNumeric(value.Kind),
             GeneratedScalarKind.String => value.Kind == HotFilterValueKind.String,
             GeneratedScalarKind.Guid => value.Kind == HotFilterValueKind.Guid,
-            GeneratedScalarKind.Enum => value.Kind is HotFilterValueKind.String or HotFilterValueKind.Integer,
+            GeneratedScalarKind.Enum => value.Kind is HotFilterValueKind.String or
+                HotFilterValueKind.Integer or
+                HotFilterValueKind.UnsignedInteger,
             _ => false,
         };
         return valid ||

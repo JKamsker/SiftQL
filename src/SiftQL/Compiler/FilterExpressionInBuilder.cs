@@ -21,7 +21,8 @@ internal static class FilterExpressionInBuilder
         if (type == typeof(string))
             return BuildStringIn(actual, values);
         if (type.IsEnum)
-            return values.Any(static value => value.Kind == FilterValueKind.String) ||
+            return values.Any(static value => value.Kind is FilterValueKind.String or
+                    FilterValueKind.UnsignedInteger) ||
                 Enum.GetUnderlyingType(type) == typeof(ulong)
                 ? null
                 : BuildEnumIn(actual, values);

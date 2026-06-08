@@ -167,7 +167,8 @@ internal static class FilterTypedPredicates
 
     private static Func<object, bool>? CompileEnumIn(Func<object, long?> getter, FilterValue[] values)
     {
-        if (values.Any(static value => value.Kind == FilterValueKind.String))
+        if (values.Any(static value => value.Kind is FilterValueKind.String or
+                FilterValueKind.UnsignedInteger))
             return null;
         return FilterTypedInCompiler.CompileEnum(getter, values);
     }

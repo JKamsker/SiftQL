@@ -50,7 +50,9 @@ public static class FilterValues
 
         Type type = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
         bool valid =
-            type.IsEnum && value.Kind is (FilterValueKind.String or FilterValueKind.Integer) ||
+            type.IsEnum && value.Kind is (FilterValueKind.String or
+                FilterValueKind.Integer or
+                FilterValueKind.UnsignedInteger) ||
             type == typeof(bool) && value.Kind == FilterValueKind.Boolean ||
             FilterNumeric.IsNumeric(type) && value.Kind is (FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
@@ -120,6 +122,8 @@ public static class FilterValues
                 FilterValueKind.String =>
                     string.Equals(actual.ToString(), expected.String, StringComparison.Ordinal),
                 FilterValueKind.Integer => IsEnumIntegerEqual(actual, expected.Integer),
+                FilterValueKind.UnsignedInteger =>
+                    IsEnumUnsignedIntegerEqual(actual, expected.UnsignedInteger),
                 _ => false,
             };
         }
@@ -210,6 +214,28 @@ public static class FilterValues
             TypeCode.Int16 => (short)value == expected,
             TypeCode.Int32 => (int)value == expected,
             TypeCode.Int64 => (long)value == expected,
+            _ => false,
+        };
+    }
+
+    private static bool IsEnumUnsignedIntegerEqual(object actual, ulong expected)
+    {
+        Type underlying = Enum.GetUnderlyingType(actual.GetType());
+        object value = Convert.ChangeType(
+            actual,
+            underlying,
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        return Type.GetTypeCode(underlying) switch
+        {
+            TypeCode.Byte => (byte)value == expected,
+            TypeCode.UInt16 => (ushort)value == expected,
+            TypeCode.UInt32 => (uint)value == expected,
+            TypeCode.UInt64 => (ulong)value == expected,
+            TypeCode.SByte => (sbyte)value >= 0 && (ulong)(sbyte)value == expected,
+            TypeCode.Int16 => (short)value >= 0 && (ulong)(short)value == expected,
+            TypeCode.Int32 => (int)value >= 0 && (ulong)(int)value == expected,
+            TypeCode.Int64 => (long)value >= 0 && (ulong)(long)value == expected,
             _ => false,
         };
     }
