@@ -2,6 +2,7 @@ using System.Runtime.Loader;
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using System.Text.Json;
+using SiftQL.Schema;
 
 namespace SiftQL.Hot;
 
@@ -45,7 +46,7 @@ public static class HotTieredProviderLoader
 
             string assemblyPath = Path.GetFullPath(options.AssemblyPath);
             var loadContext = new HotTieredProviderLoadContext(assemblyPath);
-            Assembly assembly;
+            Assembly? assembly = null;
             IDisposable registration;
             try
             {
@@ -54,7 +55,7 @@ public static class HotTieredProviderLoader
                 RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
                 if (registrationScope.Commit() == 0)
                 {
-                    loadContext.Unload();
+                    UnloadFailedAssembly(loadContext, assembly);
                     return Result(
                         HotTieredProviderLoadStatus.InvalidAssembly,
                         "Hot provider DLL did not register a provider for the manifest.");
@@ -64,7 +65,7 @@ public static class HotTieredProviderLoader
             }
             catch
             {
-                loadContext.Unload();
+                UnloadFailedAssembly(loadContext, assembly);
                 throw;
             }
 
@@ -165,6 +166,16 @@ public static class HotTieredProviderLoader
         HotTieredProviderLoadStatus status,
         string message) =>
         new(status, message);
+
+    private static void UnloadFailedAssembly(
+        AssemblyLoadContext loadContext,
+        Assembly? assembly)
+    {
+        if (assembly is not null)
+            FilterSchema.UnregisterGeneratedProvider(assembly);
+
+        loadContext.Unload();
+    }
 
     private sealed class HotTieredProviderLoadContext(string assemblyPath)
         : AssemblyLoadContext(
