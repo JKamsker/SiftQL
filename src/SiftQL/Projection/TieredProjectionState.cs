@@ -79,12 +79,13 @@ internal sealed class TieredProjectionState<TContext>
 
     private void CompileAndPromote()
     {
+        int providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
         try
         {
             Func<object, ProjectedEventField[]>? compiled = _compileProjectFields();
             if (compiled is null)
             {
-                MarkFailed();
+                MarkFailed(providerVersion);
                 return;
             }
 
@@ -93,13 +94,13 @@ internal sealed class TieredProjectionState<TContext>
         }
         catch
         {
-            MarkFailed();
+            MarkFailed(providerVersion);
         }
     }
 
-    private void MarkFailed()
+    private void MarkFailed(int providerVersion)
     {
-        Volatile.Write(ref _failedProviderVersion, PrecompiledTieredProviderRegistry.GlobalVersion);
+        Volatile.Write(ref _failedProviderVersion, providerVersion);
         Volatile.Write(ref _failedTimestamp, Stopwatch.GetTimestamp());
         Volatile.Write(ref _compilationStatus, Failed);
     }
