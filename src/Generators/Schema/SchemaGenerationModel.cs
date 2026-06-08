@@ -22,7 +22,8 @@ internal sealed record GeneratedSchema(
     string MetadataName,
     string HelperName,
     EquatableArray<GeneratedField> Fields,
-    string? ReservedFieldCollision);
+    string? ReservedFieldCollision,
+    bool IsSealed);
 
 internal sealed record GeneratedProvider(
     EquatableArray<GeneratedSchema> Schemas,

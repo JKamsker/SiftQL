@@ -81,7 +81,8 @@ internal static class FilterSchemaDiscovery
             type.ToDisplayString(),
             HelperName(type),
             new EquatableArray<GeneratedField>(fields.ToImmutable()),
-            SchemaFieldDiscovery.ReservedTopLevelPropertyCollision(type));
+            SchemaFieldDiscovery.ReservedTopLevelPropertyCollision(type),
+            type.IsSealed);
     }
 
     private static IAssemblySymbol? FindAbstractions(Compilation compilation) =>

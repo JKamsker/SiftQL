@@ -246,7 +246,7 @@ internal static class FilterSchemaFallbackBuilder
         Func<Type, string> valueFactory)
     {
         string value = valueFactory(subjectType);
-        bool dynamicValue = subjectType.IsInterface || subjectType.IsAbstract;
+        bool dynamicValue = !subjectType.IsSealed;
         return new(
             name,
             typeof(string),

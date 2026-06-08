@@ -80,8 +80,8 @@ internal static class FilterSchemaEmitter
         source.Append(schema.TypeName);
         source.AppendLine("), new FilterField[]");
         source.AppendLine("        {");
-        EmitEventTypeField(source, schema.TypeName);
-        EmitEventNameField(source, schema.TypeName);
+        EmitEventTypeField(source, schema.TypeName, schema.IsSealed);
+        EmitEventNameField(source, schema.TypeName, schema.IsSealed);
         foreach (GeneratedField field in schema.Fields)
             EmitField(source, schema, field);
         source.AppendLine("        });");
@@ -103,28 +103,38 @@ internal static class FilterSchemaEmitter
         source.AppendLine();
     }
 
-    private static void EmitEventTypeField(StringBuilder source, string typeName) =>
+    private static void EmitEventTypeField(StringBuilder source, string typeName, bool isSealed) =>
         EmitTypeVirtualField(
             source,
             "subjectType",
-            "typeof(" + typeName + ").FullName ?? typeof(" + typeName + ").Name");
+            "typeof(" + typeName + ").FullName ?? typeof(" + typeName + ").Name",
+            "subject.GetType().FullName ?? subject.GetType().Name",
+            isSealed);
 
-    private static void EmitEventNameField(StringBuilder source, string typeName) =>
-        EmitTypeVirtualField(source, "subjectName", "typeof(" + typeName + ").Name");
+    private static void EmitEventNameField(StringBuilder source, string typeName, bool isSealed) =>
+        EmitTypeVirtualField(
+            source,
+            "subjectName",
+            "typeof(" + typeName + ").Name",
+            "subject.GetType().Name",
+            isSealed);
 
-    private static void EmitTypeVirtualField(StringBuilder source, string name, string valueExpression)
+    private static void EmitTypeVirtualField(
+        StringBuilder source, string name, string constantExpression, string dynamicExpression, bool isSealed)
     {
+        string valueExpression = isSealed ? constantExpression : dynamicExpression;
+        string accessExpression = isSealed ? "FilterFieldAccess.ForConstant(" + constantExpression + ")" : "null";
         source.Append("            new(");
         AppendLiteral(source, name);
-        source.Append(", typeof(string), FilterFieldKind.Scalar, static _ => ");
+        source.Append(", typeof(string), FilterFieldKind.Scalar, static subject => ");
         source.Append(valueExpression);
-        source.Append(", new FilterScalarAccessor(FilterScalarKind.String, text: static _ => ");
+        source.Append(", new FilterScalarAccessor(FilterScalarKind.String, text: static subject => ");
         source.Append(valueExpression);
-        source.Append("), null, static _ => ProjectionValueFactory.FromString(");
+        source.Append("), null, static subject => ProjectionValueFactory.FromString(");
         source.Append(valueExpression);
-        source.Append("), FilterFieldAccess.ForConstant(");
-        source.Append(valueExpression);
-        source.AppendLine(")),");
+        source.Append("), ");
+        source.Append(accessExpression);
+        source.AppendLine("),");
     }
 
     private static void EmitField(StringBuilder source, GeneratedSchema schema, GeneratedField field)
