@@ -166,6 +166,7 @@ internal static class ContextKernelExpressionTranslator
         private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath)
         {
             var names = new Stack<string>();
+            ValidateFieldConversion(expression, _subject, Unsupported);
             Expression? current = StripConvert(expression);
             while (current is MemberExpression member)
             {

@@ -182,6 +182,7 @@ internal static class KernelExpressionTranslator
         out string field)
     {
         Expression original = expression;
+        ValidateFieldConversion(expression, parameter, Unsupported);
         expression = StripConvert(expression);
         if (expression is MethodCallExpression implicitCall && IsImplicitConversion(implicitCall))
             return TryGetFieldPath(implicitCall.Arguments[0], parameter, out field);
