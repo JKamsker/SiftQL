@@ -13,9 +13,27 @@ internal static class KernelExpressionEvaluator
         string parameterKey) =>
         FilterValue.FromObject(Evaluate(expression, parameter)) with { ParameterKey = parameterKey };
 
-    public static object? Evaluate(Expression expression, ParameterExpression parameter)
+    public static FilterValue EvaluateValue(
+        Expression expression,
+        ParameterExpression firstParameter,
+        ParameterExpression secondParameter,
+        string parameterKey) =>
+        FilterValue.FromObject(Evaluate(expression, firstParameter, secondParameter)) with { ParameterKey = parameterKey };
+
+    public static object? Evaluate(Expression expression, ParameterExpression parameter) =>
+        Evaluate(expression, [parameter]);
+
+    public static object? Evaluate(
+        Expression expression,
+        ParameterExpression firstParameter,
+        ParameterExpression secondParameter) =>
+        Evaluate(expression, [firstParameter, secondParameter]);
+
+    private static object? Evaluate(
+        Expression expression,
+        IReadOnlyList<ParameterExpression> parameters)
     {
-        if (ReferencesParameter(expression, parameter))
+        if (ReferencesParameter(expression, parameters))
         {
             throw new KernelExpressionException(
                 $"Expression '{expression}' is not a constant filter value.");
@@ -77,6 +95,10 @@ internal static class KernelExpressionEvaluator
 
     private static bool TryEvaluateConversion(UnaryExpression expression, out object? value)
     {
+        Type operandType = Nullable.GetUnderlyingType(expression.Operand.Type) ?? expression.Operand.Type;
+        if (operandType.IsEnum)
+            return TryEvaluateConstant(expression.Operand, out value);
+
         if (!TryEvaluateConstant(expression.Operand, out object? operand))
         {
             value = null;
@@ -118,10 +140,12 @@ internal static class KernelExpressionEvaluator
         return true;
     }
 
-    private static bool ReferencesParameter(Expression expression, ParameterExpression parameter)
+    private static bool ReferencesParameter(
+        Expression expression,
+        IReadOnlyList<ParameterExpression> parameters)
     {
         bool found = false;
-        new ParameterVisitor(parameter, () => found = true).Visit(expression);
+        new ParameterVisitor(parameters, () => found = true).Visit(expression);
         return found;
     }
 
@@ -134,20 +158,24 @@ internal static class KernelExpressionEvaluator
 
     private sealed class ParameterVisitor : ExpressionVisitor
     {
-        private readonly ParameterExpression _parameter;
+        private readonly IReadOnlyList<ParameterExpression> _parameters;
         private readonly Action _onFound;
 
-        public ParameterVisitor(ParameterExpression parameter, Action onFound)
+        public ParameterVisitor(IReadOnlyList<ParameterExpression> parameters, Action onFound)
         {
-            _parameter = parameter;
+            _parameters = parameters;
             _onFound = onFound;
         }
 
         protected override Expression VisitParameter(ParameterExpression node)
         {
-            if (node == _parameter)
+            for (int i = 0; i < _parameters.Count; i++)
             {
+                if (node != _parameters[i])
+                    continue;
+
                 _onFound();
+                break;
             }
 
             return node;

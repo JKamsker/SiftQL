@@ -16,8 +16,12 @@ internal static class ProjectionExpressionParameters
 
             for (int j = 0; j < arguments.Length; j++)
             {
-                if (!string.IsNullOrWhiteSpace(arguments[j]?.Value?.ParameterKey))
+                EventProjectionArgument? argument = arguments[j];
+                if (argument?.Kind == EventProjectionArgumentKind.Value &&
+                    !string.IsNullOrWhiteSpace(argument.Value?.ParameterKey))
+                {
                     return true;
+                }
             }
         }
 
@@ -35,6 +39,9 @@ internal static class ProjectionExpressionParameters
 
             foreach (EventProjectionArgument argument in CanonicalArguments(projection.Includes[i]))
             {
+                if (argument.Kind != EventProjectionArgumentKind.Value)
+                    continue;
+
                 string? key = argument.Value?.ParameterKey;
                 if (!string.IsNullOrWhiteSpace(key) && seen.Add(key))
                     keys.Add(key);
@@ -56,7 +63,11 @@ internal static class ProjectionExpressionParameters
 
             for (int j = 0; j < arguments.Length; j++)
             {
-                FilterValue? value = arguments[j]?.Value;
+                EventProjectionArgument? argument = arguments[j];
+                if (argument?.Kind != EventProjectionArgumentKind.Value)
+                    continue;
+
+                FilterValue? value = argument.Value;
                 if (value is not null && !string.IsNullOrWhiteSpace(value.ParameterKey))
                     AddValue(values, value);
             }

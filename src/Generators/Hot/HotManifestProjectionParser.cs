@@ -146,9 +146,31 @@ internal static partial class HotManifestParser
                 continue;
             }
 
+            int kind = ReadInt(argument, "Kind");
+            string sourcePath = ReadString(argument, "SourcePath");
+            if (kind == (int)HotProjectionArgumentKind.SourceField)
+            {
+                if (string.IsNullOrWhiteSpace(sourcePath))
+                {
+                    Add(diagnostics, "FSFHOT009", path, "Hot projection source argument path is required.");
+                    valid = false;
+                    continue;
+                }
+
+                builder.Add(new(name, HotProjectionArgumentKind.SourceField, NullValue(), sourcePath));
+                continue;
+            }
+
+            if (kind != (int)HotProjectionArgumentKind.Value)
+            {
+                Add(diagnostics, "FSFHOT009", path, $"Hot projection argument kind '{kind}' is not supported.");
+                valid = false;
+                continue;
+            }
+
             if (!argument.TryGetProperty("Value", out JsonElement valueElement))
             {
-                builder.Add(new(name, NullValue()));
+                builder.Add(new(name, HotProjectionArgumentKind.Value, NullValue(), sourcePath));
                 continue;
             }
 
@@ -165,7 +187,7 @@ internal static partial class HotManifestParser
                 continue;
             }
 
-            builder.Add(new(name, value));
+            builder.Add(new(name, HotProjectionArgumentKind.Value, value, sourcePath));
         }
 
         return new(builder.ToImmutable());
@@ -178,8 +200,11 @@ internal static partial class HotManifestParser
             EquatableArray<HotProjectionArgument> arguments = includes[i].Arguments;
             for (int j = 0; j < arguments.Count; j++)
             {
-                if (!string.IsNullOrWhiteSpace(arguments[j].Value.ParameterKey))
+                if (arguments[j].Kind == HotProjectionArgumentKind.Value &&
+                    !string.IsNullOrWhiteSpace(arguments[j].Value.ParameterKey))
+                {
                     return true;
+                }
             }
         }
 

@@ -4,6 +4,7 @@ using System.Reflection;
 using SiftQL;
 using SiftQL.Expressions;
 using SiftQL.Projected;
+using static SiftQL.Translation.ExpressionTranslationHelpers;
 
 namespace SiftQL.Translation;
 
@@ -50,10 +51,16 @@ internal static class KernelExpressionTranslator
         FilterOperator op)
     {
         if (TryGetFieldPath(expression.Left, parameter, out string? leftField))
-            return FilterExpression.Compare(leftField, op, ToValue(expression.Right, parameter, ref parameterIndex));
+            return FilterExpression.Compare(
+                leftField,
+                op,
+                ToValue(expression.Right, parameter, ref parameterIndex, ComparisonType(expression.Left)));
 
         if (TryGetFieldPath(expression.Right, parameter, out string? rightField))
-            return FilterExpression.Compare(rightField, Flip(op), ToValue(expression.Left, parameter, ref parameterIndex));
+            return FilterExpression.Compare(
+                rightField,
+                Flip(op),
+                ToValue(expression.Left, parameter, ref parameterIndex, ComparisonType(expression.Right)));
 
         throw Unsupported(expression);
     }
@@ -152,11 +159,15 @@ internal static class KernelExpressionTranslator
     private static FilterValue ToValue(
         Expression expression,
         ParameterExpression parameter,
-        ref int parameterIndex) =>
-        KernelExpressionEvaluator.EvaluateValue(
-            expression,
-            parameter,
-            NextParameterKey(ref parameterIndex));
+        ref int parameterIndex,
+        Type? targetType = null)
+    {
+        object? value = KernelExpressionEvaluator.Evaluate(expression, parameter);
+        return FilterValue.FromObject(CoerceValue(value, targetType)) with
+        {
+            ParameterKey = NextParameterKey(ref parameterIndex),
+        };
+    }
 
     private static string NextParameterKey(ref int parameterIndex) => "p" + parameterIndex++;
 
@@ -253,19 +264,6 @@ internal static class KernelExpressionTranslator
 
         field = string.Empty;
         return false;
-    }
-
-    private static Expression StripConvert(Expression expression)
-    {
-        while (expression.NodeType is
-            ExpressionType.Convert or
-            ExpressionType.ConvertChecked or
-            ExpressionType.TypeAs)
-        {
-            expression = ((UnaryExpression)expression).Operand;
-        }
-
-        return expression;
     }
 
     private static bool IsKernelIn(MethodInfo method) => IsKernelPredicate(method, nameof(QueryKernelPredicates.In));

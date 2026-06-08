@@ -13,6 +13,9 @@ public static class QueryKernel
 
     public static QueryKernel<TSubject> For<TSubject>() =>
         Any<TSubject>();
+
+    public static QueryKernel<TSubject, TContext> For<TSubject, TContext>() =>
+        For<TSubject>().WithContext<TSubject, TContext>();
 }
 
 public sealed record QueryKernel<TSubject>

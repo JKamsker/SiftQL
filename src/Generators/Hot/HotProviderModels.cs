@@ -30,6 +30,12 @@ internal enum HotFilterValueKind
     Decimal = 7,
 }
 
+internal enum HotProjectionArgumentKind
+{
+    Value = 0,
+    SourceField = 1,
+}
+
 internal sealed record HotManifestParseResult(
     string Path,
     string ProviderName,
@@ -77,7 +83,11 @@ internal sealed record HotProjectionInclude(
     string ResultName,
     EquatableArray<HotProjectionArgument> Arguments);
 
-internal sealed record HotProjectionArgument(string Name, HotFilterValue Value);
+internal sealed record HotProjectionArgument(
+    string Name,
+    HotProjectionArgumentKind Kind,
+    HotFilterValue Value,
+    string SourcePath);
 
 internal sealed record HotProviderEntry(
     HotEntryKind Kind,

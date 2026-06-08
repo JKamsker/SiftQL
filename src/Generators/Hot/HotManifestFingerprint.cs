@@ -89,7 +89,11 @@ internal static class HotManifestFingerprint
         {
             AppendText(builder, arguments[i].Name);
             builder.Append('=');
-            AppendValue(builder, arguments[i].Value, ValueMode.ProjectionArgument);
+            builder.Append(((int)arguments[i].Kind).ToString(CultureInfo.InvariantCulture)).Append(':');
+            if (arguments[i].Kind == HotProjectionArgumentKind.SourceField)
+                AppendText(builder, arguments[i].SourcePath);
+            else
+                AppendValue(builder, arguments[i].Value, ValueMode.ProjectionArgument);
         }
     }
 

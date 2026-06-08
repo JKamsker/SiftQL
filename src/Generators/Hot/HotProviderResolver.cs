@@ -150,7 +150,40 @@ internal static class HotProviderResolver
                 return null;
         }
 
+        if (!ValidateProjectionIncludes(projection, fields, projectedEvent, diagnostics, path))
+            return null;
+
         return projection with { Fields = requested };
+    }
+
+    private static bool ValidateProjectionIncludes(
+        HotProjection projection,
+        EquatableArray<GeneratedField> fields,
+        bool projectedEvent,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        string path)
+    {
+        for (int i = 0; i < projection.Includes.Count; i++)
+        {
+            EquatableArray<HotProjectionArgument> arguments = projection.Includes[i].Arguments;
+            for (int j = 0; j < arguments.Count; j++)
+            {
+                HotProjectionArgument argument = arguments[j];
+                if (argument.Kind == HotProjectionArgumentKind.SourceField &&
+                    !HotProviderFieldValidator.RequireField(
+                        fields,
+                        projectedEvent,
+                        argument.SourcePath,
+                        scalar: null,
+                        path,
+                        diagnostics))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     private static bool ValidateProjectionField(

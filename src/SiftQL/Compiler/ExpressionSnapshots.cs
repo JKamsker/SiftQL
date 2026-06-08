@@ -49,5 +49,6 @@ internal static class ProjectionExpressionSnapshot
             : argument with
             {
                 Value = FilterExpressionSnapshot.CloneValue(argument.Value)!,
+                SourcePath = argument.SourcePath,
             };
 }
