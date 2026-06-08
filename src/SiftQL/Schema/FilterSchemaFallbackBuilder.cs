@@ -51,12 +51,12 @@ internal static class FilterSchemaFallbackBuilder
 
             Expression? ownerExpression = FilterFieldAccessExpression.Build(typedSubject, path);
             if (ownerExpression is null ||
-                IsNullableExpression(ownerExpression) ||
                 PathCanReturnNull(subjectType, path, nullability))
             {
                 continue;
             }
 
+            ownerExpression = UnwrapNullableValue(ownerExpression);
             AddProperties(
                 fields,
                 field.Name,
@@ -216,8 +216,10 @@ internal static class FilterSchemaFallbackBuilder
             nullability.Create(property).ReadState == NullabilityState.Nullable;
     }
 
-    private static bool IsNullableExpression(Expression expression) =>
-        Nullable.GetUnderlyingType(expression.Type) is not null;
+    private static Expression UnwrapNullableValue(Expression expression) =>
+        Nullable.GetUnderlyingType(expression.Type) is not null
+            ? Expression.Property(expression, nameof(Nullable<int>.Value))
+            : expression;
 
     private static bool ContainsField(IReadOnlyList<FilterField> fields, string name)
     {
