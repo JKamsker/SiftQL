@@ -9,6 +9,7 @@ internal static class ClientPayload
         ArgumentNullException.ThrowIfNull(projected);
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
+            [nameof(ProjectedEvent.EventType)] = projected.EventType,
             [nameof(ProjectedEvent.EventName)] = projected.EventName,
         };
 
@@ -22,8 +23,17 @@ internal static class ClientPayload
         Dictionary<string, object?> payload)
     {
         foreach (ProjectedEventField field in fields)
+        {
+            if (IsMetadataKey(field.Name))
+                continue;
+
             payload[field.Name] = ToObject(field.Value);
+        }
     }
+
+    private static bool IsMetadataKey(string name) =>
+        string.Equals(name, nameof(ProjectedEvent.EventType), StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, nameof(ProjectedEvent.EventName), StringComparison.OrdinalIgnoreCase);
 
     private static object? ToObject(ProjectedEventValue value) =>
         value.Kind switch
