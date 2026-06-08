@@ -24,13 +24,13 @@ internal static class FilterFieldAccessExpression
             if (member is PropertyInfo { GetMethod: { } getter } property &&
                 getter.GetParameters().Length == 0)
             {
-                current = Expression.Property(current, property);
+                current = Expression.Property(ConvertToDeclaringType(current, property.DeclaringType), property);
                 continue;
             }
 
             if (member is FieldInfo field)
             {
-                current = Expression.Field(current, field);
+                current = Expression.Field(ConvertToDeclaringType(current, field.DeclaringType), field);
                 continue;
             }
 
@@ -89,8 +89,36 @@ internal static class FilterFieldAccessExpression
                 return ignoreCase;
         }
 
+        MemberInfo? interfaceExact = FindInterfaceMember(type, name, ignoreCase: false);
+        if (interfaceExact is not null)
+            return interfaceExact;
+
+        MemberInfo? interfaceIgnoreCase = FindInterfaceMember(type, name, ignoreCase: true);
+        if (interfaceIgnoreCase is not null)
+            return interfaceIgnoreCase;
+
         return null;
     }
+
+    private static MemberInfo? FindInterfaceMember(Type type, string name, bool ignoreCase)
+    {
+        foreach (Type item in type.GetInterfaces())
+        {
+            MemberInfo? member = FindDeclaredProperty(item, name, ignoreCase) ??
+                (MemberInfo?)FindDeclaredField(item, name, ignoreCase);
+            if (member is not null)
+                return member;
+        }
+
+        return null;
+    }
+
+    private static Expression ConvertToDeclaringType(Expression expression, Type? declaringType) =>
+        declaringType is not null &&
+        declaringType != expression.Type &&
+        declaringType.IsAssignableFrom(expression.Type)
+            ? Expression.Convert(expression, declaringType)
+            : expression;
 
     private static PropertyInfo? FindDeclaredProperty(Type type, string name, bool ignoreCase)
     {

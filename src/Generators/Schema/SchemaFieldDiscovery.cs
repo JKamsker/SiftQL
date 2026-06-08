@@ -143,6 +143,17 @@ internal static class SchemaFieldDiscovery
 
     private static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
     {
+        if (owner.TypeKind == TypeKind.Interface)
+        {
+            foreach (INamedTypeSymbol item in owner.AllInterfaces.Prepend(owner))
+            {
+                foreach (IPropertySymbol property in item.GetMembers().OfType<IPropertySymbol>())
+                    yield return property;
+            }
+
+            yield break;
+        }
+
         for (INamedTypeSymbol? current = owner; current is not null; current = current.BaseType)
         {
             foreach (IPropertySymbol property in current.GetMembers().OfType<IPropertySymbol>())

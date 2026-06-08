@@ -80,7 +80,7 @@ internal static class FilterSchemaFallbackBuilder
         if (depth > 3)
             return;
 
-        foreach (PropertyInfo property in ownerType.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        foreach (PropertyInfo property in EnumeratePublicProperties(ownerType))
         {
             if (property.GetMethod is null || property.GetMethod.GetParameters().Length != 0)
                 continue;
@@ -92,7 +92,9 @@ internal static class FilterSchemaFallbackBuilder
                 continue;
 
             Type propertyType = property.PropertyType;
-            Expression propertyExpression = Expression.Property(ownerExpression, property);
+            Expression propertyExpression = Expression.Property(
+                ConvertToDeclaringType(ownerExpression, property.DeclaringType),
+                property);
             Type scalarType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
 
             if (IsScalar(scalarType))
@@ -145,6 +147,28 @@ internal static class FilterSchemaFallbackBuilder
             }
         }
     }
+
+    private static IEnumerable<PropertyInfo> EnumeratePublicProperties(Type ownerType)
+    {
+        foreach (PropertyInfo property in ownerType.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            yield return property;
+
+        if (!ownerType.IsInterface)
+            yield break;
+
+        foreach (Type inherited in ownerType.GetInterfaces())
+        {
+            foreach (PropertyInfo property in inherited.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+                yield return property;
+        }
+    }
+
+    private static Expression ConvertToDeclaringType(Expression expression, Type? declaringType) =>
+        declaringType is not null &&
+        declaringType != expression.Type &&
+        declaringType.IsAssignableFrom(expression.Type)
+            ? Expression.Convert(expression, declaringType)
+            : expression;
 
     private static bool IsNullableProperty(
         PropertyInfo property,
