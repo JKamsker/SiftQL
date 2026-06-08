@@ -199,6 +199,8 @@ public sealed record QueryKernel<TSubject>
     {
         if (ProjectedEventPaths.TrySplit(field.Path, out _, out _))
             return field;
+        if (IsProjectedMetadataPath(field.Path))
+            return field;
 
         return new EventProjectionField(
             ProjectedEventPaths.Field(ProjectedFieldName(field.Path)),
@@ -219,7 +221,13 @@ public sealed record QueryKernel<TSubject>
     }
 
     private bool ProjectionWillReadProjectedEvent() =>
-        ProjectionDomain(Pipeline);
+        SourceIsProjected() || ProjectionDomain(Pipeline);
+
+    private static bool IsProjectedMetadataPath(string path) =>
+        string.Equals(path, nameof(ProjectedEvent.EventType), StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path, nameof(ProjectedEvent.EventName), StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path, "subjectName", StringComparison.OrdinalIgnoreCase);
 
     private static bool SourceIsProjected() =>
         typeof(TSubject) == typeof(ProjectedEvent);
