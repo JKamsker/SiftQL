@@ -1,5 +1,6 @@
 using SiftQL;
 using SiftQL.Expressions;
+using SiftQL.Values;
 
 namespace SiftQL.Compiler;
 
@@ -72,22 +73,8 @@ internal static class FilterNumericInValues
         };
     }
 
-    private static bool TryDoubleDecimal(double value, out decimal number)
-    {
-        number = 0;
-        if (double.IsNaN(value) || double.IsInfinity(value))
-            return false;
-
-        try
-        {
-            number = (decimal)value;
-            return true;
-        }
-        catch (OverflowException)
-        {
-            return false;
-        }
-    }
+    private static bool TryDoubleDecimal(double value, out decimal number) =>
+        FilterNumeric.TryDoubleToDecimal(value, out number);
 
     private static bool Set(decimal value, out decimal number)
     {

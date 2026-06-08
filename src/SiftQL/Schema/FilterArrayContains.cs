@@ -177,16 +177,11 @@ public static class FilterArrayContains
     public static bool ContainsDecimal(decimal[]? items, double expected)
     {
         if (!CanSearch(items)) return false;
-        try
-        {
-            decimal expectedDecimal = (decimal)expected;
-            for (int i = 0; i < items.Length; i++)
-                if (items[i] == expectedDecimal) return true;
-        }
-        catch (OverflowException)
-        {
+        if (!Values.FilterNumeric.TryDoubleToDecimal(expected, out decimal expectedDecimal))
             return false;
-        }
+
+        for (int i = 0; i < items.Length; i++)
+            if (items[i] == expectedDecimal) return true;
         return false;
     }
 
