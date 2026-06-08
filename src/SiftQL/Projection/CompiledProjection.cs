@@ -6,6 +6,7 @@ namespace SiftQL.Projection;
 
 public sealed class CompiledProjection<TContext>
 {
+    private static readonly ProjectedEventField[] s_emptyContext = [];
     private readonly FieldProjector[] _fields;
     private readonly IncludeProjector[] _includes;
     private readonly ProjectionEventMetadata _metadata;
@@ -94,11 +95,11 @@ public sealed class CompiledProjection<TContext>
         if (Volatile.Read(ref _projectFields) is null)
             _tieredState?.RecordPayloadWrite();
 
-        return new ValueTask<ReadOnlyMemory<byte>>(WritePayload(subject, context: null, options));
+        return new ValueTask<ReadOnlyMemory<byte>>(WritePayload(subject, InheritedContext(subject), options));
     }
 
     private ProjectedEvent ProjectFields(object subject) =>
-        _metadata.Create(subject, ProjectFieldArray(subject), context: null);
+        _metadata.Create(subject, ProjectFieldArray(subject), InheritedContext(subject));
 
     private ProjectedEvent ProjectFields(object subject, ProjectedEventField[] includes) =>
         _metadata.Create(subject, ProjectFieldArray(subject), includes);
@@ -106,7 +107,7 @@ public sealed class CompiledProjection<TContext>
     private ProjectedEvent ProjectComposedFields(
         object subject,
         Func<object, ProjectedEventField[]> projectFields) =>
-        _metadata.Create(subject, projectFields(subject), context: null);
+        _metadata.Create(subject, projectFields(subject), InheritedContext(subject));
 
     private ProjectedEventField[] ProjectFieldArray(object subject) =>
         Volatile.Read(ref _projectFields) is { } projectFields
@@ -119,6 +120,38 @@ public sealed class CompiledProjection<TContext>
         for (int i = 0; i < fields.Length; i++)
             fields[i] = Project(_fields[i], subject);
         return fields;
+    }
+
+    private ProjectedEventField[] InheritedContext(object subject)
+    {
+        if (subject is not ProjectedEvent projected || projected.Context.Length == 0)
+            return s_emptyContext;
+
+        HashSet<string>? consumed = null;
+        for (int i = 0; i < _fields.Length; i++)
+        {
+            if (!ProjectedEventPaths.TrySplit(_fields[i].Path, out bool context, out string name) ||
+                !context)
+            {
+                continue;
+            }
+
+            consumed ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            consumed.Add(ContextRoot(name));
+        }
+
+        if (consumed is null)
+            return projected.Context.ToArray();
+
+        return projected.Context
+            .Where(field => !consumed.Contains(field.Name))
+            .ToArray();
+    }
+
+    private static string ContextRoot(string name)
+    {
+        int separator = name.IndexOf('.');
+        return separator < 0 ? name : name[..separator];
     }
 
     private static ProjectedEventField Project(FieldProjector field, object subject) =>
