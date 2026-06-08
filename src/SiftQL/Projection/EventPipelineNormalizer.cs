@@ -47,8 +47,7 @@ internal static class EventPipelineNormalizer
         List<EventProjectionField> fields,
         HashSet<string> names)
     {
-        if (ProjectedEventPaths.TrySplit(expression.Field, out bool context, out string name) &&
-            !context &&
+        if (ProjectedEventPaths.TrySplit(expression.Field, out _, out string name) &&
             names.Add(name))
         {
             fields.Add(new EventProjectionField(expression.Field, name));
