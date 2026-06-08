@@ -4,6 +4,7 @@ using SiftQL.Examples.ServerPluginHost.Plugins;
 using SiftQL.Projected;
 using Xunit;
 using ExampleItemUsedEvent = SiftQL.Examples.ServerPluginHost.Domain.ItemUsedEvent;
+using ExampleServerOfferSnapshot = SiftQL.Examples.ServerPluginHost.Domain.ServerOfferSnapshot;
 
 namespace SiftQL.Generators.Tests;
 
@@ -33,6 +34,26 @@ public sealed class ServerPluginHostRegistrationRegressionTests
             new ExampleItemUsedEvent(1001, "north-gate", "potion", "consumable", 2, 18));
 
         Assert.False(plugin.Invoked);
+    }
+
+    [Fact]
+    public async Task StartAsyncDoesNotReplayStartupHandlers()
+    {
+        var clients = new ClientGateway();
+        clients.Register(1001);
+        var serverData = new ServerDataStore();
+        serverData.Replace<ExampleServerOfferSnapshot>(
+        [
+            new("north-gate", "offer-a", "potion", 45, 3, Enabled: true),
+        ]);
+        var host = new InMemoryServerPluginHost(clients, serverData);
+        host.Register(new OfferLookupPlugin());
+
+        await host.StartAsync();
+        await host.StartAsync();
+
+        ClientSession session = Assert.Single(clients.Sessions);
+        Assert.Single(session.Messages, static message => message.Channel == "server.offer");
     }
 
     private sealed class ThrowingProjectedPlugin : IServerPlugin
