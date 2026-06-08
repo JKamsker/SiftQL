@@ -21,13 +21,77 @@ public sealed class HotProviderSubjectEligibilityRegressionTests
             "Location.MapId",
             FilterOperator.Equal,
             FilterValue.From(42L));
-        GeneratorRun run = RunGenerator(Manifest(filter));
+        GeneratorRun run = RunGenerator(
+            Manifest("Plugin.Events.PlainEvent, Plugin.Hot.SubjectEligibility", filter),
+            """
+            using System;
+
+            namespace Plugin.Events;
+
+            public sealed record Location(long MapId);
+
+            public sealed record PlainEvent(Guid EventId, Location Location);
+            """);
 
         Assert.Contains(run.Diagnostics, static diagnostic => diagnostic.Id == "FSFHOT009");
         Assert.Equal(0, HotProviderSourceCount(run));
     }
 
-    private static string Manifest(FilterExpression filter)
+    [Fact]
+    public void RejectsClosedGenericNestedRecordFieldThatRuntimeSchemaCannotMatch()
+    {
+        var filter = FilterExpression.Compare(
+            "Location.MapId",
+            FilterOperator.Equal,
+            FilterValue.From(42L));
+        string subjectType = "Plugin.Events.GenericEvent`1[[" +
+            typeof(int).AssemblyQualifiedName +
+            "]], Plugin.Hot.SubjectEligibility";
+
+        GeneratorRun run = RunGenerator(
+            Manifest(subjectType, filter),
+            """
+            using System;
+            using SiftQL;
+
+            namespace Plugin.Events;
+
+            public sealed record Location(long MapId);
+
+            public sealed record GenericEvent<T>(
+                Guid EventId,
+                Location Location) : IFilterSubject;
+            """);
+
+        Assert.Contains(run.Diagnostics, static diagnostic => diagnostic.Id == "FSFHOT009");
+        Assert.Equal(0, HotProviderSourceCount(run));
+    }
+
+    [Fact]
+    public void RejectsReservedMetadataPropertyCollisions()
+    {
+        var filter = FilterExpression.Compare(
+            "ItemId",
+            FilterOperator.Equal,
+            FilterValue.From(7L));
+
+        GeneratorRun run = RunGenerator(
+            Manifest("Plugin.Events.CollisionEvent, Plugin.Hot.SubjectEligibility", filter),
+            """
+            using SiftQL;
+
+            namespace Plugin.Events;
+
+            public sealed record CollisionEvent(
+                string SubjectType,
+                long ItemId) : IFilterSubject;
+            """);
+
+        Assert.Contains(run.Diagnostics, static diagnostic => diagnostic.Id == "FSFHOT009");
+        Assert.Equal(0, HotProviderSourceCount(run));
+    }
+
+    private static string Manifest(string subjectType, FilterExpression filter)
     {
         string fingerprint = FilterExpressionFingerprint.Create(filter);
         var manifest = new HotCompilationManifest
@@ -37,9 +101,9 @@ public sealed class HotProviderSubjectEligibilityRegressionTests
             [
                 new HotCompilationManifestEntry
                 {
-                    Key = "filter|Plugin.Events.PlainEvent|" + fingerprint,
+                    Key = "filter|" + subjectType + "|" + fingerprint,
                     Kind = "filter",
-                    SubjectType = "Plugin.Events.PlainEvent, Plugin.Hot.SubjectEligibility",
+                    SubjectType = subjectType,
                     Fingerprint = fingerprint,
                     Definition = JsonSerializer.SerializeToElement(filter),
                 },
@@ -48,19 +112,11 @@ public sealed class HotProviderSubjectEligibilityRegressionTests
         return JsonSerializer.Serialize(manifest);
     }
 
-    private static GeneratorRun RunGenerator(string manifestJson)
+    private static GeneratorRun RunGenerator(string manifestJson, string source)
     {
         CSharpCompilation compilation = GeneratorTestCompilation.Create(
             "Plugin.Hot.SubjectEligibility",
-            CSharpSyntaxTree.ParseText("""
-                using System;
-
-                namespace Plugin.Events;
-
-                public sealed record Location(long MapId);
-
-                public sealed record PlainEvent(Guid EventId, Location Location);
-                """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)));
+            CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)));
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: ImmutableArray.Create<ISourceGenerator>(new FilterSchemaSourceGenerator().AsSourceGenerator()),
             additionalTexts: ImmutableArray.Create<AdditionalText>(
