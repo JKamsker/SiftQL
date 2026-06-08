@@ -161,7 +161,9 @@ public sealed record QueryKernel<TSubject>
         var projection = KernelParameterKeyRewriter.Rebase(
             EventProjectionExpression.Default.WithIncludes(includes),
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
-        EventPipelineExpression pipeline = Pipeline.AppendOrMergeLastProjection(projection);
+        EventPipelineExpression pipeline = ProjectionWillReadProjectedEvent() && !SourceIsProjected()
+            ? Pipeline.AppendOrMergeSourceProjection(projection)
+            : Pipeline.AppendOrMergeLastProjection(projection);
         return new QueryKernel<TSubject>(
             Filter,
             QueryKernelPipelineState.LastProjectionOrDefault(pipeline),
