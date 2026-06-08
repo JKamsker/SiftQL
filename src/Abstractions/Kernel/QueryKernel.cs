@@ -121,7 +121,7 @@ public sealed record QueryKernel<TSubject>
         EventProjectionExpression projection = ProjectedFieldProjection(fields);
         return new QueryKernel<TSubject>(
             Filter,
-            Projection.WithFields(fields),
+            Projection.WithFields(projection.Fields),
             Pipeline.AppendOrMergeLastProjection(projection));
     }
 
