@@ -35,7 +35,7 @@ internal readonly struct ProjectionEventMetadata(Type eventMetadataType)
             EventType = EventType(subject),
             EventName = EventName(subject),
             Fields = fields,
-            Context = context ?? [],
+            Context = context ?? (subject as ProjectedEvent)?.Context.ToArray() ?? [],
         };
 
     private ProjectedEvent? DynamicMetadata(object subject) =>

@@ -222,6 +222,8 @@ public sealed class CompiledProjection<TContext>
         IReadOnlyList<ProjectedEventField>? context,
         MessagePackSerializerOptions options)
     {
+        IReadOnlyList<ProjectedEventField>? effectiveContext =
+            context ?? (subject as ProjectedEvent)?.Context;
         Func<object, ProjectedEventField[]>? projectFields = Volatile.Read(ref _projectFields);
         if (projectFields is null)
         {
@@ -230,7 +232,7 @@ public sealed class CompiledProjection<TContext>
                 _metadata.EventName(subject),
                 _fields,
                 subject,
-                context,
+                effectiveContext,
                 options);
         }
 
@@ -238,7 +240,7 @@ public sealed class CompiledProjection<TContext>
             _metadata.EventType(subject),
             _metadata.EventName(subject),
             projectFields(subject),
-            context,
+            effectiveContext,
             options);
     }
 
