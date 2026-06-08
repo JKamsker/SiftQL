@@ -32,7 +32,6 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         _schema = snapshot.Schema;
         _schemaVersion = snapshot.Version;
     }
-
     public int Count => Volatile.Read(ref _snapshot).Count;
 
     public void Add(TSubscription subscription, FilterExpression? filter)
@@ -186,7 +185,10 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     {
         if (_fields.TryGetValue(key.Field, out var existing))
             return existing;
-        if (!_schema.TryGetField(key.Field, out FilterField? field))
+        FilterField field;
+        if (_schema.SubjectType == typeof(ProjectedEvent))
+            field = ProjectedEventFilterSchema.CreateField(key.Field);
+        else if (!_schema.TryGetField(key.Field, out field!))
             throw new FilterValidationException($"Filter field '{key.Field}' is not supported.");
 
         var created = new SubscriptionFieldIndex<TSubscription>(_schema.SubjectType, field);

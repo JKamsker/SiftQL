@@ -168,7 +168,10 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     {
         if (_fields.TryGetValue(key.Field, out var existing))
             return existing;
-        if (!_schema.TryGetField(key.Field, out FilterField? field))
+        FilterField field;
+        if (_schema.SubjectType == typeof(ProjectedEvent))
+            field = ProjectedEventFilterSchema.CreateField(key.Field);
+        else if (!_schema.TryGetField(key.Field, out field!))
             throw new FilterValidationException($"Filter field '{key.Field}' is not supported.");
 
         var created = new TypedSubscriptionFieldIndex<TSubscription, TSubject>(field);
