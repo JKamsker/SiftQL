@@ -90,7 +90,10 @@ public static class EventPipelineCompiler
 
     public static EventPipelineExpression ProjectionDispatchPipeline(EventPipelineExpression? pipeline)
     {
-        EventPipelineExpression normalized = EventPipelineNormalizer.Normalize(typeof(object), pipeline);
+        Type subjectType = ReferencesProjectedFields(pipeline)
+            ? typeof(ProjectedEvent)
+            : typeof(object);
+        EventPipelineExpression normalized = EventPipelineNormalizer.Normalize(subjectType, pipeline);
         int projectionIndex = Array.FindIndex(
             normalized.Stages,
             static stage => stage.Kind == EventPipelineStageKind.Projection);
@@ -100,6 +103,42 @@ public static class EventPipelineCompiler
         var stages = new EventPipelineStage[normalized.Stages.Length - projectionIndex];
         Array.Copy(normalized.Stages, projectionIndex, stages, 0, stages.Length);
         return normalized with { Stages = stages };
+    }
+
+    private static bool ReferencesProjectedFields(EventPipelineExpression? pipeline)
+    {
+        if (pipeline?.Stages is null)
+            return false;
+
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            EventPipelineStage? stage = pipeline.Stages[i];
+            if (stage?.Kind == EventPipelineStageKind.Filter &&
+                ReferencesProjectedFields(stage.Filter))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ReferencesProjectedFields(FilterExpression? expression)
+    {
+        if (expression is null)
+            return false;
+        if (ProjectedEventPaths.TrySplit(expression.Field, out _, out _))
+            return true;
+        if (expression.Children is null)
+            return false;
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (ReferencesProjectedFields(expression.Children[i]))
+                return true;
+        }
+
+        return false;
     }
 
     private static CompiledEventPipeline<TContext> CompileUncached<TContext>(
