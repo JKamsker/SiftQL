@@ -206,6 +206,7 @@ public static class EventPipelineCompiler
                 ProjectionCompiler.Compile(sourceType, projection, compileInclude, options.ProjectionOptions, errorFactory));
         }
 
+        ValidateProjectionShape(projection, errorFactory);
         FilterSchema schema = ProjectedEventFilterSchema.ForProjection(projection);
         return new PipelineProjectionStage<TContext>(
             ProjectionCompiler.CompileWithSchema(
@@ -216,6 +217,16 @@ public static class EventPipelineCompiler
                 errorFactory,
                 _ => schema,
                 sourceType));
+    }
+
+    private static void ValidateProjectionShape(
+        EventProjectionExpression projection,
+        Func<string, Exception>? errorFactory)
+    {
+        if (projection.Fields is null)
+            throw Error(errorFactory, "Projection fields cannot be null.");
+        if (projection.Includes is null)
+            throw Error(errorFactory, "Projection includes cannot be null.");
     }
 
     private static CompiledProjection<TContext>.IncludeProjector RejectProjectedInclude<TContext>(
@@ -287,5 +298,8 @@ public static class EventPipelineCompiler
         s_cache.Clear();
         Volatile.Write(ref s_cacheCount, 0);
     }
+
+    private static Exception Error(Func<string, Exception>? errorFactory, string message) =>
+        errorFactory?.Invoke(message) ?? new FilterValidationException(message);
 
 }
