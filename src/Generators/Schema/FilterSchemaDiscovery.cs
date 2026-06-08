@@ -149,6 +149,7 @@ internal static class FilterSchemaDiscovery
     private static bool IsEligibleShape(INamedTypeSymbol type) =>
         type.DeclaredAccessibility == Accessibility.Public &&
         !type.IsGenericType &&
+        !type.IsRefLikeType &&
         !type.IsAbstract &&
         type.TypeKind is TypeKind.Class or TypeKind.Struct;
 
