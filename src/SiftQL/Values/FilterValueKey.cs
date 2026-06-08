@@ -51,15 +51,17 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
         if (!string.IsNullOrWhiteSpace(ParameterKey))
             return HashCode.Combine(Kind, ParameterKey);
 
-        return HashCode.Combine(
-            Kind,
-            Boolean,
-            Integer,
-            UnsignedInteger,
-            Number,
-            Decimal,
-            Text,
-            Guid);
+        return Kind switch
+        {
+            FilterValueKind.Boolean => HashCode.Combine(Kind, Boolean),
+            FilterValueKind.Integer => HashCode.Combine(Kind, Integer),
+            FilterValueKind.UnsignedInteger => HashCode.Combine(Kind, UnsignedInteger),
+            FilterValueKind.Number => HashCode.Combine(Kind, Number == 0D ? 0D : Number),
+            FilterValueKind.Decimal => HashCode.Combine(Kind, Decimal),
+            FilterValueKind.String => HashCode.Combine(Kind, Text),
+            FilterValueKind.Guid => HashCode.Combine(Kind, Guid),
+            _ => Kind.GetHashCode(),
+        };
     }
 
     private bool EqualsValue(FilterValueKey other)
@@ -70,13 +72,17 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
             return string.Equals(ParameterKey, other.ParameterKey, StringComparison.Ordinal);
         }
 
-        return Boolean == other.Boolean &&
-            Integer == other.Integer &&
-            UnsignedInteger == other.UnsignedInteger &&
-            Number.Equals(other.Number) &&
-            Decimal == other.Decimal &&
-            string.Equals(Text, other.Text, StringComparison.Ordinal) &&
-            Guid == other.Guid;
+        return Kind switch
+        {
+            FilterValueKind.Boolean => Boolean == other.Boolean,
+            FilterValueKind.Integer => Integer == other.Integer,
+            FilterValueKind.UnsignedInteger => UnsignedInteger == other.UnsignedInteger,
+            FilterValueKind.Number => Number.Equals(other.Number),
+            FilterValueKind.Decimal => Decimal == other.Decimal,
+            FilterValueKind.String => string.Equals(Text, other.Text, StringComparison.Ordinal),
+            FilterValueKind.Guid => Guid == other.Guid,
+            _ => true,
+        };
     }
 
     public override string ToString()
