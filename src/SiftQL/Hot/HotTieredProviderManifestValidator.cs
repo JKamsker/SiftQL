@@ -61,7 +61,7 @@ internal static class HotTieredProviderManifestValidator
     {
         try
         {
-            if (string.Equals(entry.Kind, "filter", StringComparison.Ordinal))
+            if (string.Equals(entry.Kind, "filter", StringComparison.OrdinalIgnoreCase))
             {
                 return provider.TryGetFilter(subjectType, fingerprint, out var predicate) &&
                     predicate is not null ||
@@ -69,7 +69,7 @@ internal static class HotTieredProviderManifestValidator
                     hot is not null;
             }
 
-            if (string.Equals(entry.Kind, "projection", StringComparison.Ordinal))
+            if (string.Equals(entry.Kind, "projection", StringComparison.OrdinalIgnoreCase))
             {
                 return provider.TryGetProjection(subjectType, fingerprint, out var projectFields) &&
                     projectFields is not null ||
@@ -89,7 +89,7 @@ internal static class HotTieredProviderManifestValidator
         HotCompilationManifestEntry entry,
         Type subjectType)
     {
-        if (!string.Equals(entry.Kind, "projection", StringComparison.Ordinal) ||
+        if (!string.Equals(entry.Kind, "projection", StringComparison.OrdinalIgnoreCase) ||
             !TryEffectiveProjectionFingerprint(entry, subjectType, out string? fingerprint) ||
             string.Equals(entry.Fingerprint, fingerprint, StringComparison.Ordinal))
         {
@@ -156,22 +156,75 @@ internal static class HotTieredProviderManifestValidator
         string subjectType,
         [NotNullWhen(true)] out Type? type)
     {
-        string fullName = subjectType.Split(',', 2)[0].Trim();
+        type = Type.GetType(
+            subjectType,
+            assemblyName =>
+                ResolveLoadedAssembly(loadContext.Assemblies, assemblyName) ??
+                ResolveLoadedAssembly(AppDomain.CurrentDomain.GetAssemblies(), assemblyName),
+            (assembly, typeName, ignoreCase) =>
+                assembly is null
+                    ? FindLoadedType(loadContext.Assemblies, typeName, ignoreCase) ??
+                        FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), typeName, ignoreCase)
+                    : assembly.GetType(typeName, throwOnError: false, ignoreCase: ignoreCase),
+            throwOnError: false);
+        if (type is not null)
+            return true;
+
+        string fullName = TypeNameWithoutAssembly(subjectType);
         type = FindLoadedType(loadContext.Assemblies, fullName) ??
-            Type.GetType(subjectType, throwOnError: false) ??
             FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), fullName);
         return type is not null;
     }
 
-    private static Type? FindLoadedType(IEnumerable<Assembly> assemblies, string fullName)
+    private static Assembly? ResolveLoadedAssembly(
+        IEnumerable<Assembly> assemblies,
+        AssemblyName assemblyName)
     {
         foreach (Assembly assembly in assemblies)
         {
-            Type? type = assembly.GetType(fullName, throwOnError: false);
+            AssemblyName current = assembly.GetName();
+            if (string.Equals(current.Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase))
+                return assembly;
+        }
+
+        return null;
+    }
+
+    private static Type? FindLoadedType(
+        IEnumerable<Assembly> assemblies,
+        string fullName,
+        bool ignoreCase = false)
+    {
+        foreach (Assembly assembly in assemblies)
+        {
+            Type? type = assembly.GetType(fullName, throwOnError: false, ignoreCase);
             if (type is not null)
                 return type;
         }
 
         return null;
+    }
+
+    private static string TypeNameWithoutAssembly(string typeName)
+    {
+        int bracketDepth = 0;
+        for (int i = 0; i < typeName.Length; i++)
+        {
+            char character = typeName[i];
+            if (character == '[')
+            {
+                bracketDepth++;
+            }
+            else if (character == ']')
+            {
+                bracketDepth--;
+            }
+            else if (character == ',' && bracketDepth == 0)
+            {
+                return typeName[..i].Trim();
+            }
+        }
+
+        return typeName.Trim();
     }
 }
