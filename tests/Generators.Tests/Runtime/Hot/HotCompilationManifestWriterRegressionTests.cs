@@ -96,6 +96,47 @@ public sealed class HotCompilationManifestWriterRegressionTests
     }
 
     [Fact]
+    public void ManifestWriterDropsExistingEntriesMissingDefinition()
+    {
+        string path = TempManifestPath();
+        string seen = DateTimeOffset.UtcNow.ToString("O");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(
+            path,
+            $$"""
+            {
+              "Schema": "siftql.hot.v1",
+              "RuntimeVersion": "{{Environment.Version}}",
+              "FilterEngineVersion": "tiered-v1",
+              "GeneratorVersion": "hot-sourcegen-v1",
+              "Entries": [
+                {
+                  "Key": "filter|stale|abc",
+                  "Kind": "filter",
+                  "SubjectType": "stale",
+                  "Fingerprint": "abc",
+                  "Observed": { "LastSeenUtc": "{{seen}}" }
+                }
+              ]
+            }
+            """);
+        var writer = new HotCompilationManifestWriter(
+            path,
+            new HotCompilationManifestWriterOptions
+            {
+                CoalesceDelay = TimeSpan.Zero,
+                Retention = TimeSpan.FromDays(1),
+            });
+
+        writer.RecordHotFilter(typeof(ItemUsedEvent), Filter(), evaluations: 1, matches: 1);
+        writer.Flush();
+
+        HotCompilationManifest manifest = ReadManifest(path);
+        Assert.DoesNotContain(manifest.Entries, static entry => entry.SubjectType == "stale");
+        Assert.Single(manifest.Entries);
+    }
+
+    [Fact]
     public void ManifestWriterSkipsRuntimeAcceptedNaNFilter()
     {
         string path = TempManifestPath();
@@ -110,6 +151,34 @@ public sealed class HotCompilationManifestWriterRegressionTests
         writer.RecordHotFilter(typeof(ItemUsedEvent), filter, evaluations: 1, matches: 0);
         writer.Flush();
 
+        if (!File.Exists(path))
+            return;
+
+        Assert.Empty(ReadManifest(path).Entries);
+    }
+
+    [Fact]
+    public void ManifestWriterSkipsRuntimeAcceptedNaNProjectionArgument()
+    {
+        string path = TempManifestPath();
+        var writer = new HotCompilationManifestWriter(
+            path,
+            new HotCompilationManifestWriterOptions { CoalesceDelay = TimeSpan.Zero });
+        EventProjectionExpression projection = EventProjectionExpression
+            .Select(nameof(ItemUsedEvent.ItemId))
+            .WithIncludes(
+            [
+                new EventProjectionInclude(
+                    "test.window",
+                    "window",
+                    new EventProjectionArgument("offset", FilterValue.From(double.NaN))),
+            ]);
+
+        Exception? exception = Record.Exception(() =>
+            writer.RecordHotProjection(typeof(ItemUsedEvent), projection, materializations: 1, payloadWrites: 0));
+        writer.Flush();
+
+        Assert.Null(exception);
         if (!File.Exists(path))
             return;
 
