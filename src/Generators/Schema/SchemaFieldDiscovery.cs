@@ -28,7 +28,7 @@ internal static class SchemaFieldDiscovery
                 continue;
 
             string access = string.IsNullOrEmpty(accessPrefix) ? property.Name : accessPrefix + "." + property.Name;
-            string safeAccess = SafeAccess(safeAccessPrefix, owner, property.Name);
+            string safeAccess = SafeAccess(safeAccessPrefix, owner, property);
             bool accessCanReturnNull = IsNullable(property.Type) ||
                 safeAccess.Contains("?.", StringComparison.Ordinal);
             ITypeSymbol valueType = UnwrapNullable(property.Type);
@@ -109,25 +109,30 @@ internal static class SchemaFieldDiscovery
     private static string SafeAccess(
         string prefix,
         INamedTypeSymbol owner,
-        string propertyName)
+        IPropertySymbol property)
     {
-        string escaped = CSharpIdentifier.EscapePath(propertyName);
+        string escaped = CSharpIdentifier.EscapePath(property.Name);
         if (string.IsNullOrEmpty(prefix))
+        {
+            if (!SymbolEqualityComparer.Default.Equals(property.ContainingType, owner))
+            {
+                return "((" + property.ContainingType.ToDisplayString(s_format) +
+                    ")((" + owner.ToDisplayString(s_format) + ")subject))." +
+                    escaped;
+            }
+
             return escaped;
+        }
 
         return prefix + (CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
     }
 
     private static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (INamedTypeSymbol? current = owner; current is not null; current = current.BaseType)
         {
             foreach (IPropertySymbol property in current.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (seen.Add(property.Name))
-                    yield return property;
-            }
+                yield return property;
         }
     }
 

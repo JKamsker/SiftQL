@@ -280,7 +280,9 @@ internal static class FilterSchemaEmitter
     }
 
     private static string AccessExpression(GeneratedSchema schema, GeneratedField field) =>
-        "((" + schema.TypeName + ")subject)." + field.SafeAccess;
+        field.SafeAccess.StartsWith("((", StringComparison.Ordinal)
+            ? field.SafeAccess
+            : "((" + schema.TypeName + ")subject)." + field.SafeAccess;
 
     private static bool AccessReturnsNullable(GeneratedField field) =>
         field.IsNullable || field.AccessCanReturnNull;

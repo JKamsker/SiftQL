@@ -114,6 +114,7 @@ public static class FilterCompiler
             options.Mode,
             promotionPolicy,
             PrecompiledTieredProviderRegistry.GlobalVersion,
+            FilterSchema.Version,
             HotManifestSinkIdentity.From(options.HotManifestSink));
         if (s_kernelCache.TryGetValue(key, out CompiledKernel? cached))
             return cached;

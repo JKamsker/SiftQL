@@ -11,6 +11,7 @@ public sealed class FilterSchema
     private static readonly ConcurrentDictionary<Type, byte> s_valueObjects = new();
     private static readonly NullabilityInfoContext s_nullability = new();
     private static int s_valueObjectVersion;
+    private static int s_schemaVersion;
 
     public static void RegisterValueObject<T>() => RegisterValueObject(typeof(T));
 
@@ -21,6 +22,7 @@ public sealed class FilterSchema
             return;
 
         Interlocked.Increment(ref s_valueObjectVersion);
+        IncrementSchemaVersion();
         s_cache.Clear();
     }
 
@@ -34,11 +36,12 @@ public sealed class FilterSchema
 
     public Type SubjectType { get; }
     public IReadOnlyCollection<string> FieldNames => _fields.Keys;
+    internal static int Version => Volatile.Read(ref s_schemaVersion);
 
     public static FilterSchema For(Type subjectType)
     {
         ArgumentNullException.ThrowIfNull(subjectType);
-        var key = new SchemaCacheKey(subjectType, Volatile.Read(ref s_valueObjectVersion));
+        var key = new SchemaCacheKey(subjectType, Version);
         return s_cache.GetOrAdd(key, static item => Build(item.SubjectType));
     }
 
@@ -50,8 +53,12 @@ public sealed class FilterSchema
 
     internal static void RegisterGeneratedProvider(
         Assembly assembly,
-        GeneratedFilterSchemaProviderDelegate provider) =>
+        GeneratedFilterSchemaProviderDelegate provider)
+    {
         s_generatedProviders[assembly] = provider;
+        IncrementSchemaVersion();
+        s_cache.Clear();
+    }
 
     public bool TryGetField(string name, out FilterField field) =>
         _fields.TryGetValue(name, out field!);
@@ -59,10 +66,10 @@ public sealed class FilterSchema
     private static FilterSchema Build(Type subjectType)
     {
         if (GeneratedFilterSchemaProvider.TryCreate(subjectType, out var schema))
-            return schema!;
+            return MergeRegisteredValueObjectFields(schema!);
 
         return TryCreateRegistered(subjectType, out schema)
-            ? schema!
+            ? MergeRegisteredValueObjectFields(schema!)
             : BuildFallback(subjectType);
     }
 
@@ -76,6 +83,22 @@ public sealed class FilterSchema
 
         schema = null;
         return false;
+    }
+
+    private static FilterSchema MergeRegisteredValueObjectFields(FilterSchema generated)
+    {
+        if (Volatile.Read(ref s_valueObjectVersion) == 0)
+            return generated;
+
+        FilterSchema fallback = BuildFallback(generated.SubjectType);
+        var fields = new List<FilterField>(generated._fields.Values);
+        foreach (FilterField field in fallback._fields.Values)
+        {
+            if (!generated._fields.ContainsKey(field.Name))
+                fields.Add(field);
+        }
+
+        return new FilterSchema(generated.SubjectType, fields);
     }
 
     private static FilterSchema BuildFallback(Type subjectType)
@@ -277,5 +300,8 @@ public sealed class FilterSchema
         type == typeof(double) ||
         type == typeof(decimal);
 
-    private readonly record struct SchemaCacheKey(Type SubjectType, int ValueObjectVersion);
+    private static void IncrementSchemaVersion() =>
+        Interlocked.Increment(ref s_schemaVersion);
+
+    private readonly record struct SchemaCacheKey(Type SubjectType, int SchemaVersion);
 }

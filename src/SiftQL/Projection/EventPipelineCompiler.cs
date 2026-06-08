@@ -46,6 +46,7 @@ public static class EventPipelineCompiler
             EventPipelineExpressionKey.From(normalized),
             includeCompilerKey,
             PrecompiledTieredProviderRegistry.GlobalVersion,
+            FilterSchema.Version,
             FilterCompilerOptionsCacheKey.From(options.FilterOptions),
             ProjectionCompilerOptionsCacheKey.From(options.ProjectionOptions));
         if (s_cache.TryGetValue(key, out object? cached))
@@ -253,6 +254,7 @@ public static class EventPipelineCompiler
         EventPipelineExpressionKey Pipeline,
         IncludeCompilerKey IncludeCompiler,
         int PrecompiledProviderVersion,
+        int SchemaVersion,
         FilterCompilerOptionsCacheKey FilterOptions,
         ProjectionCompilerOptionsCacheKey ProjectionOptions);
 
