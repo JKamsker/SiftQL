@@ -274,7 +274,7 @@ public sealed class FilterSubscriptionIndexTests
             .GetField("_fields", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         var fields = (System.Collections.IDictionary)fieldsField!.GetValue(index)!;
 
-        Assert.Equal(0, fields.Count);
+        Assert.Empty(fields);
     }
 
     [Fact]
@@ -288,7 +288,6 @@ public sealed class FilterSubscriptionIndexTests
             .GetField("_fields", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         var fields = (System.Collections.IDictionary)fieldsField!.GetValue(index)!;
 
-        Assert.Equal(0, fields.Count);
+        Assert.Empty(fields);
     }
 }
-

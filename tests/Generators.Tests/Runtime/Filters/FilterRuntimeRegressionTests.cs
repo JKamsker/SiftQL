@@ -329,7 +329,7 @@ public sealed class FilterRuntimeRegressionTests
             filter,
             FilterCompilerOptions.Immediate);
 
-        Assert.False(kernel.Matches(new CollectionSubject(Container: null)));
+        Assert.False(kernel.Matches(new CollectionSubject(Container: null!)));
         Assert.True(kernel.Matches(new CollectionSubject(Container: new NestedContainer([]))));
     }
 
@@ -367,7 +367,7 @@ public sealed class FilterRuntimeRegressionTests
         var schema = FilterSchema.For(typeof(CollectionSubject));
         var match = FilterInterpretedCompiler.Compile(schema, filter, null);
 
-        Assert.False(match(new CollectionSubject(Container: null)));
+        Assert.False(match(new CollectionSubject(Container: null!)));
     }
 
     [Fact]
