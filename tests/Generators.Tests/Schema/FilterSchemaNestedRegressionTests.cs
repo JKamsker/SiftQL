@@ -191,8 +191,8 @@ public sealed class FilterSchemaNestedRegressionTests
 
         Assert.True(schema.TryGetField("Items.Name", out FilterField? nameField));
         Assert.True(schema.TryGetField("Items.Tags", out FilterField? tagsField));
-        Assert.Equal(["Destroyer"], (object?[])nameField!.Getter(ev));
-        Assert.Equal(["rare"], (object?[])tagsField!.Getter(ev));
+        Assert.Equal(["Destroyer"], Assert.IsType<object?[]>(nameField!.Getter(ev)));
+        Assert.Equal(["rare"], Assert.IsType<object?[]>(tagsField!.Getter(ev)));
     }
 
     [Fact]
