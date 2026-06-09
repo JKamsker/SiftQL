@@ -152,6 +152,23 @@ public sealed class KernelCatalogSourceGeneratorTests
     }
 
     [Fact]
+    public void GeneratorReportsOpenGenericSubject()
+    {
+        GeneratorRun run = RunGenerator(ParseTree("""
+            using SiftQL;
+            namespace SampleHost;
+
+            [KernelCatalog]
+            [KernelSubject(typeof(GenericEvent<>))]
+            public static partial class ServerKernel;
+
+            public sealed record GenericEvent<T>(T Value) : IFilterSubject;
+            """));
+
+        AssertHasDiagnostic(run, "SIFTKERNEL002");
+    }
+
+    [Fact]
     public void GeneratorReportsDuplicateAliases()
     {
         GeneratorRun run = RunGenerator(ParseTree("""
