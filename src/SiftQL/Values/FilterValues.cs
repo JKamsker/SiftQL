@@ -64,6 +64,8 @@ public static class FilterValues
         FilterValue value,
         Func<string, Exception>? errorFactory = null)
     {
+        if (!IsKnownKind(value.Kind))
+            throw Error(errorFactory, $"Filter value kind '{value.Kind}' is not supported.");
         if (value.Kind == FilterValueKind.Null)
             return;
         if (IsProjectedDynamic(field.ValueType))
@@ -222,6 +224,16 @@ public static class FilterValues
 
     private static bool IsProjectedDynamic(Type type) =>
         type == typeof(ProjectedEventValue);
+
+    private static bool IsKnownKind(FilterValueKind kind) =>
+        kind is FilterValueKind.Null or
+            FilterValueKind.Boolean or
+            FilterValueKind.Integer or
+            FilterValueKind.UnsignedInteger or
+            FilterValueKind.Number or
+            FilterValueKind.Decimal or
+            FilterValueKind.String or
+            FilterValueKind.Guid;
 
     private static bool IsEnumStringEqual(object actual, string? expected)
     {
