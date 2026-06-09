@@ -303,6 +303,23 @@ public sealed class FilterNumericPrecisionRegressionTests
     }
 
     [Fact]
+    public void ProjectedDynamicFilterRejectsUnknownValueKind()
+    {
+        var filter = FilterExpression.Compare(
+            ProjectedEventPaths.Field("Amount"),
+            FilterOperator.NotEqual,
+            new FilterValue { Kind = (FilterValueKind)999, Number = 1D });
+
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.CompileWithSchema(
+                typeof(ProjectedEvent),
+                filter,
+                FilterCompilerOptions.Immediate,
+                errorFactory: null,
+                _ => ProjectedEventFilterSchema.ForFilter(filter)));
+    }
+
+    [Fact]
     public void EnumIntegerEqualityCoversAllBackingTypes()
     {
         Assert.True(FilterValues.Compare(ByteKind.Value, FilterValue.From(1L), FilterOperator.Equal));
