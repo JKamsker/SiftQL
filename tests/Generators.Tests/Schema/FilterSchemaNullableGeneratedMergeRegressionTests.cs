@@ -11,7 +11,7 @@ namespace SiftQL.Generators.Tests;
 public sealed class FilterSchemaNullableGeneratedMergeRegressionTests
 {
     [Fact]
-    public void UnrelatedValueObjectRegistrationDoesNotExpandNullableGeneratedReferenceObject()
+    public void UnrelatedValueObjectRegistrationExpandsNullableGeneratedReferenceObject()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.NullableGeneratedReferenceMerge",
@@ -43,7 +43,9 @@ public sealed class FilterSchemaNullableGeneratedMergeRegressionTests
         FilterSchema schema = FilterSchema.For(eventType);
 
         Assert.True(schema.TryGetField("Location", out _));
-        Assert.False(schema.TryGetField("Location.MapId", out _));
+        // Nullable reference value objects expand with null-propagating
+        // accessors; only Nullable<T> value objects stay unexpanded.
+        Assert.True(schema.TryGetField("Location.MapId", out _));
     }
 
     private static GeneratorRun RunGenerator(string assemblyName, params SyntaxTree[] trees)
