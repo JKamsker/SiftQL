@@ -20,6 +20,7 @@ public static class ProjectionContextIncludeCompiler
             return CompileConstant<TContext>(include);
 
         if (!ProjectionContextMethodResolver.TryResolve<TContext>(
+            schema,
             include,
             out MethodInfo? method,
             out string memberPath))
