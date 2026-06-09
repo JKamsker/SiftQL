@@ -156,6 +156,13 @@ public sealed class FilterRuntimeRegressionTests
 
         manifestScope.Commit();
 
+        Assert.False(PrecompiledTieredProviderRegistry.TryGetFilter(
+            typeof(ItemUsedEvent),
+            "fingerprint",
+            out _));
+
+        using var registration = manifestScope.ClaimCommittedRegistrations();
+
         Assert.True(PrecompiledTieredProviderRegistry.TryGetFilter(
             typeof(ItemUsedEvent),
             "fingerprint",
