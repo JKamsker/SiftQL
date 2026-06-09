@@ -263,10 +263,20 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     private bool TryRemoveUnindexed(TypedSubscriptionEntry<TSubscription, TSubject> entry)
         => _unindexed.Remove(entry);
 
-    private bool TryRemoveIndexed(TypedSubscriptionEntry<TSubscription, TSubject> entry) =>
-        entry.Key is { } key &&
-        _fields.TryGetValue(key.Field, out var field) &&
-        field.Remove(key.Value, entry);
+    private bool TryRemoveIndexed(TypedSubscriptionEntry<TSubscription, TSubject> entry)
+    {
+        if (entry.Key is not { } key ||
+            !_fields.TryGetValue(key.Field, out var field) ||
+            !field.Remove(key.Value, entry))
+        {
+            return false;
+        }
+
+        if (field.IsEmpty)
+            _fields.Remove(key.Field);
+
+        return true;
+    }
 
     private void PublishSnapshot()
     {

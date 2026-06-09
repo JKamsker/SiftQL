@@ -11,6 +11,8 @@ internal sealed class TypedSubscriptionFieldIndex<TSubscription, TSubject>
     public TypedSubscriptionFieldIndex(FilterField field) =>
         _accessor = FilterIndexValueAccessor<TSubject>.Create(field);
 
+    public bool IsEmpty => _byValue.Count == 0;
+
     public void Add(FilterIndexValue value, TypedSubscriptionEntry<TSubscription, TSubject> entry)
     {
         if (!_byValue.TryGetValue(value, out var bucket))

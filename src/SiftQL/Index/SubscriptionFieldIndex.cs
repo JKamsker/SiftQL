@@ -12,6 +12,8 @@ internal sealed class SubscriptionFieldIndex<TSubscription>
     public SubscriptionFieldIndex(Type subjectType, FilterField field) =>
         _accessor = CreateAccessor(subjectType, field);
 
+    public bool IsEmpty => _byValue.Count == 0;
+
     public void Add(FilterIndexValue value, SubscriptionEntry<TSubscription> entry)
     {
         if (!_byValue.TryGetValue(value, out var bucket))
