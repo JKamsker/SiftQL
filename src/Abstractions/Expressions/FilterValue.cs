@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SiftQL.Translation;
 
 namespace SiftQL.Expressions;
@@ -21,6 +22,10 @@ public sealed record FilterValue
     public bool Boolean { get; init; }
     public long Integer { get; init; }
     public ulong UnsignedInteger { get; init; }
+
+    // NaN and +/-Infinity are valid filter values but have no JSON number
+    // representation; serialize them as the named literals instead.
+    [JsonNumberHandling(JsonNumberHandling.AllowNamedFloatingPointLiterals)]
     public double Number { get; init; }
     public decimal Decimal { get; init; }
     public string? String { get; init; }
