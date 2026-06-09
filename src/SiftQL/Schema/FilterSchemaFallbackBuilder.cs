@@ -8,8 +8,7 @@ internal static class FilterSchemaFallbackBuilder
 {
     public static FilterSchema Build(
         Type subjectType,
-        Func<Type, bool> isValueObject,
-        NullabilityInfoContext nullability)
+        Func<Type, bool> isValueObject)
     {
         var fields = new List<FilterField>
         {
@@ -27,8 +26,7 @@ internal static class FilterSchemaFallbackBuilder
             typedSubject,
             parameter,
             depth: 0,
-            isValueObject,
-            nullability);
+            isValueObject);
         return new FilterSchema(subjectType, fields);
     }
 
@@ -36,8 +34,7 @@ internal static class FilterSchemaFallbackBuilder
         Type subjectType,
         IEnumerable<FilterField> generatedFields,
         List<FilterField> fields,
-        Func<Type, bool> isValueObject,
-        NullabilityInfoContext nullability)
+        Func<Type, bool> isValueObject)
     {
         var parameter = Expression.Parameter(typeof(object), "subject");
         var typedSubject = Expression.Convert(parameter, subjectType);
@@ -51,11 +48,13 @@ internal static class FilterSchemaFallbackBuilder
 
             Expression? ownerExpression = FilterFieldAccessExpression.Build(typedSubject, path);
             if (ownerExpression is null ||
-                PathCanReturnNull(subjectType, path, nullability))
+                PathBlocksNestedExpansion(subjectType, path))
             {
                 continue;
             }
 
+            // Guarded access lifts struct owners to Nullable<T>; unwrap so
+            // the owner's properties stay addressable during expansion.
             ownerExpression = UnwrapNullableValue(ownerExpression);
             AddProperties(
                 fields,
@@ -65,21 +64,23 @@ internal static class FilterSchemaFallbackBuilder
                 typedSubject,
                 parameter,
                 Depth(field.Name),
-                isValueObject,
-                nullability);
+                isValueObject);
         }
     }
 
-    private static bool PathCanReturnNull(Type ownerType, string path, NullabilityInfoContext nullability)
+    // Nullable reference owners expand fine because nested accessors
+    // null-propagate; Nullable<T> owners cannot, because the value object's
+    // properties are not addressable through Nullable<T>.
+    private static bool PathBlocksNestedExpansion(Type ownerType, string path)
     {
         Type current = ownerType;
         foreach (string segment in path.Split('.'))
         {
             PropertyInfo? property = FindProperty(current, segment);
-            if (property is null || IsNullableProperty(property, nullability))
+            if (property is null || Nullable.GetUnderlyingType(property.PropertyType) is not null)
                 return true;
 
-            current = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            current = property.PropertyType;
         }
 
         return false;
@@ -108,8 +109,7 @@ internal static class FilterSchemaFallbackBuilder
         Expression rootExpression,
         ParameterExpression parameter,
         int depth,
-        Func<Type, bool> isValueObject,
-        NullabilityInfoContext nullability)
+        Func<Type, bool> isValueObject)
     {
         if (depth > 3)
             return;
@@ -175,7 +175,9 @@ internal static class FilterSchemaFallbackBuilder
                     propertyExpression,
                     rootExpression,
                     parameter));
-                if (!IsNullableProperty(property, nullability))
+                // Nullable reference owners still expand: nested accessors
+                // null-propagate. Nullable<T> owners cannot be expanded.
+                if (Nullable.GetUnderlyingType(propertyType) is null)
                 {
                     AddProperties(
                         fields,
@@ -185,8 +187,7 @@ internal static class FilterSchemaFallbackBuilder
                         rootExpression,
                         parameter,
                         depth + 1,
-                        isValueObject,
-                        nullability);
+                        isValueObject);
                 }
             }
         }
@@ -213,18 +214,6 @@ internal static class FilterSchemaFallbackBuilder
         declaringType.IsAssignableFrom(expression.Type)
             ? Expression.Convert(expression, declaringType)
             : expression;
-
-    private static bool IsNullableProperty(
-        PropertyInfo property,
-        NullabilityInfoContext nullability)
-    {
-        Type propertyType = property.PropertyType;
-        if (Nullable.GetUnderlyingType(propertyType) is not null)
-            return true;
-
-        return !propertyType.IsValueType &&
-            nullability.Create(property).ReadState == NullabilityState.Nullable;
-    }
 
     private static Expression UnwrapNullableValue(Expression expression) =>
         Nullable.GetUnderlyingType(expression.Type) is not null

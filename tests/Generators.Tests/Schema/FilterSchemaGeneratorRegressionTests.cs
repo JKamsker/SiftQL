@@ -151,7 +151,7 @@ public sealed class FilterSchemaGeneratorRegressionTests
     }
 
     [Fact]
-    public void NullableReferenceValueObjectDoesNotEmitUnsafeNestedFields()
+    public void NullableReferenceValueObjectEmitsNullSafeNestedFields()
     {
         GeneratorRun run = RunGenerator(
             "Plugin.Schema.NullableReferenceValueObject",
@@ -170,7 +170,8 @@ public sealed class FilterSchemaGeneratorRegressionTests
         string source = HotSource(run, "GeneratedCurrentFilterSchemaProvider.g.cs");
 
         AssertEx.Contains("\"Location\"", source, "nullable value object field remains discoverable");
-        AssertEx.DoesNotContain("\"Location.MapId\"", source, "nullable value object nested path is not emitted");
+        AssertEx.Contains("\"Location.MapId\"", source, "nullable value object nested path is emitted with null propagation");
+        AssertEx.Contains("Location?.MapId", source, "nested access null-propagates through the nullable owner");
         AssertNoCompilationErrors(run, "nullable reference value object schema provider");
     }
 

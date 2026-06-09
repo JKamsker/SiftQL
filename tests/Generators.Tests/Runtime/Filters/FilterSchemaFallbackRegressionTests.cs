@@ -36,14 +36,16 @@ public sealed class FilterSchemaFallbackRegressionTests
     }
 
     [Fact]
-    public void NullableReferenceValueObjectDoesNotExposeUnsafeNestedFallbackFields()
+    public void NullableReferenceValueObjectExposesNullSafeNestedFallbackFields()
     {
         FilterSchema.RegisterValueObject<ReferenceLocation>();
 
         FilterSchema schema = FilterSchema.For(typeof(NullableReferenceLocationEvent));
 
         Assert.True(schema.TryGetField(nameof(NullableReferenceLocationEvent.Location), out _));
-        Assert.False(schema.TryGetField("Location.MapId", out _));
+        // Nullable reference owners expand because nested accessors
+        // null-propagate; only Nullable<T> owners stay unexpanded.
+        Assert.True(schema.TryGetField("Location.MapId", out _));
     }
 
     [Fact]

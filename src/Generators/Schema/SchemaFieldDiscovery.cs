@@ -89,7 +89,10 @@ internal static class SchemaFieldDiscovery
                     GeneratedFieldKind.Object,
                     GeneratedScalarKind.Object,
                     accessCanReturnNull));
-                if (!IsNullable(property.Type))
+                // Nullable reference owners still expand: SafeAccess emits
+                // "?." chains. Nullable<T> owners cannot be expanded because
+                // their properties are not addressable through Nullable<T>.
+                if (!IsNullableValueType(property.Type))
                     AddProperties(fields, name, access, safeAccess, nested, depth + 1);
             }
         }
@@ -194,6 +197,9 @@ internal static class SchemaFieldDiscovery
 
     internal static bool IsNullable(ITypeSymbol type) =>
         type.NullableAnnotation == NullableAnnotation.Annotated ||
+        IsNullableValueType(type);
+
+    private static bool IsNullableValueType(ITypeSymbol type) =>
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
 
     private static bool CanBeNullAtRuntime(ITypeSymbol type) =>

@@ -10,7 +10,6 @@ public sealed class FilterSchema
     private static readonly ConcurrentDictionary<SchemaCacheKey, FilterSchema> s_cache = new();
     private static readonly ConcurrentDictionary<Assembly, GeneratedFilterSchemaProviderDelegate> s_generatedProviders = new();
     private static readonly ConcurrentDictionary<Type, byte> s_valueObjects = new();
-    private static readonly NullabilityInfoContext s_nullability = new();
     private static int s_valueObjectVersion;
     private static int s_schemaVersion;
 
@@ -122,13 +121,12 @@ public sealed class FilterSchema
             generated.SubjectType,
             generated._fields.Values,
             fields,
-            IsRegisteredValueObject,
-            s_nullability);
+            IsRegisteredValueObject);
         return new FilterSchema(generated.SubjectType, fields);
     }
 
     private static FilterSchema BuildFallback(Type subjectType) =>
-        FilterSchemaFallbackBuilder.Build(subjectType, IsRegisteredValueObject, s_nullability);
+        FilterSchemaFallbackBuilder.Build(subjectType, IsRegisteredValueObject);
 
     private static FilterSchema ValidateProviderSchema(
         Type requestedType,
