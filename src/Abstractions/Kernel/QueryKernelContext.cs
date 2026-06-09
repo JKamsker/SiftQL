@@ -49,7 +49,9 @@ public sealed record QueryKernel<TSubject, TContext>
             .AddIncludes(
                 Pipeline,
                 translated.NewIncludes,
-                RequiredSourceFields(Pipeline, translated.SourceFields))
+                ContextProjectionPipeline.HasProjection(Pipeline)
+                    ? RequiredSourceFields(Pipeline, translated.SourceFields)
+                    : [])
             .AppendFilter(translated.Filter);
         return new QueryKernel<TSubject, TContext>(
             Kernel with { Pipeline = pipeline },
