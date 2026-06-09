@@ -100,10 +100,14 @@ public static class EventPipelineCompiler
 
     public static EventPipelineExpression ProjectionDispatchPipeline(EventPipelineExpression? pipeline)
     {
-        Type subjectType = ReferencesProjectedFields(pipeline)
+        bool referencesProjectedFields = ReferencesProjectedFields(pipeline);
+        Type subjectType = referencesProjectedFields
             ? typeof(ProjectedEvent)
             : typeof(object);
         EventPipelineExpression normalized = EventPipelineNormalizer.Normalize(subjectType, pipeline);
+        if (referencesProjectedFields && pipeline?.HasProjection != true)
+            return normalized;
+
         int projectionIndex = Array.FindIndex(
             normalized.Stages,
             static stage => stage.Kind == EventPipelineStageKind.Projection);
