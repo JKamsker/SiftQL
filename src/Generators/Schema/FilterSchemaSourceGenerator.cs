@@ -66,7 +66,7 @@ public sealed class FilterSchemaSourceGenerator : IIncrementalGenerator
             foreach (HotProviderDiagnostic diagnostic in provider.Diagnostics)
                 ctx.ReportDiagnostic(HotProviderDiagnostics.Create(diagnostic));
 
-            if (provider.Entries.Count == 0)
+            if (provider.Diagnostics.Count != 0 || provider.Entries.Count == 0)
                 return;
 
             string source = HotProviderEmitter.Emit(provider);
