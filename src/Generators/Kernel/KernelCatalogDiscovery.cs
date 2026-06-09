@@ -106,6 +106,14 @@ internal static class KernelCatalogDiscovery
             attribute.ConstructorArguments[0].Value is not INamedTypeSymbol subject)
             return;
 
+        if (IsOpenGeneric(subject))
+        {
+            diagnostics.Add(new(
+                KernelCatalogDiagnostics.InvalidSubject,
+                $"Kernel subject '{subject.ToDisplayString()}' must be a closed type."));
+            return;
+        }
+
         string typeName = subject.ToDisplayString(s_format);
         if (!subjectNames.Add(typeName))
         {
@@ -181,6 +189,21 @@ internal static class KernelCatalogDiscovery
         }
 
         return null;
+    }
+
+    private static bool IsOpenGeneric(INamedTypeSymbol subject) =>
+        subject.IsUnboundGenericType ||
+        subject.TypeArguments.Any(ContainsTypeParameter);
+
+    private static bool ContainsTypeParameter(ITypeSymbol type)
+    {
+        if (type.TypeKind == TypeKind.TypeParameter)
+            return true;
+        if (type is IArrayTypeSymbol array)
+            return ContainsTypeParameter(array.ElementType);
+        if (type is INamedTypeSymbol named)
+            return named.TypeArguments.Any(ContainsTypeParameter);
+        return false;
     }
 
     private static bool InheritsOrImplements(INamedTypeSymbol subject, INamedTypeSymbol contract)
