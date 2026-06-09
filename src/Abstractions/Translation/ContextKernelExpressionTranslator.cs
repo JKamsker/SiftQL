@@ -27,7 +27,8 @@ internal static class ContextKernelExpressionTranslator
         return new ContextFilterTranslation(
             filter,
             translator.Includes.NewIncludes,
-            translator.Includes.Bindings);
+            translator.Includes.Bindings,
+            translator.SourceFields);
     }
 
     private sealed class Translator
@@ -36,6 +37,7 @@ internal static class ContextKernelExpressionTranslator
         private readonly ParameterExpression _context;
         private readonly EventPipelineExpression _pipeline;
         private readonly bool _projectSubjectFields;
+        private readonly HashSet<string> _sourceFields = new(StringComparer.OrdinalIgnoreCase);
         private int _parameterIndex;
 
         public Translator(
@@ -55,6 +57,7 @@ internal static class ContextKernelExpressionTranslator
         }
 
         public ContextExpressionIncludes Includes { get; }
+        public string[] SourceFields => _sourceFields.ToArray();
 
         public FilterExpression Translate(Expression expression)
         {
@@ -154,6 +157,8 @@ internal static class ContextKernelExpressionTranslator
             expression = StripConvert(expression);
             if (TryGetSubjectFieldPath(expression, out string? sourcePath))
             {
+                if (_projectSubjectFields)
+                    _sourceFields.Add(sourcePath);
                 path = _projectSubjectFields
                     ? ContextProjectionPipeline.ProjectedPath(_pipeline, sourcePath)
                     : sourcePath;
@@ -246,4 +251,5 @@ internal static class ContextKernelExpressionTranslator
 internal sealed record ContextFilterTranslation(
     FilterExpression Filter,
     EventProjectionInclude[] NewIncludes,
-    ContextProjectionBinding[] Bindings);
+    ContextProjectionBinding[] Bindings,
+    string[] SourceFields);

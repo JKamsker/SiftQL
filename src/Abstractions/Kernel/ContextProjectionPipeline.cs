@@ -70,8 +70,19 @@ internal static class ContextProjectionPipeline
 
     public static string ProjectedFieldName(EventPipelineExpression pipeline, string sourcePath)
     {
+        return TryProjectedFieldName(pipeline, sourcePath, out string fieldName)
+            ? fieldName
+            : sourcePath;
+    }
+
+    public static bool TryProjectedFieldName(
+        EventPipelineExpression pipeline,
+        string sourcePath,
+        out string fieldName)
+    {
         string currentName = sourcePath;
         bool projected = false;
+        bool available = false;
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {
             if (pipeline.Stages[i].Kind != EventPipelineStageKind.Projection)
@@ -84,12 +95,18 @@ internal static class ContextProjectionPipeline
             if (TryProjectedFieldName(projection, currentPath, out string nextName))
             {
                 currentName = nextName;
+                available = true;
+            }
+            else
+            {
+                available = false;
             }
 
             projected = true;
         }
 
-        return currentName;
+        fieldName = currentName;
+        return available;
     }
 
     public static string ProjectedPath(EventPipelineExpression pipeline, string sourcePath) =>

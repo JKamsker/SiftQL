@@ -46,7 +46,10 @@ public sealed record QueryKernel<TSubject, TContext>
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
         EventPipelineExpression pipeline = ContextProjectionPipeline
-            .AddIncludes(Pipeline, translated.NewIncludes)
+            .AddIncludes(
+                Pipeline,
+                translated.NewIncludes,
+                RequiredSourceFields(Pipeline, translated.SourceFields))
             .AppendFilter(translated.Filter);
         return new QueryKernel<TSubject, TContext>(
             Kernel with { Pipeline = pipeline },
@@ -106,6 +109,27 @@ public sealed record QueryKernel<TSubject, TContext>
         EventProjectionExpression finalProjection = EventProjectionExpression.Default.WithFields(
             translated.Outputs.Select(output => FinalField(output, projected)).ToArray());
         return pipeline.AppendProjection(finalProjection);
+    }
+
+    private static EventProjectionField[] RequiredSourceFields(
+        EventPipelineExpression pipeline,
+        IReadOnlyList<string> sourceFields)
+    {
+        if (sourceFields.Count == 0)
+            return [];
+
+        var fields = new List<EventProjectionField>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < sourceFields.Count; i++)
+        {
+            string sourcePath = sourceFields[i];
+            if (ContextProjectionPipeline.TryProjectedFieldName(pipeline, sourcePath, out _))
+                continue;
+            if (names.Add(sourcePath))
+                fields.Add(new EventProjectionField(sourcePath));
+        }
+
+        return fields.ToArray();
     }
 
     private EventProjectionField FinalField(ContextSelectorOutput output, bool projected)
