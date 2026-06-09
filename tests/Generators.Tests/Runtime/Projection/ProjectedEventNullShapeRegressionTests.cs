@@ -62,6 +62,40 @@ public sealed class ProjectedEventNullShapeRegressionTests
         Assert.Null(projected);
     }
 
+    [Fact]
+    public async Task CompiledProjectionSkipsNullInheritedContextEntries()
+    {
+        CompiledProjection<object> projection = ProjectionCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            EventProjectionExpression.Default.WithFields(
+            [
+                new EventProjectionField(ProjectedEventPaths.Context("tag"), "Tag"),
+            ]),
+            RejectInclude,
+            ProjectionCompilerOptions.Immediate);
+        var source = new ProjectedEvent
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Context =
+            [
+                null!,
+                new ProjectedEventField("tag", ProjectedEventValue.FromScalar("selected")),
+                new ProjectedEventField("keep", ProjectedEventValue.FromScalar("inherited")),
+            ],
+        };
+
+        ProjectedEvent projected = await projection.ProjectAsync(
+            source,
+            new object(),
+            CancellationToken.None);
+
+        Assert.Equal("selected", projected.Field("Tag").String);
+        ProjectedEventField inherited = Assert.Single(projected.Context);
+        Assert.Equal("keep", inherited.Name);
+        Assert.Equal("inherited", inherited.Value.String);
+    }
+
     private static CompiledProjection<object>.IncludeProjector RejectInclude(
         FilterSchema schema,
         EventProjectionInclude include)
