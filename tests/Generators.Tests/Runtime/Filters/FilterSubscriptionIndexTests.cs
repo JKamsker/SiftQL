@@ -262,4 +262,33 @@ public sealed class FilterSubscriptionIndexTests
         index.ForEachCandidate(new SubjectA(Id: 99), ref visits, Visitor);
         Assert.Equal(0, visits);
     }
+
+    [Fact]
+    public void FSubIdx_Remove_LastSubscription_ClearsFieldIndexFromInternalDictionary()
+    {
+        var index = new FilterSubscriptionIndex<string>(typeof(SubjectA));
+        index.Add("sub-1", FilterExpression.Compare(nameof(SubjectA.Id), FilterOperator.Equal, FilterValue.From(10L)));
+        index.Remove("sub-1");
+
+        var fieldsField = typeof(FilterSubscriptionIndex<string>)
+            .GetField("_fields", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var fields = (System.Collections.IDictionary)fieldsField!.GetValue(index)!;
+
+        Assert.Equal(0, fields.Count);
+    }
+
+    [Fact]
+    public void TypedIdx_Remove_LastSubscription_ClearsFieldIndexFromInternalDictionary()
+    {
+        var index = new TypedFilterSubscriptionIndex<string, SubjectA>();
+        index.Add("sub-1", FilterExpression.Compare(nameof(SubjectA.Id), FilterOperator.Equal, FilterValue.From(10L)));
+        index.Remove("sub-1");
+
+        var fieldsField = typeof(TypedFilterSubscriptionIndex<string, SubjectA>)
+            .GetField("_fields", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var fields = (System.Collections.IDictionary)fieldsField!.GetValue(index)!;
+
+        Assert.Equal(0, fields.Count);
+    }
 }
+
