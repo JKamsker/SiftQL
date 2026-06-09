@@ -68,6 +68,25 @@ public sealed class ServerPluginHostRegistrationRegressionTests
         Assert.Contains("started", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task LowerLevelRegistrationsAfterStartAreRejected()
+    {
+        var host = new InMemoryServerPluginHost(new ClientGateway());
+
+        await host.StartAsync();
+
+        InvalidOperationException startup = Assert.Throws<InvalidOperationException>(() =>
+            host.RegisterStartup("late-startup", static (_, _) => ValueTask.CompletedTask));
+        InvalidOperationException projected = Assert.Throws<InvalidOperationException>(() =>
+            host.SubscribeProjected<ExampleItemUsedEvent>(
+                "late-projected",
+                QueryKernel.For<ExampleItemUsedEvent>(),
+                static (_, _) => ValueTask.CompletedTask));
+
+        Assert.Contains("started", startup.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("started", projected.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class ThrowingProjectedPlugin : IServerPlugin
     {
         public string Id => "throwing-projected";
