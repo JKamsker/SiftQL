@@ -90,9 +90,20 @@ internal static class ProjectedPayloadWriter
             return;
         }
 
-        writer.WriteArrayHeader(context.Count);
+        int count = 0;
         for (int i = 0; i < context.Count; i++)
-            WriteField(ref writer, context[i].Name, context[i].Value, options);
+        {
+            if (context[i] is not null)
+                count++;
+        }
+
+        writer.WriteArrayHeader(count);
+        for (int i = 0; i < context.Count; i++)
+        {
+            ProjectedEventField? field = context[i];
+            if (field is not null)
+                WriteField(ref writer, field.Name, field.Value, options);
+        }
     }
 
     private static void WriteFields(

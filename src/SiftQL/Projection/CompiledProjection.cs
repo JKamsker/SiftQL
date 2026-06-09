@@ -147,10 +147,10 @@ public sealed class CompiledProjection<TContext>
         }
 
         if (consumed is null)
-            return contextFields.ToArray();
+            return contextFields.Where(static field => field is not null).ToArray();
 
         return contextFields
-            .Where(field => !consumed.Contains(field.Name))
+            .Where(field => field is not null && !consumed.Contains(field.Name))
             .ToArray();
     }
 
