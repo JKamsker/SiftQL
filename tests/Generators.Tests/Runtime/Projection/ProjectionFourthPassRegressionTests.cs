@@ -40,6 +40,34 @@ public sealed class ProjectionFourthPassRegressionTests
     }
 
     [Fact]
+    public async Task ProjectionDispatchPipelinePreservesProjectedFilterWhenProjectionIsSynthesized()
+    {
+        EventPipelineExpression pipeline = EventPipelineExpression.Default.AppendFilter(
+            FilterExpression.Compare(
+                ProjectedEventPaths.Field("ItemId"),
+                FilterOperator.Equal,
+                FilterValue.From(100L)));
+        EventPipelineExpression dispatch = EventPipelineCompiler.ProjectionDispatchPipeline(pipeline);
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(ProjectedEvent),
+            dispatch,
+            RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(
+            ProjectedItem(100),
+            new object(),
+            CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(
+            ProjectedItem(101),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.Null(rejected);
+    }
+
+    [Fact]
     public async Task ProjectedSelectorRebasesAliasedSourcePathCaseInsensitively()
     {
         EventPipelineExpression pipeline = QueryKernel.For<ItemUsedEvent>()
@@ -218,6 +246,17 @@ public sealed class ProjectionFourthPassRegressionTests
             Fields =
             [
                 new ProjectedEventField("Name", ProjectedEventValue.FromScalar(name)),
+            ],
+        };
+
+    private static ProjectedEvent ProjectedItem(long itemId) =>
+        new()
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Fields =
+            [
+                new ProjectedEventField("ItemId", ProjectedEventValue.FromScalar(itemId)),
             ],
         };
 
