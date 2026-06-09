@@ -123,6 +123,84 @@ public sealed class QueryContextSourceGeneratorTests
     }
 
     [Fact]
+    public void GeneratorEscapesKeywordMethodNameInDescriptor()
+    {
+        QueryContextGeneratorRun run = RunGenerator(ParseTree("""
+            using SiftQL;
+            namespace Sample.Contracts;
+
+            [SiftQueryContext("keywords")]
+            public interface IKeywordContext
+            {
+                int @class();
+            }
+            """));
+
+        AssertNoCompilationErrors(run, "keyword query context method");
+    }
+
+    [Fact]
+    public void GeneratorEmitsNonFiniteFloatingDefaultValues()
+    {
+        QueryContextGeneratorRun run = RunGenerator(ParseTree("""
+            using SiftQL;
+            namespace Sample.Contracts;
+
+            [SiftQueryContext("defaults")]
+            public interface IDefaultContext
+            {
+                Snapshot Lookup(double score = double.NaN, float ratio = float.PositiveInfinity);
+            }
+
+            public sealed record Snapshot(bool Enabled);
+            """));
+
+        AssertNoCompilationErrors(run, "non-finite query context default values");
+    }
+
+    [Fact]
+    public void GeneratorReportsDuplicateIncludeFactorySignatures()
+    {
+        QueryContextGeneratorRun run = RunGenerator(ParseTree("""
+            using SiftQL;
+            namespace Sample.Contracts;
+
+            [SiftQueryContext("overloads")]
+            public interface IOverloadContext
+            {
+                [SiftQueryContextMethod("lookup-by-id")]
+                Snapshot Lookup(long id);
+
+                [SiftQueryContextMethod("lookup-by-name")]
+                Snapshot Lookup(string name);
+            }
+
+            public sealed record Snapshot(bool Enabled);
+            """));
+
+        AssertHasDiagnostic(run, "SIFTQCTX003");
+    }
+
+    [Fact]
+    public void GeneratorHandlesInternalQueryContextAccessibility()
+    {
+        QueryContextGeneratorRun run = RunGenerator(ParseTree("""
+            using SiftQL;
+            namespace Sample.Contracts;
+
+            [SiftQueryContext("internal-context")]
+            internal interface IInternalContext
+            {
+                Snapshot Lookup(long id);
+            }
+
+            internal sealed record Snapshot(bool Enabled);
+            """));
+
+        AssertNoCompilationErrors(run, "internal query context helper");
+    }
+
+    [Fact]
     public void GeneratorCachesContextForUnrelatedCompilationChange()
     {
         SyntaxTree contextTree = ParseTree(OrderContextSource(includeFactory: false));
