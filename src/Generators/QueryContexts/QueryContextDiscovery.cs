@@ -37,6 +37,7 @@ internal static class QueryContextDiscovery
         return new(
             new QueryContextModel(
                 NamespaceName(contract),
+                AccessibilityText(contract),
                 contract.Name,
                 contract.ToDisplayString(s_typeFormat),
                 contextId,
@@ -80,13 +81,14 @@ internal static class QueryContextDiscovery
     {
         var methods = ImmutableArray.CreateBuilder<QueryContextMethodModel>();
         var methodIds = new HashSet<string>(StringComparer.Ordinal);
+        var includeFactorySignatures = new HashSet<string>(StringComparer.Ordinal);
         foreach (IMethodSymbol method in contract.GetMembers().OfType<IMethodSymbol>())
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (method.MethodKind != MethodKind.Ordinary)
                 continue;
 
-            AddMethod(method, methodIds, methods, diagnostics);
+            AddMethod(method, methodIds, includeFactorySignatures, methods, diagnostics);
         }
 
         return methods.ToImmutable();
@@ -95,11 +97,12 @@ internal static class QueryContextDiscovery
     private static void AddMethod(
         IMethodSymbol method,
         HashSet<string> methodIds,
+        HashSet<string> includeFactorySignatures,
         ImmutableArray<QueryContextMethodModel>.Builder methods,
         ImmutableArray<QueryContextDiagnostic>.Builder diagnostics)
     {
         string methodId = MethodId(method);
-        if (!ValidateMethod(method, methodId, methodIds, diagnostics))
+        if (!ValidateMethod(method, methodId, methodIds, includeFactorySignatures, diagnostics))
             return;
 
         var parameters = ImmutableArray.CreateBuilder<QueryContextParameterModel>();
@@ -125,6 +128,7 @@ internal static class QueryContextDiscovery
         IMethodSymbol method,
         string methodId,
         HashSet<string> methodIds,
+        HashSet<string> includeFactorySignatures,
         ImmutableArray<QueryContextDiagnostic>.Builder diagnostics)
     {
         if (method.IsGenericMethod ||
@@ -153,6 +157,14 @@ internal static class QueryContextDiscovery
             diagnostics.Add(new(
                 QueryContextDiagnostics.DuplicateMethodId,
                 $"Query context method id '{methodId}' is used more than once in '{method.ContainingType.ToDisplayString()}'."));
+            return false;
+        }
+
+        if (!includeFactorySignatures.Add(IncludeFactorySignature(method)))
+        {
+            diagnostics.Add(new(
+                QueryContextDiagnostics.InvalidMethodShape,
+                $"Query context method '{method.ToDisplayString()}' produces a duplicate include factory signature."));
             return false;
         }
 
@@ -200,8 +212,8 @@ internal static class QueryContextDiscovery
             uint item => item.ToString(CultureInfo.InvariantCulture) + "u",
             long item => item.ToString(CultureInfo.InvariantCulture) + "L",
             ulong item => item.ToString(CultureInfo.InvariantCulture) + "UL",
-            float item => item.ToString("R", CultureInfo.InvariantCulture) + "f",
-            double item => item.ToString("R", CultureInfo.InvariantCulture) + "d",
+            float item => FloatLiteral(item),
+            double item => DoubleLiteral(item),
             decimal item => item.ToString(CultureInfo.InvariantCulture) + "m",
             _ => string.Empty,
         };
@@ -251,6 +263,30 @@ internal static class QueryContextDiscovery
         type.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : type.ContainingNamespace.ToDisplayString();
+
+    private static string AccessibilityText(INamedTypeSymbol type) =>
+        type.DeclaredAccessibility == Accessibility.Public ? "public" : "internal";
+
+    private static string IncludeFactorySignature(IMethodSymbol method) =>
+        method.Name + "|" + method.Parameters.Length.ToString(CultureInfo.InvariantCulture);
+
+    private static string FloatLiteral(float value) =>
+        float.IsNaN(value)
+            ? "float.NaN"
+            : float.IsPositiveInfinity(value)
+                ? "float.PositiveInfinity"
+                : float.IsNegativeInfinity(value)
+                    ? "float.NegativeInfinity"
+                    : value.ToString("R", CultureInfo.InvariantCulture) + "f";
+
+    private static string DoubleLiteral(double value) =>
+        double.IsNaN(value)
+            ? "double.NaN"
+            : double.IsPositiveInfinity(value)
+                ? "double.PositiveInfinity"
+                : double.IsNegativeInfinity(value)
+                    ? "double.NegativeInfinity"
+                    : value.ToString("R", CultureInfo.InvariantCulture) + "d";
 
     private static string StringLiteral(string value)
     {

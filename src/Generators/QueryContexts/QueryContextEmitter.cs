@@ -18,7 +18,8 @@ internal static class QueryContextEmitter
             source.AppendLine();
         }
 
-        source.Append("public static class ");
+        source.Append(context.Accessibility);
+        source.Append(" static class ");
         source.Append(CSharpIdentifier.EscapePath(context.HelperName));
         source.AppendLine();
         source.AppendLine("{");
@@ -128,9 +129,9 @@ internal static class QueryContextEmitter
     private static void EmitMethodDescriptor(StringBuilder source, QueryContextMethodModel method)
     {
         source.AppendLine("            new(");
-        source.Append("                nameof(");
-        source.Append(method.Name);
-        source.AppendLine("),");
+        source.Append("                ");
+        CSharpStringLiteral.AppendTo(source, method.Name);
+        source.AppendLine(",");
         source.Append("                ");
         source.Append(CSharpIdentifier.EscapePath(method.Name + "MethodId"));
         source.AppendLine(",");

@@ -6,6 +6,7 @@ internal sealed record QueryContextResult(
 
 internal sealed record QueryContextModel(
     string NamespaceName,
+    string Accessibility,
     string InterfaceName,
     string InterfaceTypeName,
     string ContextId,
