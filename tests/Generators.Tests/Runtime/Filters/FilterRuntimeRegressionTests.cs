@@ -292,4 +292,93 @@ public sealed class FilterRuntimeRegressionTests
             return false;
         }
     }
+
+    private sealed record CollectionSubject(
+        List<string>? Tags = null,
+        NestedContainer Container = null!,
+        ShipItem[]? Items = null) : IFilterSubject;
+
+    private sealed record NestedContainer(List<int>? Values = null);
+    private sealed record ShipItem(string Name, PlayerLocation? Location);
+    private sealed record PlayerLocation(long MapId);
+
+    [Fact]
+    public void ExistsReturnsFalseWhenCollectionFieldIsNull()
+    {
+        FilterSchema.RegisterValueObject<NestedContainer>();
+        
+        var filter = FilterExpression.Exists("Tags");
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(CollectionSubject),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.False(kernel.Matches(new CollectionSubject(Tags: null)));
+        Assert.True(kernel.Matches(new CollectionSubject(Tags: [])));
+        Assert.True(kernel.Matches(new CollectionSubject(Tags: ["tag1"])));
+    }
+
+    [Fact]
+    public void ExistsReturnsFalseWhenNestedParentContainerIsNull()
+    {
+        FilterSchema.RegisterValueObject<NestedContainer>();
+
+        var filter = FilterExpression.Exists("Container.Values");
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(CollectionSubject),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.False(kernel.Matches(new CollectionSubject(Container: null)));
+        Assert.True(kernel.Matches(new CollectionSubject(Container: new NestedContainer([]))));
+    }
+
+    [Fact]
+    public void ExistsReturnsFalseWhenCollectionOfValueObjectsIsNull()
+    {
+        FilterSchema.RegisterValueObject<PlayerLocation>();
+        FilterSchema.RegisterValueObject<ShipItem>();
+
+        var filter = FilterExpression.Exists("Items.Location.MapId");
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(CollectionSubject),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.False(kernel.Matches(new CollectionSubject(Items: null)));
+    }
+
+    [Fact]
+    public void ExistsReturnsFalseWhenCollectionFieldIsNullInterpreted()
+    {
+        var filter = FilterExpression.Exists("Tags");
+        var schema = FilterSchema.For(typeof(CollectionSubject));
+        var match = FilterInterpretedCompiler.Compile(schema, filter, null);
+
+        Assert.False(match(new CollectionSubject(Tags: null)));
+        Assert.True(match(new CollectionSubject(Tags: [])));
+    }
+
+    [Fact]
+    public void ExistsReturnsFalseWhenNestedParentContainerIsNullInterpreted()
+    {
+        FilterSchema.RegisterValueObject<NestedContainer>();
+        var filter = FilterExpression.Exists("Container.Values");
+        var schema = FilterSchema.For(typeof(CollectionSubject));
+        var match = FilterInterpretedCompiler.Compile(schema, filter, null);
+
+        Assert.False(match(new CollectionSubject(Container: null)));
+    }
+
+    [Fact]
+    public void ExistsReturnsFalseWhenCollectionOfValueObjectsIsNullInterpreted()
+    {
+        FilterSchema.RegisterValueObject<PlayerLocation>();
+        FilterSchema.RegisterValueObject<ShipItem>();
+        var filter = FilterExpression.Exists("Items.Location.MapId");
+        var schema = FilterSchema.For(typeof(CollectionSubject));
+        var match = FilterInterpretedCompiler.Compile(schema, filter, null);
+
+        Assert.False(match(new CollectionSubject(Items: null)));
+    }
 }
