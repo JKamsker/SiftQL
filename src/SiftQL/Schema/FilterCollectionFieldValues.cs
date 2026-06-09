@@ -9,15 +9,17 @@ public static class FilterCollectionFieldValues
     private const string TooManyRuntimeArrayItemsMessage =
         "Runtime array filters support at most 256 items.";
 
-    public static object?[] Read(object? subject, string propertyPath)
+    public static object?[]? Read(object? subject, string propertyPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyPath);
 
         string[] segments = propertyPath.Split('.');
         ValidateSegments(propertyPath, segments);
         var values = new List<object?>();
-        Collect(subject, propertyPath, segments, segmentIndex: 0, values);
-        return values.ToArray();
+        if (Collect(subject, propertyPath, segments, segmentIndex: 0, values))
+            return values.ToArray();
+
+        return null;
     }
 
     private static void ValidateSegments(string propertyPath, IReadOnlyList<string> segments)
@@ -33,7 +35,7 @@ public static class FilterCollectionFieldValues
         }
     }
 
-    private static void Collect(
+    private static bool Collect(
         object? current,
         string propertyPath,
         IReadOnlyList<string> segments,
@@ -43,8 +45,11 @@ public static class FilterCollectionFieldValues
         if (current is null)
         {
             if (segmentIndex == segments.Count)
+            {
                 AddValue(values, null, propertyPath);
-            return;
+                return true;
+            }
+            return false;
         }
 
         if (current is IEnumerable enumerable && current is not string)
@@ -52,20 +57,41 @@ public static class FilterCollectionFieldValues
             foreach (object? item in enumerable)
                 Collect(item, propertyPath, segments, segmentIndex, values);
 
-            return;
+            return true;
         }
 
         if (segmentIndex == segments.Count)
         {
             AddValue(values, current, propertyPath);
-            return;
+            return true;
         }
 
         MemberInfo? member = FindMember(current.GetType(), segments[segmentIndex]);
         if (member is null)
-            return;
+            return false;
 
-        Collect(ReadMember(current, member), propertyPath, segments, segmentIndex + 1, values);
+        Type memberType = member switch
+        {
+            PropertyInfo prop => prop.PropertyType,
+            FieldInfo field => field.FieldType,
+            _ => typeof(object)
+        };
+
+        object? val = ReadMember(current, member);
+        if (val is null)
+        {
+            if (memberType != typeof(string) && typeof(IEnumerable).IsAssignableFrom(memberType))
+                return false;
+
+            if (segmentIndex + 1 == segments.Count)
+            {
+                AddValue(values, null, propertyPath);
+                return true;
+            }
+            return false;
+        }
+
+        return Collect(val, propertyPath, segments, segmentIndex + 1, values);
     }
 
     private static void AddValue(List<object?> values, object? value, string propertyPath)
