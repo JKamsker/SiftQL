@@ -14,13 +14,28 @@ public static class FilterCollectionFieldValues
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyPath);
 
         string[] segments = propertyPath.Split('.');
+        ValidateSegments(propertyPath, segments);
         var values = new List<object?>();
-        Collect(subject, segments, segmentIndex: 0, values);
+        Collect(subject, propertyPath, segments, segmentIndex: 0, values);
         return values.ToArray();
+    }
+
+    private static void ValidateSegments(string propertyPath, IReadOnlyList<string> segments)
+    {
+        for (int i = 0; i < segments.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(segments[i]))
+            {
+                throw new ArgumentException(
+                    $"Collection field property path '{propertyPath}' is malformed because it contains an empty segment.",
+                    nameof(propertyPath));
+            }
+        }
     }
 
     private static void Collect(
         object? current,
+        string propertyPath,
         IReadOnlyList<string> segments,
         int segmentIndex,
         List<object?> values)
@@ -28,21 +43,21 @@ public static class FilterCollectionFieldValues
         if (current is null)
         {
             if (segmentIndex == segments.Count)
-                AddValue(values, null);
+                AddValue(values, null, propertyPath);
             return;
         }
 
         if (current is IEnumerable enumerable && current is not string)
         {
             foreach (object? item in enumerable)
-                Collect(item, segments, segmentIndex, values);
+                Collect(item, propertyPath, segments, segmentIndex, values);
 
             return;
         }
 
         if (segmentIndex == segments.Count)
         {
-            AddValue(values, current);
+            AddValue(values, current, propertyPath);
             return;
         }
 
@@ -50,13 +65,13 @@ public static class FilterCollectionFieldValues
         if (member is null)
             return;
 
-        Collect(ReadMember(current, member), segments, segmentIndex + 1, values);
+        Collect(ReadMember(current, member), propertyPath, segments, segmentIndex + 1, values);
     }
 
-    private static void AddValue(List<object?> values, object? value)
+    private static void AddValue(List<object?> values, object? value, string propertyPath)
     {
         if (values.Count >= MaxRuntimeArrayItems)
-            throw TooManyRuntimeArrayItems();
+            throw TooManyRuntimeArrayItems(propertyPath);
 
         values.Add(value);
     }
@@ -117,6 +132,6 @@ public static class FilterCollectionFieldValues
         return null;
     }
 
-    private static InvalidOperationException TooManyRuntimeArrayItems() =>
-        new(TooManyRuntimeArrayItemsMessage);
+    private static InvalidOperationException TooManyRuntimeArrayItems(string propertyPath) =>
+        new($"{TooManyRuntimeArrayItemsMessage} Property path: '{propertyPath}'.");
 }

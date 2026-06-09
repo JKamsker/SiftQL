@@ -183,16 +183,17 @@ public sealed class FilterSchemaNestedRegressionTests
         RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
         Type itemType = assembly.GetType("Plugin.Events.ShipItem", throwOnError: true)!;
         Type eventType = assembly.GetType("Plugin.Events.FleetEvent", throwOnError: true)!;
-        Array items = Array.CreateInstance(itemType, 1);
-        items.SetValue(Activator.CreateInstance(itemType, "Destroyer", new[] { "rare" })!, 0);
+        Array items = Array.CreateInstance(itemType, 2);
+        items.SetValue(Activator.CreateInstance(itemType, "Destroyer", new[] { "rare", "heavy" })!, 0);
+        items.SetValue(Activator.CreateInstance(itemType, "Frigate", new[] { "common" })!, 1);
         object ev = Activator.CreateInstance(eventType, Guid.NewGuid(), items)!;
 
         FilterSchema schema = FilterSchema.For(eventType);
 
         Assert.True(schema.TryGetField("Items.Name", out FilterField? nameField));
         Assert.True(schema.TryGetField("Items.Tags", out FilterField? tagsField));
-        Assert.Equal(["Destroyer"], Assert.IsType<object?[]>(nameField!.Getter(ev)));
-        Assert.Equal(["rare"], Assert.IsType<object?[]>(tagsField!.Getter(ev)));
+        Assert.Equal(["Destroyer", "Frigate"], Assert.IsType<object?[]>(nameField!.Getter(ev)));
+        Assert.Equal(["rare", "heavy", "common"], Assert.IsType<object?[]>(tagsField!.Getter(ev)));
     }
 
     [Fact]
