@@ -199,6 +199,45 @@ public sealed class QueryKernelContextRegressionTests
         Assert.Null(rejected);
     }
 
+    [Fact]
+    public async Task ContextWhereAfterSourceProjectionPreservesSourcePredicateField()
+    {
+        Guid thiefId = Guid.NewGuid();
+        Guid warriorId = Guid.NewGuid();
+        Guid sourceId = Guid.NewGuid();
+        var context = new CombatContext(
+            new Player(thiefId, Profession.Thief),
+            new Player(warriorId, Profession.Warrior));
+        var query = QueryKernel
+            .For<BuffActivatedEvent, CombatContext>()
+            .Select(new EventProjectionField(nameof(BuffActivatedEvent.TargetId), "Target"))
+            .Where((ev, ctx) =>
+                ev.SourceId == sourceId &&
+                ctx.GetPlayer(ev.TargetId).Profession == Profession.Thief);
+        CompiledEventPipeline<CombatContext> compiled = EventPipelineCompiler.Compile<CombatContext>(
+            typeof(BuffActivatedEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(
+            new BuffActivatedEvent(thiefId, sourceId, 7, 11, 1),
+            context,
+            CancellationToken.None);
+        ProjectedEvent? wrongSource = await compiled.ProjectAsync(
+            new BuffActivatedEvent(thiefId, Guid.NewGuid(), 7, 11, 1),
+            context,
+            CancellationToken.None);
+        ProjectedEvent? wrongProfession = await compiled.ProjectAsync(
+            new BuffActivatedEvent(warriorId, sourceId, 7, 11, 1),
+            context,
+            CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.Equal(thiefId, accepted!.Field("Target").Guid);
+        Assert.Null(wrongSource);
+        Assert.Null(wrongProfession);
+    }
+
     private enum Profession
     {
         Thief,
