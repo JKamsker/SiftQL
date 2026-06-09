@@ -156,6 +156,16 @@ internal static class FilterSchemaFallbackBuilder
                 continue;
             }
 
+            if (FilterSchemaCollectionFieldBuilder.TryAddObjectCollectionFields(
+                    fields,
+                    name,
+                    propertyType,
+                    depth,
+                    isValueObject))
+            {
+                continue;
+            }
+
             if (isValueObject(scalarType))
             {
                 fields.Add(BuildField(
@@ -182,7 +192,7 @@ internal static class FilterSchemaFallbackBuilder
         }
     }
 
-    private static IEnumerable<PropertyInfo> EnumeratePublicProperties(Type ownerType)
+    internal static IEnumerable<PropertyInfo> EnumeratePublicProperties(Type ownerType)
     {
         foreach (PropertyInfo property in ownerType.GetProperties(BindingFlags.Instance | BindingFlags.Public))
             yield return property;
@@ -314,7 +324,7 @@ internal static class FilterSchemaFallbackBuilder
         return IsScalar(scalar) ? scalar : null;
     }
 
-    private static bool IsScalar(Type type) =>
+    internal static bool IsScalar(Type type) =>
         type.IsEnum ||
         type == typeof(bool) ||
         type == typeof(byte) ||

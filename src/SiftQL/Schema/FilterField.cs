@@ -27,4 +27,5 @@ public sealed record FilterField(
     FilterScalarAccessor? ScalarAccessor = null,
     FilterArrayAccessor? ArrayAccessor = null,
     Func<object, ProjectedEventValue>? ProjectionAccessor = null,
-    FilterFieldAccess? Access = null);
+    FilterFieldAccess? Access = null,
+    bool IsCollectionDerived = false);
