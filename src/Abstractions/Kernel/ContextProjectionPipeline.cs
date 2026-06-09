@@ -50,10 +50,11 @@ internal static class ContextProjectionPipeline
         EventProjectionExpression projection,
         bool projected)
     {
+        IReadOnlyList<EventProjectionField> sourceFields = SelectorSourceFields(projection, projected);
         EventPipelineExpression withIncludes = AddIncludes(
             pipeline,
             projection.Includes,
-            projected ? [] : projection.Fields);
+            sourceFields);
         EventProjectionField[] finalFields =
         [
             .. projection.Fields.Select(field => FinalField(field, projected)),
@@ -137,4 +138,16 @@ internal static class ContextProjectionPipeline
         projected
             ? field
             : new EventProjectionField(ProjectedEventPaths.Field(field.Name), field.Name);
+
+    private static IReadOnlyList<EventProjectionField> SelectorSourceFields(
+        EventProjectionExpression projection,
+        bool projected)
+    {
+        if (projected)
+            return Array.Empty<EventProjectionField>();
+        if (projection.Fields.Length != 0 || projection.Includes.Length == 0)
+            return projection.Fields;
+
+        return [new EventProjectionField("subjectType", "__siftqlSelectorSource")];
+    }
 }
