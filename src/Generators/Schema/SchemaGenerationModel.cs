@@ -41,4 +41,5 @@ internal sealed record GeneratedField(
     bool IsNullable,
     bool AccessCanReturnNull,
     bool EmitsScalarAccessor,
-    string? ArrayContainsMethod);
+    string? ArrayContainsMethod,
+    bool UsesCollectionAccessor);

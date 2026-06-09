@@ -161,6 +161,41 @@ public sealed class FilterSchemaNestedRegressionTests
     }
 
     [Fact]
+    public void GeneratedSchemaExpandsRecordCollectionElementScalarFields()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.CollectionElementFields",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record ShipItem(string Name, string[] Tags);
+
+                public sealed record FleetEvent(
+                    Guid EventId,
+                    ShipItem[] Items) : IFilterSubject;
+                """));
+
+        AssertNoCompilationErrors(run, "collection element schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "collection element schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type itemType = assembly.GetType("Plugin.Events.ShipItem", throwOnError: true)!;
+        Type eventType = assembly.GetType("Plugin.Events.FleetEvent", throwOnError: true)!;
+        Array items = Array.CreateInstance(itemType, 1);
+        items.SetValue(Activator.CreateInstance(itemType, "Destroyer", new[] { "rare" })!, 0);
+        object ev = Activator.CreateInstance(eventType, Guid.NewGuid(), items)!;
+
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        Assert.True(schema.TryGetField("Items.Name", out FilterField? nameField));
+        Assert.True(schema.TryGetField("Items.Tags", out FilterField? tagsField));
+        Assert.Equal(["Destroyer"], (object?[])nameField!.Getter(ev));
+        Assert.Equal(["rare"], (object?[])tagsField!.Getter(ev));
+    }
+
+    [Fact]
     public void GeneratedInheritedNestedAccessorReturnsNullWhenParentIsNull()
     {
         GeneratorRun run = RunGenerator(

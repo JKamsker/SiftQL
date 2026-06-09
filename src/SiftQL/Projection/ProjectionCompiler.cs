@@ -286,7 +286,8 @@ public static class ProjectionCompiler
     private static bool IsDefaultProjectionField(FilterSchema schema, string name) =>
         !IsVirtualMetadataField(schema.SubjectType, name) &&
         schema.TryGetField(name, out FilterField field) &&
-        field.Kind != FilterFieldKind.Object;
+        field.Kind != FilterFieldKind.Object &&
+        !field.IsCollectionDerived;
 
     private static bool IsVirtualMetadataField(Type subjectType, string name) =>
         string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||

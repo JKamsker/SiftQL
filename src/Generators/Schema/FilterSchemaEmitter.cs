@@ -113,7 +113,7 @@ internal static class FilterSchemaEmitter
 
     private static void EmitField(StringBuilder source, GeneratedSchema schema, GeneratedField field)
     {
-        string access = AccessExpression(schema, field);
+        string access = FilterSchemaEmitterAccess.AccessExpression(schema, field);
         source.Append("            new(");
         AppendLiteral(source, field.Name);
         source.Append(", typeof(");
@@ -128,9 +128,10 @@ internal static class FilterSchemaEmitter
         source.Append(ArrayAccessor(schema, field));
         source.Append(", ");
         source.Append(ProjectionAccessor(schema, field));
-        source.Append(", FilterFieldAccess.ForProperty(");
-        AppendLiteral(source, field.Access);
-        source.Append(")");
+        source.Append(", ");
+        FilterSchemaEmitterAccess.AppendFieldAccess(source, field);
+        source.Append(", ");
+        source.Append(field.UsesCollectionAccessor ? "true" : "false");
         source.AppendLine("),");
     }
 
@@ -139,7 +140,7 @@ internal static class FilterSchemaEmitter
         if (field.FieldKind != GeneratedFieldKind.Scalar || !field.EmitsScalarAccessor)
             return "null";
 
-        string access = AccessExpression(schema, field);
+        string access = FilterSchemaEmitterAccess.AccessExpression(schema, field);
         bool nullable = AccessReturnsNullable(field);
         return field.ScalarKind switch
         {
@@ -178,7 +179,7 @@ internal static class FilterSchemaEmitter
         if (field.FieldKind != GeneratedFieldKind.Array || field.ArrayContainsMethod is null)
             return "null";
 
-        string access = AccessExpression(schema, field);
+        string access = FilterSchemaEmitterAccess.AccessExpression(schema, field);
         return field.ScalarKind switch
         {
             GeneratedScalarKind.Boolean =>
@@ -199,7 +200,7 @@ internal static class FilterSchemaEmitter
 
     private static string ProjectionAccessor(GeneratedSchema schema, GeneratedField field)
     {
-        string access = AccessExpression(schema, field);
+        string access = FilterSchemaEmitterAccess.AccessExpression(schema, field);
         if (field.FieldKind == GeneratedFieldKind.Object)
             return "static subject => ProjectionValueFactory.FromObject(" + access + ")";
         if (field.FieldKind != GeneratedFieldKind.Scalar)
@@ -283,11 +284,6 @@ internal static class FilterSchemaEmitter
         string cast = NumberCast(valueType);
         return string.IsNullOrEmpty(cast) ? access : cast + access + ")";
     }
-
-    private static string AccessExpression(GeneratedSchema schema, GeneratedField field) =>
-        field.SafeAccess.StartsWith("((", StringComparison.Ordinal)
-            ? field.SafeAccess
-            : "((" + schema.TypeName + ")subject)." + field.SafeAccess;
 
     private static bool AccessReturnsNullable(GeneratedField field) =>
         field.IsNullable || field.AccessCanReturnNull;

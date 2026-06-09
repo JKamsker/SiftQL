@@ -228,6 +228,7 @@ internal static class HotProviderResolver
         bool projectedEvent) =>
         new(fields.Items
             .Where(field => field.FieldKind is GeneratedFieldKind.Scalar or GeneratedFieldKind.Array &&
+                !field.UsesCollectionAccessor &&
                 !IsDefaultProjectionMetadataField(projectedEvent, field.Name))
             .OrderBy(static field => field.Name, StringComparer.OrdinalIgnoreCase)
             .Select(static field => new HotProjectionField(field.Name, field.Name))

@@ -68,6 +68,16 @@ internal static class SchemaFieldDiscovery
                 continue;
             }
 
+            if (SchemaCollectionFieldDiscovery.TryAddProperties(
+                    fields,
+                    name,
+                    access,
+                    property.Type,
+                    depth))
+            {
+                continue;
+            }
+
             if (IsValueObject(valueType) && valueType is INamedTypeSymbol nested)
             {
                 fields.Add(Field(
@@ -96,7 +106,7 @@ internal static class SchemaFieldDiscovery
         return null;
     }
 
-    private static bool CanRead(IPropertySymbol property) =>
+    internal static bool CanRead(IPropertySymbol property) =>
         !property.IsStatic &&
         property.GetMethod is not null &&
         property.GetMethod.DeclaredAccessibility == Accessibility.Public &&
@@ -122,7 +132,8 @@ internal static class SchemaFieldDiscovery
             IsNullable(propertyType),
             accessCanReturnNull,
             EmitsScalarAccessor(valueType, scalarKind),
-            ArrayContainsMethod(propertyType, scalarKind));
+            ArrayContainsMethod(propertyType, scalarKind),
+            UsesCollectionAccessor: false);
 
     private static string SafeAccess(
         string ownerAccess,
@@ -141,7 +152,7 @@ internal static class SchemaFieldDiscovery
         return ownerAccess + (!root && CanBeNullAtRuntime(owner) ? "?." : ".") + escaped;
     }
 
-    private static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
+    internal static IEnumerable<IPropertySymbol> EnumerateProperties(INamedTypeSymbol owner)
     {
         if (owner.TypeKind == TypeKind.Interface)
         {
@@ -161,7 +172,7 @@ internal static class SchemaFieldDiscovery
         }
     }
 
-    private static bool ContainsField(ImmutableArray<GeneratedField>.Builder fields, string name)
+    internal static bool ContainsField(ImmutableArray<GeneratedField>.Builder fields, string name)
     {
         for (int i = 0; i < fields.Count; i++)
         {
@@ -176,12 +187,12 @@ internal static class SchemaFieldDiscovery
         string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
 
-    private static ITypeSymbol UnwrapNullable(ITypeSymbol type) =>
+    internal static ITypeSymbol UnwrapNullable(ITypeSymbol type) =>
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
             ? named.TypeArguments[0]
             : type;
 
-    private static bool IsNullable(ITypeSymbol type) =>
+    internal static bool IsNullable(ITypeSymbol type) =>
         type.NullableAnnotation == NullableAnnotation.Annotated ||
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
 
@@ -210,7 +221,7 @@ internal static class SchemaFieldDiscovery
         return enumerable is not null && TryScalar(elementType, out _);
     }
 
-    private static bool TryScalar(ITypeSymbol type, out GeneratedScalarKind kind)
+    internal static bool TryScalar(ITypeSymbol type, out GeneratedScalarKind kind)
     {
         if (type.TypeKind == TypeKind.Enum)
         {
@@ -237,7 +248,7 @@ internal static class SchemaFieldDiscovery
         valueType is not INamedTypeSymbol enumType ||
         enumType.EnumUnderlyingType?.SpecialType != SpecialType.System_UInt64;
 
-    private static bool IsValueObject(ITypeSymbol type) =>
+    internal static bool IsValueObject(ITypeSymbol type) =>
         type is INamedTypeSymbol { IsRecord: true, TypeKind: TypeKind.Class or TypeKind.Struct };
 
     private static string? ArrayContainsMethod(ITypeSymbol propertyType, GeneratedScalarKind scalarKind) =>

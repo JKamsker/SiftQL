@@ -65,7 +65,8 @@ internal static class FilterRuntimeStubSource
                 FilterScalarAccessor? ScalarAccessor = null,
                 FilterArrayAccessor? ArrayAccessor = null,
                 Func<object, SiftQL.ProjectedEventValue>? ProjectionAccessor = null,
-                FilterFieldAccess? Access = null);
+                FilterFieldAccess? Access = null,
+                bool IsCollectionDerived = false);
 
             public sealed record FilterFieldAccess(string? PropertyPath, object? ConstantValue = null)
             {
@@ -101,6 +102,11 @@ internal static class FilterRuntimeStubSource
             public sealed class FilterSchema
             {
                 internal FilterSchema(Type subjectType, IReadOnlyList<FilterField> fields) {}
+            }
+
+            public static class FilterCollectionFieldValues
+            {
+                public static object?[] Read(object? subject, string propertyPath) => [];
             }
 
             public delegate bool GeneratedFilterSchemaProviderDelegate(Type subjectType, out FilterSchema? schema);
