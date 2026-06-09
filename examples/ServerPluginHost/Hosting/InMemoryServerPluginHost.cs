@@ -31,8 +31,7 @@ public sealed class InMemoryServerPluginHost
     public void Register(IServerPlugin plugin)
     {
         ArgumentNullException.ThrowIfNull(plugin);
-        if (_started)
-            throw new InvalidOperationException("Plugins cannot be registered after the host has started.");
+        ThrowIfStarted();
 
         string pluginId = plugin.Id;
         if (string.IsNullOrWhiteSpace(pluginId))
@@ -58,6 +57,7 @@ public sealed class InMemoryServerPluginHost
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(handler);
+        ThrowIfStarted();
         _startupHandlers.Add(new StartupHandler(pluginId, handler));
     }
 
@@ -70,6 +70,7 @@ public sealed class InMemoryServerPluginHost
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(kernel);
         ArgumentNullException.ThrowIfNull(handler);
+        ThrowIfStarted();
 
         var pipeline = EventPipelineCompiler.Compile<PluginContext>(
             typeof(TEvent),
@@ -154,6 +155,12 @@ public sealed class InMemoryServerPluginHost
 
     private PluginContext CreateContext(string pluginId) =>
         new(pluginId, _clients, new ServerQueryGateway(pluginId, this));
+
+    private void ThrowIfStarted()
+    {
+        if (_started)
+            throw new InvalidOperationException("Plugins cannot be registered after the host has started.");
+    }
 
     private ISubscription[] SubscriptionsFor(object ev)
     {
