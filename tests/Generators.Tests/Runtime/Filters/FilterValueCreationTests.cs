@@ -100,7 +100,7 @@ public sealed class FilterValueCreationTests
     [Fact]
     public void FilterValue_FromObject_UnsupportedType_Throws()
     {
-        Assert.Throws<KernelExpressionException>(() => FilterValue.FromObject(DateTime.Now));
+        Assert.Throws<KernelExpressionException>(() => FilterValue.FromObject(TimeSpan.FromMinutes(5)));
     }
 
     [Fact]

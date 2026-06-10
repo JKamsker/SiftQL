@@ -375,6 +375,7 @@ internal static class FilterExpressionCanonical
                 ? "s_"
                 : "s" + value.String.Length.ToString(CultureInfo.InvariantCulture) + ":" + value.String,
             FilterValueKind.Guid => "g" + value.Guid.ToString("N"),
+            FilterValueKind.Timestamp => "t" + value.Timestamp.UtcTicks.ToString(CultureInfo.InvariantCulture),
             _ => "?" + (int)value.Kind,
         };
 

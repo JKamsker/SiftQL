@@ -63,6 +63,9 @@ public static class FilterValues
             return;
         }
 
+        if (IsTemporal(field.ValueType) && value.Kind == FilterValueKind.Timestamp)
+            return;
+
         if (!FilterNumeric.IsNumeric(field.ValueType))
         {
             throw Error(
@@ -94,7 +97,8 @@ public static class FilterValues
                 FilterValueKind.Number or
                 FilterValueKind.Decimal) ||
             type == typeof(string) && value.Kind == FilterValueKind.String ||
-            type == typeof(Guid) && value.Kind == FilterValueKind.Guid;
+            type == typeof(Guid) && value.Kind == FilterValueKind.Guid ||
+            IsTemporal(type) && value.Kind == FilterValueKind.Timestamp;
 
         if (!valid)
             throw Error(errorFactory, $"Filter value '{value.Kind}' is not compatible with field '{field.Name}'.");
@@ -205,6 +209,8 @@ public static class FilterValues
             FilterValueKind.String => actual is string item &&
                 string.Equals(item, expected.String, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal),
             FilterValueKind.Guid => actual is Guid item && item == expected.Guid,
+            FilterValueKind.Timestamp => TryGetInstantTicks(actual, out long ticks) &&
+                ticks == expected.Timestamp.UtcTicks,
             _ => false,
         };
     }
@@ -214,6 +220,14 @@ public static class FilterValues
         comparison = 0;
         if (actual is null || expected.Kind == FilterValueKind.Null)
             return false;
+
+        if (expected.Kind == FilterValueKind.Timestamp)
+        {
+            if (!TryGetInstantTicks(actual, out long actualTicks))
+                return false;
+            comparison = actualTicks.CompareTo(expected.Timestamp.UtcTicks);
+            return true;
+        }
 
         if (expected.Kind == FilterValueKind.Integer &&
             FilterNumericComparison.TryCompareInteger(actual, expected.Integer, out comparison))
@@ -259,6 +273,39 @@ public static class FilterValues
         return true;
     }
 
+    private static bool TryGetInstantTicks(object? actual, out long ticks)
+    {
+        switch (actual)
+        {
+            case DateTimeOffset dto:
+                ticks = dto.UtcTicks;
+                return true;
+            case DateTime dt:
+                ticks = ToTimestamp(dt).UtcTicks;
+                return true;
+            case DateOnly date:
+                ticks = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).UtcTicks;
+                return true;
+            default:
+                ticks = 0;
+                return false;
+        }
+    }
+
+    private static DateTimeOffset ToTimestamp(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => new DateTimeOffset(value, TimeSpan.Zero),
+            DateTimeKind.Local => new DateTimeOffset(value),
+            _ => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc), TimeSpan.Zero),
+        };
+
+    internal static bool IsTemporal(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type == typeof(DateTimeOffset) || type == typeof(DateTime) || type == typeof(DateOnly);
+    }
+
     private static bool IsProjectedDynamic(Type type) =>
         type == typeof(ProjectedEventValue);
 
@@ -270,7 +317,8 @@ public static class FilterValues
             FilterValueKind.Number or
             FilterValueKind.Decimal or
             FilterValueKind.String or
-            FilterValueKind.Guid;
+            FilterValueKind.Guid or
+            FilterValueKind.Timestamp;
 
     private static bool IsEnumStringEqual(object actual, string? expected)
     {
