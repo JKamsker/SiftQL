@@ -196,7 +196,6 @@ internal static class ContextKernelExpressionTranslator
 
         private bool TryGetProjectedPath(Expression expression, out string path)
         {
-            expression = StripConvert(expression);
             if (TryGetSubjectFieldPath(expression, out string? sourcePath))
             {
                 if (_projectSubjectFields)
