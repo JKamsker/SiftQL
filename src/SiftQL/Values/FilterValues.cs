@@ -20,7 +20,9 @@ public static class FilterValues
         Func<string, Exception>? errorFactory = null)
     {
         ValidateValue(field, value, errorFactory);
-        if (op == FilterOperator.StringContains)
+        if (op is FilterOperator.StringContains or
+            FilterOperator.StringStartsWith or
+            FilterOperator.StringEndsWith)
         {
             if (value.Kind == FilterValueKind.String &&
                 (field.ValueType == typeof(string) || IsProjectedDynamic(field.ValueType)))
@@ -28,7 +30,7 @@ public static class FilterValues
                 return;
             }
 
-            throw Error(errorFactory, $"Filter field '{field.Name}' does not support string contains.");
+            throw Error(errorFactory, $"Filter field '{field.Name}' does not support string '{op}'.");
         }
 
         if (op is FilterOperator.Equal or FilterOperator.NotEqual)
@@ -98,6 +100,8 @@ public static class FilterValues
             FilterOperator.LessThan => TryCompareOrdered(actual, expected, out int comparison) && comparison < 0,
             FilterOperator.LessThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison <= 0,
             FilterOperator.StringContains => ContainsString(actual, expected),
+            FilterOperator.StringStartsWith => MatchesString(actual, expected, static (text, s) => text.StartsWith(s, StringComparison.Ordinal)),
+            FilterOperator.StringEndsWith => MatchesString(actual, expected, static (text, s) => text.EndsWith(s, StringComparison.Ordinal)),
             _ => false,
         };
 
@@ -132,10 +136,17 @@ public static class FilterValues
     }
 
     private static bool ContainsString(object? actual, FilterValue expected) =>
+        MatchesString(actual, expected, static (text, substring) =>
+            text.Contains(substring, StringComparison.Ordinal));
+
+    private static bool MatchesString(
+        object? actual,
+        FilterValue expected,
+        Func<string, string, bool> match) =>
         actual is string text &&
         expected.Kind == FilterValueKind.String &&
-        expected.String is string substring &&
-        text.Contains(substring, StringComparison.Ordinal);
+        expected.String is string value &&
+        match(text, value);
 
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
         new(TooManyRuntimeArrayItemsMessage);

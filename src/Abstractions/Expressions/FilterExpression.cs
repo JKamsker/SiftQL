@@ -23,6 +23,8 @@ public enum FilterOperator
     LessThan = 4,
     LessThanOrEqual = 5,
     StringContains = 6,
+    StringStartsWith = 7,
+    StringEndsWith = 8,
 }
 
 public sealed record FilterExpression
@@ -72,6 +74,12 @@ public sealed record FilterExpression
 
     public static FilterExpression StringContains(string field, FilterValue value) =>
         Compare(field, FilterOperator.StringContains, value);
+
+    public static FilterExpression StringStartsWith(string field, FilterValue value) =>
+        Compare(field, FilterOperator.StringStartsWith, value);
+
+    public static FilterExpression StringEndsWith(string field, FilterValue value) =>
+        Compare(field, FilterOperator.StringEndsWith, value);
 
     public static FilterExpression Exists(string field) =>
         new(FilterExpressionKind.Exists) { Field = RequireField(field) };

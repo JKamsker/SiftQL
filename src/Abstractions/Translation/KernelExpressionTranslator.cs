@@ -94,7 +94,32 @@ internal static class KernelExpressionTranslator
         if (IsContains(expression.Method))
             return TranslateContains(expression, parameter, ref parameterIndex);
 
+        if (IsStringInstanceMethod(expression.Method, nameof(string.StartsWith)))
+            return TranslateStringMatch(expression, parameter, ref parameterIndex, FilterExpression.StringStartsWith);
+
+        if (IsStringInstanceMethod(expression.Method, nameof(string.EndsWith)))
+            return TranslateStringMatch(expression, parameter, ref parameterIndex, FilterExpression.StringEndsWith);
+
         throw Unsupported(expression);
+    }
+
+    private static FilterExpression TranslateStringMatch(
+        MethodCallExpression expression,
+        ParameterExpression parameter,
+        ref int parameterIndex,
+        Func<string, FilterValue, FilterExpression> factory)
+    {
+        if (expression.Object is null ||
+            expression.Object.Type != typeof(string) ||
+            expression.Arguments.Count != 1 ||
+            expression.Arguments[0].Type != typeof(string) ||
+            !TryGetFieldPath(expression.Object, parameter, out string? field))
+        {
+            throw Unsupported(expression);
+        }
+
+        FilterValue value = KernelExpressionValues.ToValue(expression.Arguments[0], parameter, ref parameterIndex);
+        return factory(field, value);
     }
 
     private static FilterExpression TranslateContains(
@@ -250,6 +275,9 @@ internal static class KernelExpressionTranslator
         method.DeclaringType == typeof(QueryKernelPredicates);
 
     internal static bool IsContains(MethodInfo method) => method.Name is nameof(Enumerable.Contains) or "Contains";
+
+    private static bool IsStringInstanceMethod(MethodInfo method, string name) =>
+        method.Name == name && method.DeclaringType == typeof(string);
 
     private static bool IsImplicitConversion(MethodCallExpression expression) =>
         expression.Method.Name == "op_Implicit" &&

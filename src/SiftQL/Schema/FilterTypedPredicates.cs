@@ -122,6 +122,8 @@ internal static class FilterTypedPredicates
             FilterOperator.Equal => subject => string.Equals(getter(subject), expected, StringComparison.Ordinal),
             FilterOperator.NotEqual => subject => !string.Equals(getter(subject), expected, StringComparison.Ordinal),
             FilterOperator.StringContains => subject => getter(subject)?.Contains(expected, StringComparison.Ordinal) == true,
+            FilterOperator.StringStartsWith => subject => getter(subject)?.StartsWith(expected, StringComparison.Ordinal) == true,
+            FilterOperator.StringEndsWith => subject => getter(subject)?.EndsWith(expected, StringComparison.Ordinal) == true,
             _ => static _ => false,
         };
     }
