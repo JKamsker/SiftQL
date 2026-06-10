@@ -181,31 +181,7 @@ internal sealed class ContextExpressionIncludes
     }
 
     private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath)
-    {
-        expression = StripConvert(expression);
-        var names = new Stack<string>();
-        Expression? current = expression;
-        while (current is MemberExpression member)
-        {
-            if (member.Expression is null)
-            {
-                fieldPath = string.Empty;
-                return false;
-            }
-
-            names.Push(member.Member.Name);
-            current = StripConvert(member.Expression);
-        }
-
-        if (current == _subject && names.Count > 0)
-        {
-            fieldPath = string.Join(".", names);
-            return true;
-        }
-
-        fieldPath = string.Empty;
-        return false;
-    }
+        => KernelExpressionTranslator.TryGetFieldPath(expression, _subject, out fieldPath);
 
     private string ContextResultName(string? preferredName) =>
         string.IsNullOrWhiteSpace(preferredName)

@@ -89,32 +89,8 @@ internal static class EventProjectionSelectorTranslator
     private static bool TryGetFieldPath(
         Expression expression,
         ParameterExpression subject,
-        out string field)
-    {
-        expression = StripConvert(expression);
-        var names = new Stack<string>();
-        Expression? current = expression;
-        while (current is MemberExpression member)
-        {
-            names.Push(member.Member.Name);
-            if (member.Expression is null)
-            {
-                field = string.Empty;
-                return false;
-            }
-
-            current = StripConvert(member.Expression);
-        }
-
-        if (current == subject && names.Count > 0)
-        {
-            field = string.Join(".", names);
-            return true;
-        }
-
-        field = string.Empty;
-        return false;
-    }
+        out string field) =>
+        KernelExpressionTranslator.TryGetFieldPath(expression, subject, out field);
 
     private static Expression StripConvert(Expression expression)
     {
