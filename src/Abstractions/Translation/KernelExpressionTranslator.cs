@@ -94,13 +94,37 @@ internal static class KernelExpressionTranslator
         if (IsContains(expression.Method))
             return TranslateContains(expression, parameter, ref parameterIndex);
 
-        if (IsStringInstanceMethod(expression.Method, nameof(string.StartsWith)))
+        if (IsStringMethod(expression.Method, nameof(string.StartsWith)))
             return TranslateStringMatch(expression, parameter, ref parameterIndex, FilterExpression.StringStartsWith);
 
-        if (IsStringInstanceMethod(expression.Method, nameof(string.EndsWith)))
+        if (IsStringMethod(expression.Method, nameof(string.EndsWith)))
             return TranslateStringMatch(expression, parameter, ref parameterIndex, FilterExpression.StringEndsWith);
 
+        if (IsStringMethod(expression.Method, nameof(string.IsNullOrEmpty)))
+            return TranslateIsNullOrEmpty(expression, parameter);
+
+        if (IsStringMethod(expression.Method, nameof(string.IsNullOrWhiteSpace)))
+            throw new KernelExpressionException(
+                $"'{expression}' is not supported: SiftQL has no whitespace operator. " +
+                "Use string.IsNullOrEmpty for a null-or-empty check, or compare the field explicitly.");
+
         throw Unsupported(expression);
+    }
+
+    private static FilterExpression TranslateIsNullOrEmpty(
+        MethodCallExpression expression,
+        ParameterExpression parameter)
+    {
+        if (expression.Object is not null ||
+            expression.Arguments.Count != 1 ||
+            !TryGetFieldPath(expression.Arguments[0], parameter, out string? field))
+        {
+            throw Unsupported(expression);
+        }
+
+        return FilterExpression.Or(
+            FilterExpression.Compare(field, FilterOperator.Equal, FilterValue.Null),
+            FilterExpression.Compare(field, FilterOperator.Equal, FilterValue.From(string.Empty)));
     }
 
     private static FilterExpression TranslateStringMatch(
@@ -276,7 +300,7 @@ internal static class KernelExpressionTranslator
 
     internal static bool IsContains(MethodInfo method) => method.Name is nameof(Enumerable.Contains) or "Contains";
 
-    private static bool IsStringInstanceMethod(MethodInfo method, string name) =>
+    private static bool IsStringMethod(MethodInfo method, string name) =>
         method.Name == name && method.DeclaringType == typeof(string);
 
     private static bool IsImplicitConversion(MethodCallExpression expression) =>
