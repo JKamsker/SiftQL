@@ -1,0 +1,532 @@
+using System.Globalization;
+using System.Text;
+
+namespace SiftQL.Expressions;
+
+// A small, schema-less text DSL so non-.NET clients can author filters without
+// hand-writing integer-discriminator JSON. Grammar (lowest to highest binding):
+//
+//   or    := and (("or" | "||") and)*
+//   and   := not (("and" | "&&") not)*
+//   not   := ("not" | "!") not | primary
+//   primary := "(" or ")" | "true" | "false" | comparison
+//   comparison := field op value
+//   op    := == | != | > | >= | < | <= | contains | startswith | endswith | in
+//   value := string | number | true | false | null   (in takes "[" value,... "]")
+//
+// Format() is the inverse for the kinds the DSL covers (Compare/In/And/Or/Not/Any).
+public static class FilterQuery
+{
+    public static FilterExpression Parse(string query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var tokens = Tokenizer.Tokenize(query);
+        var parser = new Parser(tokens, query);
+        FilterExpression filter = parser.ParseExpression();
+        parser.ExpectEnd();
+        return filter;
+    }
+
+    public static string Format(FilterExpression filter)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        var builder = new StringBuilder();
+        Formatter.Append(builder, filter);
+        return builder.ToString();
+    }
+
+    private enum TokenKind
+    {
+        Identifier,
+        String,
+        Number,
+        Symbol,
+        LeftParen,
+        RightParen,
+        LeftBracket,
+        RightBracket,
+        Comma,
+        End,
+    }
+
+    private readonly record struct Token(TokenKind Kind, string Text, int Position);
+
+    private static class Tokenizer
+    {
+        public static List<Token> Tokenize(string input)
+        {
+            var tokens = new List<Token>();
+            int i = 0;
+            while (i < input.Length)
+            {
+                char c = input[i];
+                if (char.IsWhiteSpace(c))
+                {
+                    i++;
+                    continue;
+                }
+
+                int start = i;
+                switch (c)
+                {
+                    case '(': tokens.Add(new Token(TokenKind.LeftParen, "(", start)); i++; continue;
+                    case ')': tokens.Add(new Token(TokenKind.RightParen, ")", start)); i++; continue;
+                    case '[': tokens.Add(new Token(TokenKind.LeftBracket, "[", start)); i++; continue;
+                    case ']': tokens.Add(new Token(TokenKind.RightBracket, "]", start)); i++; continue;
+                    case ',': tokens.Add(new Token(TokenKind.Comma, ",", start)); i++; continue;
+                    case '"': tokens.Add(ReadString(input, ref i)); continue;
+                }
+
+                if (c is '=' or '!' or '<' or '>' or '|' or '&')
+                {
+                    tokens.Add(ReadSymbol(input, ref i));
+                    continue;
+                }
+
+                if (char.IsDigit(c) || (c == '-' && i + 1 < input.Length && char.IsDigit(input[i + 1])))
+                {
+                    tokens.Add(ReadNumber(input, ref i));
+                    continue;
+                }
+
+                if (char.IsLetter(c) || c == '_')
+                {
+                    tokens.Add(ReadIdentifier(input, ref i));
+                    continue;
+                }
+
+                throw new FilterQueryException($"Unexpected character '{c}'.", start);
+            }
+
+            tokens.Add(new Token(TokenKind.End, string.Empty, input.Length));
+            return tokens;
+        }
+
+        private static Token ReadString(string input, ref int i)
+        {
+            int start = i;
+            i++; // opening quote
+            var builder = new StringBuilder();
+            while (i < input.Length && input[i] != '"')
+            {
+                char c = input[i];
+                if (c == '\\' && i + 1 < input.Length)
+                {
+                    i++;
+                    builder.Append(input[i] switch
+                    {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        '"' => '"',
+                        '\\' => '\\',
+                        var other => other,
+                    });
+                }
+                else
+                {
+                    builder.Append(c);
+                }
+
+                i++;
+            }
+
+            if (i >= input.Length)
+                throw new FilterQueryException("Unterminated string literal.", start);
+
+            i++; // closing quote
+            return new Token(TokenKind.String, builder.ToString(), start);
+        }
+
+        private static Token ReadSymbol(string input, ref int i)
+        {
+            int start = i;
+            char c = input[i];
+            char? next = i + 1 < input.Length ? input[i + 1] : null;
+            string symbol = (c, next) switch
+            {
+                ('=', '=') => "==",
+                ('!', '=') => "!=",
+                ('<', '=') => "<=",
+                ('>', '=') => ">=",
+                ('|', '|') => "||",
+                ('&', '&') => "&&",
+                ('<', _) => "<",
+                ('>', _) => ">",
+                _ => throw new FilterQueryException($"Unexpected operator '{c}'.", start),
+            };
+            i += symbol.Length;
+            return new Token(TokenKind.Symbol, symbol, start);
+        }
+
+        private static Token ReadNumber(string input, ref int i)
+        {
+            int start = i;
+            if (input[i] == '-')
+                i++;
+            while (i < input.Length && (char.IsDigit(input[i]) || input[i] is '.' or 'e' or 'E' or '+' or '-'))
+                i++;
+            return new Token(TokenKind.Number, input[start..i], start);
+        }
+
+        private static Token ReadIdentifier(string input, ref int i)
+        {
+            int start = i;
+            while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] is '_' or '.'))
+                i++;
+            return new Token(TokenKind.Identifier, input[start..i], start);
+        }
+    }
+
+    private sealed class Parser(List<Token> tokens, string source)
+    {
+        private int _index;
+
+        private Token Current => tokens[_index];
+
+        public FilterExpression ParseExpression() => ParseOr();
+
+        public void ExpectEnd()
+        {
+            if (Current.Kind != TokenKind.End)
+                throw Error($"Unexpected '{Current.Text}'.");
+        }
+
+        private FilterExpression ParseOr()
+        {
+            var children = new List<FilterExpression> { ParseAnd() };
+            while (IsKeyword("or") || (Current.Kind == TokenKind.Symbol && Current.Text == "||"))
+            {
+                _index++;
+                children.Add(ParseAnd());
+            }
+
+            return children.Count == 1 ? children[0] : FilterExpression.Or([.. children]);
+        }
+
+        private FilterExpression ParseAnd()
+        {
+            var children = new List<FilterExpression> { ParseNot() };
+            while (IsKeyword("and") || (Current.Kind == TokenKind.Symbol && Current.Text == "&&"))
+            {
+                _index++;
+                children.Add(ParseNot());
+            }
+
+            return children.Count == 1 ? children[0] : FilterExpression.And([.. children]);
+        }
+
+        private FilterExpression ParseNot()
+        {
+            if (IsKeyword("not") || (Current.Kind == TokenKind.Symbol && Current.Text == "!"))
+            {
+                _index++;
+                return FilterExpression.Not(ParseNot());
+            }
+
+            return ParsePrimary();
+        }
+
+        private FilterExpression ParsePrimary()
+        {
+            if (Current.Kind == TokenKind.LeftParen)
+            {
+                _index++;
+                FilterExpression inner = ParseOr();
+                Expect(TokenKind.RightParen, ")");
+                return inner;
+            }
+
+            if (Current.Kind == TokenKind.Identifier && IsKeyword("true"))
+            {
+                _index++;
+                return FilterExpression.Any;
+            }
+
+            if (Current.Kind == TokenKind.Identifier && IsKeyword("false"))
+            {
+                _index++;
+                return FilterExpression.Not(FilterExpression.Any);
+            }
+
+            return ParseComparison();
+        }
+
+        private FilterExpression ParseComparison()
+        {
+            if (Current.Kind != TokenKind.Identifier)
+                throw Error($"Expected a field name but found '{Current.Text}'.");
+
+            string field = Current.Text;
+            _index++;
+
+            string op = ReadOperator();
+            if (op == "in")
+                return FilterExpression.In(field, ReadValueList());
+
+            FilterValue value = ReadValue();
+            return op switch
+            {
+                "==" => FilterExpression.Compare(field, FilterOperator.Equal, value),
+                "!=" => FilterExpression.Compare(field, FilterOperator.NotEqual, value),
+                ">" => FilterExpression.Compare(field, FilterOperator.GreaterThan, value),
+                ">=" => FilterExpression.Compare(field, FilterOperator.GreaterThanOrEqual, value),
+                "<" => FilterExpression.Compare(field, FilterOperator.LessThan, value),
+                "<=" => FilterExpression.Compare(field, FilterOperator.LessThanOrEqual, value),
+                "contains" => FilterExpression.StringContains(field, value),
+                "startswith" => FilterExpression.StringStartsWith(field, value),
+                "endswith" => FilterExpression.StringEndsWith(field, value),
+                _ => throw Error($"Unknown operator '{op}'."),
+            };
+        }
+
+        private string ReadOperator()
+        {
+            if (Current.Kind == TokenKind.Symbol)
+            {
+                string symbol = Current.Text;
+                _index++;
+                return symbol;
+            }
+
+            if (Current.Kind == TokenKind.Identifier &&
+                Current.Text.ToLowerInvariant() is "in" or "contains" or "startswith" or "endswith")
+            {
+                string keyword = Current.Text.ToLowerInvariant();
+                _index++;
+                return keyword;
+            }
+
+            throw Error($"Expected an operator but found '{Current.Text}'.");
+        }
+
+        private IReadOnlyList<FilterValue> ReadValueList()
+        {
+            Expect(TokenKind.LeftBracket, "[");
+            var values = new List<FilterValue>();
+            if (Current.Kind != TokenKind.RightBracket)
+            {
+                values.Add(ReadValue());
+                while (Current.Kind == TokenKind.Comma)
+                {
+                    _index++;
+                    values.Add(ReadValue());
+                }
+            }
+
+            Expect(TokenKind.RightBracket, "]");
+            if (values.Count == 0)
+                throw Error("In lists require at least one value.");
+            return values;
+        }
+
+        private FilterValue ReadValue()
+        {
+            Token token = Current;
+            switch (token.Kind)
+            {
+                case TokenKind.String:
+                    _index++;
+                    return FilterValue.From(token.Text);
+                case TokenKind.Number:
+                    _index++;
+                    return ParseNumber(token);
+                case TokenKind.Identifier when IsKeywordText(token.Text, "true"):
+                    _index++;
+                    return FilterValue.From(true);
+                case TokenKind.Identifier when IsKeywordText(token.Text, "false"):
+                    _index++;
+                    return FilterValue.From(false);
+                case TokenKind.Identifier when IsKeywordText(token.Text, "null"):
+                    _index++;
+                    return FilterValue.Null;
+                default:
+                    throw Error($"Expected a value but found '{token.Text}'.");
+            }
+        }
+
+        private FilterValue ParseNumber(Token token)
+        {
+            if (!token.Text.Contains('.') && !token.Text.Contains('e') && !token.Text.Contains('E') &&
+                long.TryParse(token.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long integer))
+            {
+                return FilterValue.From(integer);
+            }
+
+            if (double.TryParse(token.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
+                return FilterValue.From(number);
+
+            throw Error($"Invalid number '{token.Text}'.");
+        }
+
+        private void Expect(TokenKind kind, string text)
+        {
+            if (Current.Kind != kind)
+                throw Error($"Expected '{text}' but found '{Current.Text}'.");
+            _index++;
+        }
+
+        private bool IsKeyword(string keyword) =>
+            Current.Kind == TokenKind.Identifier && IsKeywordText(Current.Text, keyword);
+
+        private static bool IsKeywordText(string text, string keyword) =>
+            string.Equals(text, keyword, StringComparison.OrdinalIgnoreCase);
+
+        private FilterQueryException Error(string message) =>
+            new($"{message} (at position {Current.Position} in '{source}')", Current.Position);
+    }
+
+    private static class Formatter
+    {
+        public static void Append(StringBuilder builder, FilterExpression filter)
+        {
+            switch (filter.Kind)
+            {
+                case FilterExpressionKind.Any:
+                    builder.Append("true");
+                    break;
+                case FilterExpressionKind.And:
+                    AppendComposite(builder, filter, "and");
+                    break;
+                case FilterExpressionKind.Or:
+                    AppendComposite(builder, filter, "or");
+                    break;
+                case FilterExpressionKind.Not:
+                    builder.Append("not ");
+                    AppendGrouped(builder, filter.Children[0]);
+                    break;
+                case FilterExpressionKind.Compare:
+                    AppendCompare(builder, filter);
+                    break;
+                case FilterExpressionKind.In:
+                    AppendIn(builder, filter);
+                    break;
+                default:
+                    throw new FilterQueryException(
+                        $"Filter kind '{filter.Kind}' has no text-query representation.", 0);
+            }
+        }
+
+        private static void AppendComposite(StringBuilder builder, FilterExpression filter, string keyword)
+        {
+            builder.Append('(');
+            for (int i = 0; i < filter.Children.Length; i++)
+            {
+                if (i > 0)
+                    builder.Append(' ').Append(keyword).Append(' ');
+                Append(builder, filter.Children[i]);
+            }
+
+            builder.Append(')');
+        }
+
+        private static void AppendGrouped(StringBuilder builder, FilterExpression filter)
+        {
+            if (filter.Kind is FilterExpressionKind.And or FilterExpressionKind.Or)
+            {
+                Append(builder, filter);
+                return;
+            }
+
+            builder.Append('(');
+            Append(builder, filter);
+            builder.Append(')');
+        }
+
+        private static void AppendCompare(StringBuilder builder, FilterExpression filter)
+        {
+            builder.Append(filter.Field).Append(' ').Append(filter.Operator switch
+            {
+                FilterOperator.Equal => "==",
+                FilterOperator.NotEqual => "!=",
+                FilterOperator.GreaterThan => ">",
+                FilterOperator.GreaterThanOrEqual => ">=",
+                FilterOperator.LessThan => "<",
+                FilterOperator.LessThanOrEqual => "<=",
+                FilterOperator.StringContains => "contains",
+                FilterOperator.StringStartsWith => "startswith",
+                FilterOperator.StringEndsWith => "endswith",
+                _ => throw new FilterQueryException($"Operator '{filter.Operator}' is not representable.", 0),
+            }).Append(' ');
+            AppendValue(builder, filter.Value);
+        }
+
+        private static void AppendIn(StringBuilder builder, FilterExpression filter)
+        {
+            builder.Append(filter.Field).Append(" in [");
+            for (int i = 0; i < filter.Values.Length; i++)
+            {
+                if (i > 0)
+                    builder.Append(", ");
+                AppendValue(builder, filter.Values[i]);
+            }
+
+            builder.Append(']');
+        }
+
+        private static void AppendValue(StringBuilder builder, FilterValue? value)
+        {
+            if (value is null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            switch (value.Kind)
+            {
+                case FilterValueKind.Null:
+                    builder.Append("null");
+                    break;
+                case FilterValueKind.Boolean:
+                    builder.Append(value.Boolean ? "true" : "false");
+                    break;
+                case FilterValueKind.Integer:
+                    builder.Append(value.Integer.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case FilterValueKind.UnsignedInteger:
+                    builder.Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case FilterValueKind.Number:
+                    builder.Append(value.Number.ToString("R", CultureInfo.InvariantCulture));
+                    break;
+                case FilterValueKind.Decimal:
+                    builder.Append(value.Decimal.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case FilterValueKind.Guid:
+                    builder.Append('"').Append(value.Guid.ToString("D")).Append('"');
+                    break;
+                default:
+                    AppendString(builder, value.String ?? string.Empty);
+                    break;
+            }
+        }
+
+        private static void AppendString(StringBuilder builder, string value)
+        {
+            builder.Append('"');
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case '"': builder.Append("\\\""); break;
+                    case '\\': builder.Append("\\\\"); break;
+                    case '\n': builder.Append("\\n"); break;
+                    case '\r': builder.Append("\\r"); break;
+                    case '\t': builder.Append("\\t"); break;
+                    default: builder.Append(c); break;
+                }
+            }
+
+            builder.Append('"');
+        }
+    }
+}
+
+public sealed class FilterQueryException : FormatException
+{
+    public FilterQueryException(string message, int position)
+        : base(message) =>
+        Position = position;
+
+    public int Position { get; }
+}
