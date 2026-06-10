@@ -29,6 +29,24 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
     public int Count => Volatile.Read(ref _snapshot).Count;
 
+    public FilterSubscriptionIndexStatistics GetStatistics()
+    {
+        EnsureCurrentSchema();
+        lock (_sync)
+        {
+            var buckets = new Dictionary<string, int>(_fields.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in _fields)
+                buckets[pair.Key] = pair.Value.BucketCount;
+
+            int unindexed = _unindexed.Count;
+            return new FilterSubscriptionIndexStatistics(
+                _count,
+                _count - unindexed,
+                unindexed,
+                buckets);
+        }
+    }
+
     public void Add(TSubscription subscription, FilterExpression? filter)
     {
         ArgumentNullException.ThrowIfNull(subscription);

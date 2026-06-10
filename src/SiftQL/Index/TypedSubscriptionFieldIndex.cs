@@ -13,6 +13,8 @@ internal sealed class TypedSubscriptionFieldIndex<TSubscription, TSubject>
 
     public bool IsEmpty => _byValue.Count == 0;
 
+    public int BucketCount => _byValue.Count;
+
     public void Add(FilterIndexValue value, TypedSubscriptionEntry<TSubscription, TSubject> entry)
     {
         if (!_byValue.TryGetValue(value, out var bucket))

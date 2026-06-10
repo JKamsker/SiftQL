@@ -14,6 +14,8 @@ internal sealed class SubscriptionFieldIndex<TSubscription>
 
     public bool IsEmpty => _byValue.Count == 0;
 
+    public int BucketCount => _byValue.Count;
+
     public void Add(FilterIndexValue value, SubscriptionEntry<TSubscription> entry)
     {
         if (!_byValue.TryGetValue(value, out var bucket))
