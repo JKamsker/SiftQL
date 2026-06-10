@@ -222,5 +222,6 @@ internal static partial class HotManifestParser
             Decimal: 0,
             String: null,
             Guid: "00000000-0000-0000-0000-000000000000",
-            TimestampTicks: 0);
+            TimestampTicks: 0,
+            TimestampText: string.Empty);
 }

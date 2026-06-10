@@ -152,7 +152,9 @@ internal static class HotManifestFingerprint
                 builder.Append(value.Guid);
                 break;
             case HotFilterValueKind.Timestamp:
-                builder.Append(value.TimestampTicks.ToString(CultureInfo.InvariantCulture));
+                builder.Append(mode == ValueMode.ProjectionArgument
+                    ? value.TimestampText
+                    : value.TimestampTicks.ToString(CultureInfo.InvariantCulture));
                 break;
         }
     }

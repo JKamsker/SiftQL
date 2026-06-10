@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text.Json;
 
 namespace SiftQL.Generators.Hot;
@@ -24,6 +25,7 @@ internal static partial class HotManifestParser
         string? text = null;
         string guid = "00000000-0000-0000-0000-000000000000";
         long timestampTicks = 0;
+        string timestampText = string.Empty;
         if (!TryReadValuePayload(
             element,
             kind,
@@ -36,7 +38,8 @@ internal static partial class HotManifestParser
             ref exactDecimal,
             ref text,
             ref guid,
-            ref timestampTicks))
+            ref timestampTicks,
+            ref timestampText))
         {
             return null;
         }
@@ -51,7 +54,8 @@ internal static partial class HotManifestParser
             exactDecimal,
             text,
             guid,
-            timestampTicks);
+            timestampTicks,
+            timestampText);
     }
 
     private static bool TryReadValuePayload(
@@ -66,7 +70,8 @@ internal static partial class HotManifestParser
         ref decimal exactDecimal,
         ref string? text,
         ref string guid,
-        ref long timestampTicks)
+        ref long timestampTicks,
+        ref string timestampText)
     {
         switch (kind)
         {
@@ -106,7 +111,7 @@ internal static partial class HotManifestParser
                     return true;
                 return Invalid("Hot filter GUID value is missing or invalid.");
             case HotFilterValueKind.Timestamp:
-                if (TryReadTimestamp(element, "Timestamp", out timestampTicks))
+                if (TryReadTimestamp(element, "Timestamp", out timestampTicks, out timestampText))
                     return true;
                 return Invalid("Hot filter timestamp value is missing or invalid.");
             default:
@@ -192,9 +197,14 @@ internal static partial class HotManifestParser
         return true;
     }
 
-    private static bool TryReadTimestamp(JsonElement element, string name, out long utcTicks)
+    private static bool TryReadTimestamp(
+        JsonElement element,
+        string name,
+        out long utcTicks,
+        out string text)
     {
         utcTicks = 0;
+        text = string.Empty;
         if (!element.TryGetProperty(name, out JsonElement item) ||
             !item.TryGetDateTimeOffset(out DateTimeOffset timestamp))
         {
@@ -202,6 +212,7 @@ internal static partial class HotManifestParser
         }
 
         utcTicks = timestamp.UtcTicks;
+        text = timestamp.ToString("o", CultureInfo.InvariantCulture);
         return true;
     }
 }

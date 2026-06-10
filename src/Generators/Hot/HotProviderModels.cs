@@ -71,7 +71,8 @@ internal sealed record HotFilterValue(
     decimal Decimal,
     string? String,
     string Guid,
-    long TimestampTicks);
+    long TimestampTicks,
+    string TimestampText);
 
 internal sealed record HotProjection(
     EquatableArray<HotProjectionField> Fields,
