@@ -113,6 +113,35 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         Assert.True(result.Loaded, result.Message);
     }
 
+    [Fact]
+    public void LoaderRejectsAssemblyQualifiedSubjectFromDifferentAssembly()
+    {
+        const string assemblyName = "Plugin.Hot.Current";
+        FilterExpression filter = FilterExpression.Compare("Value", FilterOperator.Equal, FilterValue.From(7L));
+        string subjectType = "Plugin.Events.AssemblySkewEvent, Plugin.Hot.Old";
+        string manifestJson = ManifestJson(
+            assemblyName,
+            "filter",
+            subjectType,
+            FilterExpressionFingerprint.Create(filter),
+            filter);
+        Compilation output = RunGenerator(
+            assemblyName,
+            new InMemoryAdditionalText("assembly-skew.siftql-hot.json", manifestJson),
+            Source("""
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record AssemblySkewEvent(long Value) : IFilterSubject;
+                """));
+
+        using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using HotTieredProviderLoadResult result = Load(output, assemblyName, manifestJson);
+
+        Assert.False(result.Loaded, result.Message);
+    }
+
     private static Compilation RunGenerator(
         string assemblyName,
         AdditionalText manifest,
