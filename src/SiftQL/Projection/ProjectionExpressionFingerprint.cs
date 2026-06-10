@@ -119,6 +119,7 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
         Decimal = value.Decimal;
         Text = value.String;
         Guid = value.Guid;
+        TimestampTicks = value.Timestamp.UtcTicks;
     }
 
     public FilterValueKind Kind { get; }
@@ -130,6 +131,7 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
     public decimal Decimal { get; }
     public string? Text { get; }
     public Guid Guid { get; }
+    public long TimestampTicks { get; }
 
     public static ProjectionArgumentValueKey From(FilterValue? value) =>
         value is null ? default : new ProjectionArgumentValueKey(value);
@@ -152,15 +154,17 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
         if (HasParameter)
             return HashCode.Combine(Kind, ParameterKey);
 
-        return HashCode.Combine(
-            Kind,
-            Boolean,
-            Integer,
-            UnsignedInteger,
-            NumberBits,
-            Decimal,
-            Text,
-            Guid);
+        var hash = new HashCode();
+        hash.Add(Kind);
+        hash.Add(Boolean);
+        hash.Add(Integer);
+        hash.Add(UnsignedInteger);
+        hash.Add(NumberBits);
+        hash.Add(Decimal);
+        hash.Add(Text);
+        hash.Add(Guid);
+        hash.Add(TimestampTicks);
+        return hash.ToHashCode();
     }
 
     public void AppendTo(StringBuilder builder)
@@ -193,7 +197,8 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
         NumberBits == other.NumberBits &&
         Decimal == other.Decimal &&
         string.Equals(Text, other.Text, StringComparison.Ordinal) &&
-        Guid == other.Guid;
+        Guid == other.Guid &&
+        TimestampTicks == other.TimestampTicks;
 
     private void AppendLiteral(StringBuilder builder)
     {
@@ -220,6 +225,9 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
                 break;
             case FilterValueKind.Guid:
                 builder.Append(Guid.ToString("D"));
+                break;
+            case FilterValueKind.Timestamp:
+                builder.Append(TimestampTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 break;
         }
     }

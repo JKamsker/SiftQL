@@ -243,7 +243,9 @@ internal sealed class ContextExpressionIncludes
             .Append(':')
             .Append(value.String)
             .Append(':')
-            .Append(value.Guid);
+            .Append(value.Guid)
+            .Append(':')
+            .Append(value.Timestamp.UtcTicks);
 
     private string NextLocalParameterKey() =>
         "p" + _parameterIndex++;

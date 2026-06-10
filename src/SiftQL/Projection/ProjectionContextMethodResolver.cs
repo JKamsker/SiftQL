@@ -209,6 +209,9 @@ internal static class ProjectionContextMethodResolver
                 target == typeof(Guid) ||
                 target.IsEnum,
             FilterValueKind.Guid => target == typeof(Guid),
+            FilterValueKind.Timestamp => target == typeof(DateTimeOffset) ||
+                target == typeof(DateTime) ||
+                target == typeof(DateOnly),
             _ => false,
         };
     }
