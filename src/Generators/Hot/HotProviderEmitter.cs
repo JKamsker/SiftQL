@@ -172,7 +172,7 @@ internal static class HotProviderEmitter
 
         string name = "s_filter_" + index + "_value_" + values++;
         members.Append("    private static readonly FilterValue ").Append(name).Append(" = ");
-        EmitValue(members, value);
+        HotFilterValueEmitter.Emit(members, value);
         members.AppendLine(";");
         return name;
     }
@@ -194,7 +194,7 @@ internal static class HotProviderEmitter
         for (int i = 0; i < items.Count; i++)
         {
             members.Append("        ");
-            EmitValue(members, items[i]);
+            HotFilterValueEmitter.Emit(members, items[i]);
             members.AppendLine(",");
         }
         members.AppendLine("    };");
@@ -257,43 +257,6 @@ internal static class HotProviderEmitter
             source.AppendLine("        };");
         }
         source.AppendLine();
-    }
-
-    private static void EmitValue(StringBuilder source, HotFilterValue value)
-    {
-        source.Append("new FilterValue { Kind = (FilterValueKind)");
-        source.Append(((int)value.Kind).ToString(CultureInfo.InvariantCulture));
-        if (value.Kind == HotFilterValueKind.Boolean)
-            source.Append(", Boolean = ").Append(value.Boolean ? "true" : "false");
-        if (value.Kind == HotFilterValueKind.Integer)
-            source.Append(", Integer = ").Append(value.Integer.ToString(CultureInfo.InvariantCulture)).Append("L");
-        if (value.Kind == HotFilterValueKind.UnsignedInteger)
-            source.Append(", UnsignedInteger = ").Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture)).Append("UL");
-        if (value.Kind == HotFilterValueKind.Number)
-            source.Append(", Number = ").Append(value.Number.ToString("R", CultureInfo.InvariantCulture)).Append("D");
-        if (value.Kind == HotFilterValueKind.Decimal)
-            source.Append(", Decimal = ").Append(value.Decimal.ToString(CultureInfo.InvariantCulture)).Append("M");
-        if (value.Kind == HotFilterValueKind.String)
-        {
-            source.Append(", String = ");
-            if (value.String is null)
-                source.Append("null");
-            else
-                AppendLiteral(source, value.String);
-        }
-        if (value.Kind == HotFilterValueKind.Guid)
-        {
-            source.Append(", Guid = new Guid(");
-            AppendLiteral(source, value.Guid);
-            source.Append(")");
-        }
-        if (value.Kind == HotFilterValueKind.Timestamp)
-        {
-            source.Append(", Timestamp = new DateTimeOffset(")
-                .Append(value.TimestampTicks.ToString(CultureInfo.InvariantCulture))
-                .Append("L, TimeSpan.Zero)");
-        }
-        source.Append(" }");
     }
 
     private static void AppendLiteral(StringBuilder source, string value)
