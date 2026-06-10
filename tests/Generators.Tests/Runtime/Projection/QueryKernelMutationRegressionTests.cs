@@ -64,6 +64,24 @@ public sealed class QueryKernelMutationRegressionTests
         Assert.Empty(cleared.Pipeline.Stages);
     }
 
+    [Fact]
+    public void ExplicitDefaultPipelinePreservesInitializerFilterAndProjection()
+    {
+        var kernel = new QueryKernel<ItemUsedEvent>
+        {
+            Filter = FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.Equal,
+                FilterValue.From(100L)),
+            Projection = EventProjectionExpression.Select(nameof(ItemUsedEvent.Quantity)),
+            Pipeline = EventPipelineExpression.Default,
+        };
+
+        Assert.Equal(FilterExpressionKind.Compare, kernel.Filter.Kind);
+        Assert.False(kernel.Projection.IsDefault);
+        Assert.Equal(2, kernel.Pipeline.Stages.Length);
+    }
+
     private static CompiledEventPipeline<object> Compile(EventPipelineExpression pipeline) =>
         EventPipelineCompiler.Compile<object>(
             typeof(ItemUsedEvent),
