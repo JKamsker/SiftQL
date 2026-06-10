@@ -270,8 +270,19 @@ internal static class FilterInterpretedCompiler
             throw Error(errorFactory, $"Count comparisons on '{field.Name}' require an integer value.");
 
         FilterOperator op = expression.Operator;
+        if (!IsCountOperator(op))
+            throw Error(errorFactory, $"Count comparisons on '{field.Name}' require a comparison operator.");
+
         return subject => FilterValues.Compare(FilterValues.Count(field.Getter(subject)), value, op);
     }
+
+    private static bool IsCountOperator(FilterOperator op) =>
+        op is FilterOperator.Equal or
+            FilterOperator.NotEqual or
+            FilterOperator.GreaterThan or
+            FilterOperator.GreaterThanOrEqual or
+            FilterOperator.LessThan or
+            FilterOperator.LessThanOrEqual;
 
     private static FilterField RequireField(
         FilterSchema schema,

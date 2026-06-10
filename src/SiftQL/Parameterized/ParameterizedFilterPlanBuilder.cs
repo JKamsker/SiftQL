@@ -184,8 +184,18 @@ internal static class ParameterizedFilterPlanBuilder
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
         if (value.Kind is not (FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
             throw Error(errorFactory, $"Count comparisons on '{field.Name}' require an integer value.");
+        if (!IsCountOperator(expression.Operator))
+            throw Error(errorFactory, $"Count comparisons on '{field.Name}' require a comparison operator.");
         return new CountFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
     }
+
+    private static bool IsCountOperator(FilterOperator op) =>
+        op is FilterOperator.Equal or
+            FilterOperator.NotEqual or
+            FilterOperator.GreaterThan or
+            FilterOperator.GreaterThanOrEqual or
+            FilterOperator.LessThan or
+            FilterOperator.LessThanOrEqual;
 
     private static ParameterizedFilterPlanNode BuildIn(
         FilterSchema schema,
