@@ -76,7 +76,11 @@ public sealed record QueryKernel<TSubject>
         {
             _pipeline = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
             if (_pipeline.IsDefault)
+            {
+                _filter = FilterExpression.Any;
+                _projection = EventProjectionExpression.Default;
                 return;
+            }
 
             _filter = QueryKernelPipelineState.SourceFilter(_pipeline);
             _projection = QueryKernelPipelineState.LastProjectionOrDefault(_pipeline);
