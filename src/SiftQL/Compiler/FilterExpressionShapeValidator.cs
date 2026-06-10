@@ -5,18 +5,26 @@ namespace SiftQL.Compiler;
 
 internal static class FilterExpressionShapeValidator
 {
+    // Far above any legitimate filter (the compiled engine caps at 16 and the
+    // JSON wire format at 64) but low enough that validation never recurses
+    // anywhere near stack exhaustion.
+    private const int MaxDepth = 256;
+
     public static void Validate(
         FilterExpression expression,
         Func<string, Exception>? errorFactory = null)
     {
         ArgumentNullException.ThrowIfNull(expression);
-        ValidateCore(expression, errorFactory);
+        ValidateCore(expression, errorFactory, depth: 0);
     }
 
     private static void ValidateCore(
         FilterExpression expression,
-        Func<string, Exception>? errorFactory)
+        Func<string, Exception>? errorFactory,
+        int depth)
     {
+        if (depth > MaxDepth)
+            throw Error(errorFactory, $"Filter exceeds the {MaxDepth} level depth limit.");
         if (expression.Values is null)
             throw Error(errorFactory, "Filter value arrays cannot be null.");
         if (expression.Children is null)
@@ -33,7 +41,7 @@ internal static class FilterExpressionShapeValidator
             FilterExpression? child = expression.Children[i];
             if (child is null)
                 throw Error(errorFactory, "Filter children cannot contain null.");
-            ValidateCore(child, errorFactory);
+            ValidateCore(child, errorFactory, depth + 1);
         }
     }
 
