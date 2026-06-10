@@ -123,6 +123,8 @@ internal static class ParameterizedFilterPlanBuilder
 
         FilterValue lower = expression.Values[0];
         FilterValue upper = expression.Values[1];
+        FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, lower, errorFactory);
+        FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
         // Literal bounds must be ordered; reversed bounds describe an empty interval.
         // Parameterized bounds are left unchecked (their values are not known here).
         if (lower.ParameterKey is null && upper.ParameterKey is null &&

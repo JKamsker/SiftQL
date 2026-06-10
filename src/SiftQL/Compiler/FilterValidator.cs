@@ -270,8 +270,11 @@ public static class FilterValidator
         for (int i = 0; i < node.Values.Length; i++)
         {
             int index = i;
+            FilterOperator boundOperator = index == 0
+                ? FilterOperator.GreaterThanOrEqual
+                : FilterOperator.LessThanOrEqual;
             Capture($"{path}.values[{index}]", errors, () =>
-                FilterValues.ValidateValue(field!, node.Values[index], Signal));
+                FilterValues.ValidateComparison(field!, boundOperator, node.Values[index], Signal));
         }
 
         FilterValue lower = node.Values[0];
