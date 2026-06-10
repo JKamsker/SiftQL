@@ -159,6 +159,24 @@ public sealed class FilterSchema
     private static bool IsRegisteredValueObject(Type type) =>
         s_valueObjects.ContainsKey(type);
 
+    // Registered value objects that are strict subtypes of baseType, used to
+    // expand subtype-projected (`as`) member reads. Bounded to the registration
+    // set, so no assembly scanning. See [[SubjectTypeMetadata]].
+    internal static IReadOnlyList<Type> RegisteredValueObjectSubtypes(Type baseType)
+    {
+        if (Volatile.Read(ref s_valueObjectVersion) == 0)
+            return [];
+
+        List<Type>? subtypes = null;
+        foreach (Type type in s_valueObjects.Keys)
+        {
+            if (type != baseType && baseType.IsAssignableFrom(type))
+                (subtypes ??= []).Add(type);
+        }
+
+        return subtypes ?? (IReadOnlyList<Type>)[];
+    }
+
     private static void IncrementSchemaVersion() =>
         Interlocked.Increment(ref s_schemaVersion);
 

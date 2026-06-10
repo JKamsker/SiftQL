@@ -354,6 +354,8 @@ internal static class KernelExpressionTranslator
             }
 
             names.Push(member.Member.Name);
+            if (SubtypeProjection.TryResolveSubtypeMember(member.Expression, member.Member, out Type subtype))
+                names.Push(SubtypeProjection.Segment(subtype));
             current = StripConvert(member.Expression);
         }
 

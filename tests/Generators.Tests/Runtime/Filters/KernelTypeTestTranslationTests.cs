@@ -22,11 +22,13 @@ public sealed class KernelTypeTestTranslationTests
 
     private abstract record Entity(string Tag = "") : IFilterSubject;
 
-    private sealed record Player(string Tag = "", int Level = 0) : Entity(Tag);
+    private sealed record Player(string Tag = "", int Level = 0, int[]? EquippedItemIds = null) : Entity(Tag);
 
-    private record Monster(string Tag = "", int Hp = 0) : Entity(Tag), IHasHealth;
+    // Non-sealed so Orc can derive; `Level` deliberately collides by name with
+    // Player.Level to exercise subtype-namespaced field paths.
+    private record Monster(string Tag = "", int Hp = 0, int Level = 0) : Entity(Tag), IHasHealth;
 
-    private sealed record Orc(string Tag = "", int Hp = 0, int Rage = 0) : Monster(Tag, Hp);
+    private sealed record Orc(string Tag = "", int Hp = 0, int Level = 0, int Rage = 0) : Monster(Tag, Hp, Level);
 
     private sealed record Combat(
         Entity? Attacker = null,
@@ -132,16 +134,29 @@ public sealed class KernelTypeTestTranslationTests
     // ---- `as` cast stays transparent ---------------------------------------
 
     [Fact]
-    public void AsCastToDerivedFieldStaysTransparentInTranslation()
+    public void AsCastToBaseMemberStaysFlatInTranslation()
     {
-        // (attacker as Player).Level lowers to the field path "Attacker.Level":
-        // the cast is stripped, leaving an ordinary scalar comparison.
+        // Tag is declared on the base Entity, so the cast is transparent and the
+        // path stays flat — unchanged by subtype projection.
+        FilterExpression filter = QueryKernel.For<Combat>()
+            .Where(static c => (c.Attacker as Player)!.Tag == "boss")
+            .Filter;
+
+        Assert.Equal(FilterExpressionKind.Compare, filter.Kind);
+        Assert.Equal("Attacker.Tag", filter.Field);
+    }
+
+    [Fact]
+    public void AsCastToSubtypeMemberProjectsUnderSubtypePath()
+    {
+        // Level is Player-specific, so the read is projected under a
+        // <Player>-qualified path that the schema can resolve.
         FilterExpression filter = QueryKernel.For<Combat>()
             .Where(static c => (c.Attacker as Player)!.Level > 5)
             .Filter;
 
         Assert.Equal(FilterExpressionKind.Compare, filter.Kind);
-        Assert.Equal("Attacker.Level", filter.Field);
+        Assert.Equal("Attacker.<Player>.Level", filter.Field);
         Assert.Equal(FilterOperator.GreaterThan, filter.Operator);
     }
 
@@ -158,34 +173,89 @@ public sealed class KernelTypeTestTranslationTests
         Assert.False(kernel.Matches(new Combat(Attacker: new Player(Tag: "grunt"))));
     }
 
+    // ---- Tier 3: subtype-projected `as` member reads ------------------------
+
+    [Fact]
+    public void SubtypeScalarReadMatchesAndIsNullSafe()
+    {
+        FilterSchema.RegisterValueObject(typeof(Entity));
+        FilterSchema.RegisterValueObject(typeof(Player));
+        CompiledKernel kernel = Compile<Combat>(static c => (c.Attacker as Player)!.Level > 5);
+
+        Assert.True(kernel.Matches(new Combat(Attacker: new Player(Level: 10))));
+        Assert.False(kernel.Matches(new Combat(Attacker: new Player(Level: 3))));
+        // Attacker is a Monster, not a Player -> projection reads absent, no throw.
+        Assert.False(kernel.Matches(new Combat(Attacker: new Monster(Level: 99))));
+        Assert.False(kernel.Matches(new Combat(Attacker: null)));
+    }
+
+    [Fact]
+    public void SubtypeArrayReadComposesWithContains()
+    {
+        FilterSchema.RegisterValueObject(typeof(Entity));
+        FilterSchema.RegisterValueObject(typeof(Player));
+        // The motivating example: (attacker as Player).EquippedItemIds.Contains(id).
+        CompiledKernel kernel = Compile<Combat>(
+            static c => (c.Attacker as Player)!.EquippedItemIds!.Contains(42));
+
+        Assert.True(kernel.Matches(new Combat(Attacker: new Player(EquippedItemIds: [42, 7]))));
+        Assert.False(kernel.Matches(new Combat(Attacker: new Player(EquippedItemIds: [7]))));
+        Assert.False(kernel.Matches(new Combat(Attacker: new Player(EquippedItemIds: null))));
+        Assert.False(kernel.Matches(new Combat(Attacker: new Monster())));
+    }
+
+    [Fact]
+    public void SameNamedSubtypeMembersOccupyDistinctFieldNamespaces()
+    {
+        FilterSchema.RegisterValueObject(typeof(Entity));
+        FilterSchema.RegisterValueObject(typeof(Player));
+        FilterSchema.RegisterValueObject(typeof(Monster));
+        // Player.Level and Monster.Level are different members; the subtype-
+        // qualified path keeps them from colliding.
+        CompiledKernel playerLevel = Compile<Combat>(static c => (c.Attacker as Player)!.Level > 5);
+        CompiledKernel monsterLevel = Compile<Combat>(static c => (c.Defender as Monster)!.Level > 5);
+
+        var subject = new Combat(Attacker: new Player(Level: 10), Defender: new Monster(Level: 1));
+        Assert.True(playerLevel.Matches(subject));   // Player.Level = 10 > 5
+        Assert.False(monsterLevel.Matches(subject));  // Monster.Level = 1, not > 5
+    }
+
     [Fact]
     public void ExampleQueryCombiningAsAndIsCompilesAndMatches()
     {
         FilterSchema.RegisterValueObject(typeof(Entity));
-        // Mirrors the shape of the motivating query: a boolean flag, an `as`
-        // cast member access, a numeric comparison, and an `is` type test.
+        FilterSchema.RegisterValueObject(typeof(Player));
+        // Mirrors the motivating query: a boolean flag, a subtype-projected `as`
+        // array read, a numeric comparison, and an `is` type test.
         CompiledKernel kernel = Compile<Combat>(static c =>
             c.IsLongAttack &&
-            (c.Attacker as Player)!.Tag == "boss" &&
+            (c.Attacker as Player)!.EquippedItemIds!.Contains(42) &&
             c.Damage > 0 &&
             c.Defender is Monster);
 
         Assert.True(kernel.Matches(new Combat(
-            Attacker: new Player(Tag: "boss"),
+            Attacker: new Player(EquippedItemIds: [42]),
             Defender: new Orc(),
             IsLongAttack: true,
             Damage: 12)));
 
         // Defender is a Player, not a Monster -> filtered out.
         Assert.False(kernel.Matches(new Combat(
-            Attacker: new Player(Tag: "boss"),
+            Attacker: new Player(EquippedItemIds: [42]),
             Defender: new Player(),
+            IsLongAttack: true,
+            Damage: 12)));
+
+        // Attacker is not holding item 42 -> filtered out.
+        Assert.False(kernel.Matches(new Combat(
+            Attacker: new Player(EquippedItemIds: [7]),
+            Defender: new Orc(),
             IsLongAttack: true,
             Damage: 12)));
 
         // Not a long attack -> filtered out.
         Assert.False(kernel.Matches(new Combat(
-            Attacker: new Player(Tag: "boss"),
+            Attacker: new Player(EquippedItemIds: [42]),
             Defender: new Orc(),
             IsLongAttack: false,
             Damage: 12)));

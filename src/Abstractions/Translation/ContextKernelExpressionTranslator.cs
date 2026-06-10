@@ -214,6 +214,8 @@ internal static class ContextKernelExpressionTranslator
             while (current is MemberExpression member)
             {
                 names.Push(member.Member.Name);
+                if (SubtypeProjection.TryResolveSubtypeMember(member.Expression, member.Member, out Type subtype))
+                    names.Push(SubtypeProjection.Segment(subtype));
                 current = StripConvert(member.Expression!);
             }
 

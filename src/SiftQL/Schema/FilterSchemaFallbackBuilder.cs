@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using SiftQL.Compiler;
+using SiftQL.Translation;
 
 namespace SiftQL.Schema;
 
@@ -188,10 +189,102 @@ internal static class FilterSchemaFallbackBuilder
                         parameter,
                         depth + 1,
                         isValueObject);
+                    AddSubtypeProjectedFields(fields, name, scalarType, propertyExpression, parameter);
                 }
             }
         }
     }
+
+    // Projects each registered value-object subtype's subtype-specific members
+    // under a `<Subtype>`-qualified path so a downcast read like
+    // `(x.Member as Sub).Prop` resolves. Members already reachable through the
+    // declared base type stay flat. Reading the projection against an instance of
+    // a different subtype yields null (no match), never an error. See
+    // [[SubtypeProjection]].
+    private static void AddSubtypeProjectedFields(
+        List<FilterField> fields,
+        string prefix,
+        Type baseType,
+        Expression ownerExpression,
+        ParameterExpression parameter)
+    {
+        foreach (Type subtype in FilterSchema.RegisteredValueObjectSubtypes(baseType))
+        {
+            string subtypePrefix = prefix + "." + SubtypeProjection.Segment(subtype);
+            foreach (PropertyInfo property in EnumeratePublicProperties(subtype))
+            {
+                if (property.GetMethod is null ||
+                    property.GetMethod.GetParameters().Length != 0 ||
+                    FindProperty(baseType, property.Name) is not null)
+                {
+                    continue;
+                }
+
+                string name = subtypePrefix + "." + property.Name;
+                if (ContainsField(fields, name))
+                    continue;
+
+                Type propertyType = property.PropertyType;
+                Type scalarType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+                Expression access = CastGuardedAccess(ownerExpression, subtype, property);
+                if (IsScalar(scalarType))
+                {
+                    fields.Add(BuildSubtypeField(name, scalarType, FilterFieldKind.Scalar, access, parameter));
+                    continue;
+                }
+
+                Type? elementType = GetScalarElementType(propertyType);
+                if (elementType is not null)
+                    fields.Add(BuildSubtypeField(name, elementType, FilterFieldKind.Array, access, parameter));
+            }
+        }
+    }
+
+    // Null-safe `(owner as subtype)?.property`: when the runtime value is not the
+    // subtype the cast yields null and the field reads as absent.
+    private static Expression CastGuardedAccess(Expression owner, Type subtype, PropertyInfo property)
+    {
+        Expression casted = Expression.TypeAs(owner, subtype);
+        Expression propertyAccess = Expression.Property(casted, property);
+        Type resultType = LiftValueType(propertyAccess.Type);
+        Expression value = resultType == propertyAccess.Type
+            ? propertyAccess
+            : Expression.Convert(propertyAccess, resultType);
+        return Expression.Condition(
+            Expression.NotEqual(casted, Expression.Constant(null, subtype)),
+            value,
+            Expression.Default(resultType));
+    }
+
+    private static FilterField BuildSubtypeField(
+        string name,
+        Type valueType,
+        FilterFieldKind kind,
+        Expression accessExpression,
+        ParameterExpression parameter)
+    {
+        Expression boxed = Expression.Convert(accessExpression, typeof(object));
+        var getter = Expression.Lambda<Func<object, object?>>(boxed, parameter).Compile();
+        return new FilterField(
+            name,
+            valueType,
+            kind,
+            getter,
+            kind == FilterFieldKind.Scalar
+                ? FilterSchemaAccessors.BuildScalar(valueType, accessExpression, parameter)
+                : null,
+            kind == FilterFieldKind.Array
+                ? FilterSchemaAccessors.BuildArray(valueType, accessExpression, parameter)
+                : null,
+            kind == FilterFieldKind.Scalar
+                ? FilterSchemaAccessors.BuildProjection(valueType, accessExpression, parameter)
+                : null);
+    }
+
+    private static Type LiftValueType(Type type) =>
+        type.IsValueType && Nullable.GetUnderlyingType(type) is null
+            ? typeof(Nullable<>).MakeGenericType(type)
+            : type;
 
     internal static IEnumerable<PropertyInfo> EnumeratePublicProperties(Type ownerType)
     {
