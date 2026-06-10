@@ -50,8 +50,10 @@ public sealed record FilterExpression
         FilterExpressionCanonical.Signature(filter);
 
     // Always-false sentinel (Not(Any)); the simplifier collapses unsatisfiable
-    // filters to this. See [[FilterExpressionCanonical]].
-    public static FilterExpression Never => FilterExpressionCanonical.Never;
+    // filters to this. A fresh instance is returned per access so callers cannot
+    // mutate shared global state via the Children array. See [[FilterExpressionCanonical]].
+    public static FilterExpression Never =>
+        new(FilterExpressionKind.Not) { Children = [Any] };
 
     public static FilterExpression Simplify(FilterExpression filter) =>
         FilterExpressionCanonical.Simplify(filter);

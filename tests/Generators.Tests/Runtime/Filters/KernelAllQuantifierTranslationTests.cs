@@ -49,6 +49,34 @@ public sealed class KernelAllQuantifierTranslationTests
                 .Where(static subject => subject.Items.All(item => item.Name == "x")));
     }
 
+    [Fact]
+    public void AllWithNegatedBooleanMemberMatches()
+    {
+        FilterSchema.RegisterValueObject(typeof(LootItem));
+
+        QueryKernel<LootEvent> query = QueryKernel.For<LootEvent>()
+            .Where(static subject => subject.Items.All(item => !item.Equipped));
+
+        var kernel = FilterCompiler.Compile(typeof(LootEvent), query.Filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new LootEvent([new("a", false), new("b", false)])));
+        Assert.False(kernel.Matches(new LootEvent([new("a", false), new("b", true)])));
+    }
+
+    [Fact]
+    public void AllWithNegatedEqualityMatches()
+    {
+        FilterSchema.RegisterValueObject(typeof(LootItem));
+
+        QueryKernel<LootEvent> query = QueryKernel.For<LootEvent>()
+            .Where(static subject => subject.Items.All(item => !(item.Name == "boss")));
+
+        var kernel = FilterCompiler.Compile(typeof(LootEvent), query.Filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new LootEvent([new("a", true), new("b", true)])));
+        Assert.False(kernel.Matches(new LootEvent([new("a", true), new("boss", true)])));
+    }
+
     private sealed record LootEvent(LootItem[] Items) : IFilterSubject;
     private sealed record LootItem(string? Name, bool Equipped);
 }

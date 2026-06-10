@@ -12,6 +12,10 @@ internal static class FilterInterpretedCompiler
     private const int MaxDepth = 16;
     private const int MaxNodes = 128;
     private const int MaxValues = 128;
+
+    // Caps the elements an ElemMatch will scan at runtime to bound the work an
+    // untrusted filter can trigger (DoS protection). If a collection legitimately
+    // exceeds this, pre-filter it, page it, or model it differently in the schema.
     private const int MaxRuntimeElements = 256;
 
     public static Func<object, bool> Compile(
@@ -192,6 +196,11 @@ internal static class FilterInterpretedCompiler
         FilterValue upper = expression.Values[1];
         FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, lower, errorFactory);
         FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
+        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+            FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
+        {
+            throw Error(errorFactory, $"Between filters on '{field.Name}' require the lower bound to be <= the upper bound.");
+        }
 
         return subject =>
         {
@@ -230,7 +239,8 @@ internal static class FilterInterpretedCompiler
             {
                 if (++seen > MaxRuntimeElements)
                     throw new InvalidOperationException(
-                        $"ElemMatch filters support at most {MaxRuntimeElements} elements.");
+                        $"ElemMatch evaluated more than the {MaxRuntimeElements}-element runtime limit " +
+                        "(DoS protection). Pre-filter or page the collection, or adjust the schema.");
                 if (element is not null && child(element))
                     return true;
             }

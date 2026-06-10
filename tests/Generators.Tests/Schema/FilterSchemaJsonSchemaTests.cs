@@ -55,8 +55,19 @@ public sealed class FilterSchemaJsonSchemaTests
         Assert.Contains("Equal", nameOperators);
     }
 
+    [Fact]
+    public void DateOnlyFieldEmitsDateFormat()
+    {
+        JsonObject schema = FilterSchema.For(typeof(DayLog)).Describe().ToJsonSchema();
+        JsonObject day = schema["properties"]![nameof(DayLog.Day)]!.AsObject();
+
+        Assert.Equal("string", day["type"]!.GetValue<string>());
+        Assert.Equal("date", day["format"]!.GetValue<string>());
+    }
+
     private static FilterFieldDescriptor Field(FilterSchemaDescriptor descriptor, string name) =>
         descriptor.Fields.Single(field => string.Equals(field.Name, name, StringComparison.OrdinalIgnoreCase));
 
     private sealed record Audit(string Name, int Score, DateTimeOffset At, string[] Tags) : IFilterSubject;
+    private sealed record DayLog(DateOnly Day) : IFilterSubject;
 }

@@ -115,10 +115,20 @@ internal static class ParameterizedFilterPlanBuilder
         if (expression.Values.Length != 2)
             throw Error(errorFactory, $"Between filters on '{field.Name}' require exactly two values.");
 
+        FilterValue lower = expression.Values[0];
+        FilterValue upper = expression.Values[1];
+        // Literal bounds must be ordered; reversed bounds describe an empty interval.
+        // Parameterized bounds are left unchecked (their values are not known here).
+        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+            FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
+        {
+            throw Error(errorFactory, $"Between filters on '{field.Name}' require the lower bound to be <= the upper bound.");
+        }
+
         return new BetweenFilterPlanNode(
             field,
-            FilterValueRef.Create(expression.Values[0], indexes),
-            FilterValueRef.Create(expression.Values[1], indexes));
+            FilterValueRef.Create(lower, indexes),
+            FilterValueRef.Create(upper, indexes));
     }
 
     private static ParameterizedFilterPlanNode BuildElemMatch(
@@ -164,6 +174,8 @@ internal static class ParameterizedFilterPlanBuilder
             throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
+        if (value.Kind is not (FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
+            throw Error(errorFactory, $"Count comparisons on '{field.Name}' require an integer value.");
         return new CountFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
     }
 

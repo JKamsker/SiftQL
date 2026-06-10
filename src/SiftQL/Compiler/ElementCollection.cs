@@ -42,6 +42,11 @@ internal static class ElementCollection
             {
                 if (value is null)
                     return null;
+                // Guard the runtime type so an unexpected subject (e.g. a
+                // polymorphic mismatch) yields a safe non-match instead of a
+                // TargetException from reflection.
+                if (property.DeclaringType is { } declaring && !declaring.IsInstanceOfType(value))
+                    return null;
                 value = property.GetValue(value);
             }
 

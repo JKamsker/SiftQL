@@ -98,6 +98,9 @@ internal sealed class ElemMatchFilterPlanNode(
     Func<object, System.Collections.IEnumerable?> getCollection,
     ParameterizedFilterPlanNode child) : ParameterizedFilterPlanNode
 {
+    // Caps the elements an ElemMatch will scan at runtime to bound the work an
+    // untrusted filter can trigger (DoS protection). If a collection legitimately
+    // exceeds this, pre-filter it, page it, or model it differently in the schema.
     private const int MaxRuntimeElements = 256;
 
     public override Func<object, bool> Bind(FilterValue[] parameters)
@@ -114,7 +117,8 @@ internal sealed class ElemMatchFilterPlanNode(
             {
                 if (++seen > MaxRuntimeElements)
                     throw new InvalidOperationException(
-                        $"ElemMatch filters support at most {MaxRuntimeElements} elements.");
+                        $"ElemMatch evaluated more than the {MaxRuntimeElements}-element runtime limit " +
+                        "(DoS protection). Pre-filter or page the collection, or adjust the schema.");
                 if (element is not null && childPredicate(element))
                     return true;
             }

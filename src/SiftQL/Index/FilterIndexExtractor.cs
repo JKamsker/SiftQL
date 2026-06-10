@@ -193,6 +193,11 @@ public static class FilterIndexExtractor
 
         decimal? lower = RangeKey.TryFromValue(expression.Values[0], out decimal lo) ? lo : null;
         decimal? upper = RangeKey.TryFromValue(expression.Values[1], out decimal hi) ? hi : null;
+        // Reversed bounds describe an empty interval; never build an inverted range
+        // condition. The full predicate (CompileBetween) rejects these at compile
+        // time, so leaving them unindexed here keeps the index consistent.
+        if (lower.HasValue && upper.HasValue && lower > upper)
+            return null;
         return lower.HasValue || upper.HasValue ? new RangeCondition(expression.Field, lower, upper) : null;
     }
 

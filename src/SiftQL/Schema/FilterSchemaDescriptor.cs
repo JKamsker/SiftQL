@@ -35,13 +35,19 @@ public sealed record FilterFieldDescriptor(
     string ScalarKind,
     IReadOnlyList<string> Operators)
 {
+    // DateOnly is temporal but maps to JSON Schema "date" rather than "date-time".
+    internal bool IsDateOnly { get; init; }
+
     internal static FilterFieldDescriptor Describe(FilterField field) =>
         new(
             field.Name,
             field.ValueType.FullName ?? field.ValueType.Name,
             field.Kind,
             ScalarKindOf(field),
-            OperatorsFor(field));
+            OperatorsFor(field))
+        {
+            IsDateOnly = (Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType) == typeof(DateOnly),
+        };
 
     internal JsonObject ToJsonSchemaProperty()
     {
@@ -50,7 +56,7 @@ public sealed record FilterFieldDescriptor(
         if (jsonType is not null)
             property["type"] = jsonType;
         if (string.Equals(ScalarKind, "Temporal", StringComparison.Ordinal))
-            property["format"] = "date-time";
+            property["format"] = IsDateOnly ? "date" : "date-time";
         if (string.Equals(ScalarKind, "Guid", StringComparison.Ordinal))
             property["format"] = "uuid";
 

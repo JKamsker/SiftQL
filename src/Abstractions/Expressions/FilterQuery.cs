@@ -11,10 +11,12 @@ namespace SiftQL.Expressions;
 //   not   := ("not" | "!") not | primary
 //   primary := "(" or ")" | "true" | "false" | comparison
 //   comparison := field op value
-//   op    := == | != | > | >= | < | <= | contains | startswith | endswith | in
-//   value := string | number | true | false | null   (in takes "[" value,... "]")
+//   op    := == | != | > | >= | < | <= | contains | startswith | endswith | in | between
+//             optionally followed by "~" for case-insensitive string matching (e.g. name ==~ "x")
+//   value := string | number["m"] | true | false | null | guid "..."
+//             (in/between take "[" value,... "]"; the "m" suffix marks a decimal)
 //
-// Format() is the inverse for the kinds the DSL covers (Compare/In/And/Or/Not/Any).
+// Format() is the inverse for the kinds the DSL covers (Compare/In/Between/And/Or/Not/Any).
 public static class FilterQuery
 {
     public static FilterExpression Parse(string query)
@@ -74,6 +76,7 @@ public static class FilterQuery
                     case '[': tokens.Add(new Token(TokenKind.LeftBracket, "[", start)); i++; continue;
                     case ']': tokens.Add(new Token(TokenKind.RightBracket, "]", start)); i++; continue;
                     case ',': tokens.Add(new Token(TokenKind.Comma, ",", start)); i++; continue;
+                    case '~': tokens.Add(new Token(TokenKind.Symbol, "~", start)); i++; continue;
                     case '"': tokens.Add(ReadString(input, ref i)); continue;
                 }
 
@@ -165,6 +168,10 @@ public static class FilterQuery
             if (input[i] == '-')
                 i++;
             while (i < input.Length && (char.IsDigit(input[i]) || input[i] is '.' or 'e' or 'E' or '+' or '-'))
+                i++;
+            // Optional decimal type suffix emitted by Format() so the Decimal value
+            // kind survives a Format -> Parse round-trip.
+            if (i < input.Length && input[i] is 'm' or 'M')
                 i++;
             return new Token(TokenKind.Number, input[start..i], start);
         }
@@ -261,6 +268,13 @@ public static class FilterQuery
             _index++;
 
             string op = ReadOperator();
+            bool ignoreCase = false;
+            if (Current.Kind == TokenKind.Symbol && Current.Text == "~")
+            {
+                ignoreCase = true;
+                _index++;
+            }
+
             if (op == "in")
                 return FilterExpression.In(field, ReadValueList());
             if (op == "between")
@@ -274,15 +288,15 @@ public static class FilterQuery
             FilterValue value = ReadValue();
             return op switch
             {
-                "==" => FilterExpression.Compare(field, FilterOperator.Equal, value),
-                "!=" => FilterExpression.Compare(field, FilterOperator.NotEqual, value),
-                ">" => FilterExpression.Compare(field, FilterOperator.GreaterThan, value),
-                ">=" => FilterExpression.Compare(field, FilterOperator.GreaterThanOrEqual, value),
-                "<" => FilterExpression.Compare(field, FilterOperator.LessThan, value),
-                "<=" => FilterExpression.Compare(field, FilterOperator.LessThanOrEqual, value),
-                "contains" => FilterExpression.StringContains(field, value),
-                "startswith" => FilterExpression.StringStartsWith(field, value),
-                "endswith" => FilterExpression.StringEndsWith(field, value),
+                "==" => FilterExpression.Compare(field, FilterOperator.Equal, value, ignoreCase),
+                "!=" => FilterExpression.Compare(field, FilterOperator.NotEqual, value, ignoreCase),
+                ">" => FilterExpression.Compare(field, FilterOperator.GreaterThan, value, ignoreCase),
+                ">=" => FilterExpression.Compare(field, FilterOperator.GreaterThanOrEqual, value, ignoreCase),
+                "<" => FilterExpression.Compare(field, FilterOperator.LessThan, value, ignoreCase),
+                "<=" => FilterExpression.Compare(field, FilterOperator.LessThanOrEqual, value, ignoreCase),
+                "contains" => FilterExpression.StringContains(field, value, ignoreCase),
+                "startswith" => FilterExpression.StringStartsWith(field, value, ignoreCase),
+                "endswith" => FilterExpression.StringEndsWith(field, value, ignoreCase),
                 _ => throw Error($"Unknown operator '{op}'."),
             };
         }
@@ -338,6 +352,9 @@ public static class FilterQuery
                 case TokenKind.Number:
                     _index++;
                     return ParseNumber(token);
+                case TokenKind.Identifier when IsKeywordText(token.Text, "guid"):
+                    _index++;
+                    return ReadGuidLiteral();
                 case TokenKind.Identifier when IsKeywordText(token.Text, "true"):
                     _index++;
                     return FilterValue.From(true);
@@ -352,15 +369,40 @@ public static class FilterQuery
             }
         }
 
+        private FilterValue ReadGuidLiteral()
+        {
+            Token token = Current;
+            if (token.Kind != TokenKind.String)
+                throw Error($"Expected a quoted guid value but found '{token.Text}'.");
+            _index++;
+            if (!Guid.TryParse(token.Text, out Guid guid))
+                throw Error($"Invalid guid literal '{token.Text}'.");
+            return FilterValue.From(guid);
+        }
+
         private FilterValue ParseNumber(Token token)
         {
-            if (!token.Text.Contains('.') && !token.Text.Contains('e') && !token.Text.Contains('E') &&
-                long.TryParse(token.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long integer))
+            string text = token.Text;
+
+            // Decimal suffix emitted by Format() preserves the Decimal value kind.
+            if (text.Length > 0 && text[^1] is 'm' or 'M')
             {
-                return FilterValue.From(integer);
+                string numeric = text[..^1];
+                if (decimal.TryParse(numeric, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal dec))
+                    return FilterValue.From(dec);
+                throw Error($"Invalid number '{token.Text}'.");
             }
 
-            if (double.TryParse(token.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
+            if (!text.Contains('.') && !text.Contains('e') && !text.Contains('E'))
+            {
+                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long integer))
+                    return FilterValue.From(integer);
+                // Integral values beyond long.MaxValue round-trip as UnsignedInteger.
+                if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong unsigned))
+                    return FilterValue.From(unsigned);
+            }
+
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
                 return FilterValue.From(number);
 
             throw Error($"Invalid number '{token.Text}'.");
@@ -457,7 +499,10 @@ public static class FilterQuery
                 FilterOperator.StringStartsWith => "startswith",
                 FilterOperator.StringEndsWith => "endswith",
                 _ => throw new FilterQueryException($"Operator '{filter.Operator}' is not representable.", 0),
-            }).Append(' ');
+            });
+            if (filter.IgnoreCase)
+                builder.Append('~');
+            builder.Append(' ');
             AppendValue(builder, filter.Value);
         }
 
@@ -500,10 +545,10 @@ public static class FilterQuery
                     builder.Append(value.Number.ToString("R", CultureInfo.InvariantCulture));
                     break;
                 case FilterValueKind.Decimal:
-                    builder.Append(value.Decimal.ToString(CultureInfo.InvariantCulture));
+                    builder.Append(value.Decimal.ToString(CultureInfo.InvariantCulture)).Append('m');
                     break;
                 case FilterValueKind.Guid:
-                    builder.Append('"').Append(value.Guid.ToString("D")).Append('"');
+                    builder.Append("guid \"").Append(value.Guid.ToString("D")).Append('"');
                     break;
                 default:
                     AppendString(builder, value.String ?? string.Empty);

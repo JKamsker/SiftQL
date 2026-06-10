@@ -70,6 +70,29 @@ public sealed class FilterQueryParserTests
     }
 
     [Fact]
+    public void RoundTripsCaseInsensitiveAndExtendedValueKinds()
+    {
+        FilterExpression filter = FilterExpression.And(
+            FilterExpression.StringContains("name", FilterValue.From("vip"), ignoreCase: true),
+            FilterExpression.Compare("big", FilterOperator.Equal, FilterValue.From(ulong.MaxValue)),
+            FilterExpression.Compare("price", FilterOperator.GreaterThan, FilterValue.From(9.95m)),
+            FilterExpression.Compare(
+                "id",
+                FilterOperator.Equal,
+                FilterValue.From(Guid.Parse("550e8400-e29b-41d4-a716-446655440000"))));
+
+        string text = FilterQuery.Format(filter);
+        FilterExpression reparsed = FilterQuery.Parse(text);
+
+        // ContentSignature encodes IgnoreCase and the exact value kind, so an equal
+        // signature proves the case flag and UnsignedInteger/Decimal/Guid kinds
+        // survived the Format -> Parse round-trip.
+        Assert.Equal(
+            FilterExpression.ContentSignature(filter),
+            FilterExpression.ContentSignature(reparsed));
+    }
+
+    [Fact]
     public void ThrowsOnIncompleteInput()
     {
         Assert.Throws<FilterQueryException>(() => FilterQuery.Parse("region =="));

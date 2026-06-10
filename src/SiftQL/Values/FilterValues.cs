@@ -119,6 +119,28 @@ public static class FilterValues
             _ => false,
         };
 
+    // Orders two literal range bounds, returning false when either bound is not an
+    // ordered scalar (the caller then leaves the bounds unchecked). Used to reject
+    // reversed Between bounds (lower > upper) consistently across validation and the
+    // interpreted/parameterized compilers.
+    internal static bool TryCompareValues(FilterValue lower, FilterValue upper, out int comparison)
+    {
+        comparison = 0;
+        object? rawLower = ToComparable(lower);
+        return rawLower is not null && TryCompareOrdered(rawLower, upper, out comparison);
+    }
+
+    private static object? ToComparable(FilterValue value) =>
+        value.Kind switch
+        {
+            FilterValueKind.Integer => value.Integer,
+            FilterValueKind.UnsignedInteger => value.UnsignedInteger,
+            FilterValueKind.Number => value.Number,
+            FilterValueKind.Decimal => value.Decimal,
+            FilterValueKind.Timestamp => value.Timestamp,
+            _ => null,
+        };
+
     public static bool In(object? actual, FilterValue[] expected)
     {
         for (int i = 0; i < expected.Length; i++)

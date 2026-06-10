@@ -38,11 +38,16 @@ internal static class KernelElementAnyTranslator
         }
 
         string nextPrefix = CombinePath(string.Empty, sourceField);
-        FilterExpression existsNegated = TranslatePredicate(
-            Expression.Not(predicate.Body),
-            predicate.Parameters[0],
-            nextPrefix,
-            ref parameterIndex);
+
+        // All(p) == Not(Any(!p)). Build Any(!p) by negating at the expression level
+        // only when the body is not already a Not; when it is (e.g. i => !i.Active or
+        // i => !(i.Id == id)), translate its operand positively instead -- otherwise
+        // the extra Expression.Not produces a double negation TranslateNot cannot
+        // lower, and the whole All() throws even though it is decorrelatable.
+        Expression body = StripConvert(predicate.Body);
+        FilterExpression existsNegated = body.NodeType == ExpressionType.Not
+            ? TranslatePredicate(((UnaryExpression)body).Operand, predicate.Parameters[0], nextPrefix, ref parameterIndex)
+            : TranslatePredicate(Expression.Not(body), predicate.Parameters[0], nextPrefix, ref parameterIndex);
         filter = FilterExpression.Not(existsNegated);
         return true;
     }

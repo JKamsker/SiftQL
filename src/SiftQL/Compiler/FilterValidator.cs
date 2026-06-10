@@ -49,7 +49,7 @@ public static class FilterValidator
 
         if (json is null)
             return Invalid("$", "Filter JSON is null.");
-        if (json.Length > limits.MaxBytes)
+        if (System.Text.Encoding.UTF8.GetByteCount(json) > limits.MaxBytes)
             return Invalid("$", $"Filter JSON exceeds the {limits.MaxBytes}-byte limit.");
 
         FilterExpression filter;
@@ -115,6 +115,9 @@ public static class FilterValidator
                 break;
             case FilterExpressionKind.Between:
                 ValidateBetween(schema, node, path, errors);
+                break;
+            case FilterExpressionKind.ElemMatch:
+                ValidateElemMatch(schema, node, path, depth, ref nodes, limits, errors);
                 break;
             case FilterExpressionKind.Exists:
                 RequireField(schema, node.Field, path, errors, out _);
@@ -227,6 +230,16 @@ public static class FilterValidator
         {
             errors.Add(new FilterValidationError(path, $"Count comparisons on '{node.Field}' require an integer value."));
         }
+
+        if (node.Operator is not (FilterOperator.Equal or
+            FilterOperator.NotEqual or
+            FilterOperator.GreaterThan or
+            FilterOperator.GreaterThanOrEqual or
+            FilterOperator.LessThan or
+            FilterOperator.LessThanOrEqual))
+        {
+            errors.Add(new FilterValidationError(path, $"Count comparisons on '{node.Field}' require a comparison operator."));
+        }
     }
 
     private static void ValidateBetween(
@@ -249,6 +262,43 @@ public static class FilterValidator
             Capture($"{path}.values[{index}]", errors, () =>
                 FilterValues.ValidateValue(field!, node.Values[index], Signal));
         }
+
+        FilterValue lower = node.Values[0];
+        FilterValue upper = node.Values[1];
+        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+            FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
+        {
+            errors.Add(new FilterValidationError(
+                path,
+                $"Between filters on '{node.Field}' require the lower bound to be <= the upper bound."));
+        }
+    }
+
+    private static void ValidateElemMatch(
+        FilterSchema schema,
+        FilterExpression node,
+        string path,
+        int depth,
+        ref int nodes,
+        FilterLimits limits,
+        List<FilterValidationError> errors)
+    {
+        if (node.Children.Length != 1)
+        {
+            errors.Add(new FilterValidationError(path, "ElemMatch filters must have exactly one child."));
+            return;
+        }
+
+        // The child's fields are relative to the element, so it must be validated
+        // against the element schema -- mirrors FilterInterpretedCompiler.CompileElemMatch.
+        if (!ElementCollection.TryResolve(schema.SubjectType, node.Field, out _, out Type elementType))
+        {
+            errors.Add(new FilterValidationError(path, $"Filter field '{node.Field}' is not an element collection."));
+            return;
+        }
+
+        FilterSchema elementSchema = FilterSchema.For(elementType);
+        Walk(elementSchema, node.Children[0], $"{path}.children[0]", depth + 1, ref nodes, limits, errors);
     }
 
     private static bool RequireScalarField(

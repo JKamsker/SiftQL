@@ -40,11 +40,15 @@ public sealed record FilterDocument
             throw new FilterSerializationException("Filter document is not valid JSON.", ex);
         }
 
-        // Envelope form: { "Version": n, "Filter": {...} }. Anything else is
-        // treated as a legacy bare FilterExpression.
+        // Envelope form: { "Version": n, "Filter": {...} }. The expected property
+        // names honor the serializer's naming policy and case sensitivity, so an
+        // envelope written with e.g. camelCase options is still recognized. Anything
+        // else is treated as a legacy bare FilterExpression.
+        string versionName = options?.PropertyNamingPolicy?.ConvertName("Version") ?? "Version";
+        string filterName = options?.PropertyNamingPolicy?.ConvertName("Filter") ?? "Filter";
         if (root.ValueKind == JsonValueKind.Object &&
-            root.TryGetProperty("Filter", out JsonElement filterElement) &&
-            root.TryGetProperty("Version", out JsonElement versionElement) &&
+            TryGetEnvelopeProperty(root, versionName, options, out JsonElement versionElement) &&
+            TryGetEnvelopeProperty(root, filterName, options, out JsonElement filterElement) &&
             versionElement.ValueKind == JsonValueKind.Number)
         {
             int version = versionElement.GetInt32();
@@ -58,6 +62,30 @@ public sealed record FilterDocument
         }
 
         return DeserializeFilter(json, options);
+    }
+
+    private static bool TryGetEnvelopeProperty(
+        JsonElement root,
+        string name,
+        JsonSerializerOptions? options,
+        out JsonElement value)
+    {
+        if (options?.PropertyNameCaseInsensitive == true)
+        {
+            foreach (JsonProperty property in root.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+
+            value = default;
+            return false;
+        }
+
+        return root.TryGetProperty(name, out value);
     }
 
     private static FilterExpression DeserializeFilter(string json, JsonSerializerOptions? options)

@@ -55,4 +55,39 @@ public sealed class FilterDocumentEnvelopeTests
 
         Assert.Contains("999", ex.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void RoundTripsEnvelopeWrittenWithCamelCaseNamingPolicy()
+    {
+        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        FilterExpression original = SampleFilter();
+
+        string json = FilterDocument.Serialize(original, options);
+
+        // The envelope really is camelCase, so a case-sensitive PascalCase lookup
+        // would miss it -- the reader must honor the naming policy.
+        using (JsonDocument document = JsonDocument.Parse(json))
+        {
+            Assert.True(document.RootElement.TryGetProperty("version", out _));
+            Assert.True(document.RootElement.TryGetProperty("filter", out _));
+        }
+
+        FilterExpression restored = FilterDocument.Deserialize(json, options);
+
+        Assert.Equal(
+            FilterExpression.ContentSignature(original),
+            FilterExpression.ContentSignature(restored));
+    }
+
+    [Fact]
+    public void RecognizesEnvelopeWithCaseInsensitiveOptions()
+    {
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        FilterExpression restored = FilterDocument.Deserialize(
+            "{\"version\":1,\"filter\":{\"Kind\":0}}",
+            options);
+
+        Assert.Equal(FilterExpressionKind.Any, restored.Kind);
+    }
 }
