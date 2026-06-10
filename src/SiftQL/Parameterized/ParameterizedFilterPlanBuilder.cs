@@ -97,8 +97,8 @@ internal static class ParameterizedFilterPlanBuilder
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
-        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory);
-        return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
+        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, expression.IgnoreCase);
+        return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes), expression.IgnoreCase);
     }
 
     private static ParameterizedFilterPlanNode BuildIn(

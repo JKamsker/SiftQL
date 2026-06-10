@@ -129,6 +129,8 @@ internal static class FilterExpressionCanonical
             case FilterExpressionKind.Compare:
                 AppendField(builder, filter.Field);
                 builder.Append(':').Append((int)filter.Operator);
+                if (filter.IgnoreCase)
+                    builder.Append('~');
                 AppendValue(builder, filter.Value);
                 break;
             case FilterExpressionKind.In:

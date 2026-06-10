@@ -25,7 +25,8 @@ internal static class FilterExpressionScalarBuilder
     public static Expression? BuildCompare(
         Expression actual,
         FilterValue value,
-        FilterOperator op)
+        FilterOperator op,
+        bool ignoreCase = false)
     {
         Type type = Nullable.GetUnderlyingType(actual.Type) ?? actual.Type;
         if (value.Kind == FilterValueKind.Null)
@@ -40,7 +41,7 @@ internal static class FilterExpressionScalarBuilder
         }
 
         if (type == typeof(string))
-            return BuildStringCompare(actual, value, op);
+            return BuildStringCompare(actual, value, op, ignoreCase);
         if (type.IsEnum)
             return value.Kind == FilterValueKind.Integer && Enum.GetUnderlyingType(type) != typeof(ulong)
                 ? BuildEnumCompare(actual, value.Integer, op)
@@ -55,16 +56,18 @@ internal static class FilterExpressionScalarBuilder
     public static Expression? BuildIn(Expression actual, FilterValue[] values)
         => FilterExpressionInBuilder.Build(actual, values);
 
-    private static Expression BuildStringCompare(Expression actual, FilterValue value, FilterOperator op)
+    private static Expression BuildStringCompare(Expression actual, FilterValue value, FilterOperator op, bool ignoreCase)
     {
         if (value.String is null)
             return Expression.Constant(op == FilterOperator.NotEqual);
 
+        Expression comparison = Expression.Constant(
+            ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         var equals = Expression.Call(
             s_stringEquals,
             actual,
             Expression.Constant(value.String, typeof(string)),
-            Expression.Constant(StringComparison.Ordinal));
+            comparison);
         if (op == FilterOperator.Equal)
             return equals;
         if (op == FilterOperator.NotEqual)
@@ -84,7 +87,7 @@ internal static class FilterExpressionScalarBuilder
             actual,
             method,
             Expression.Constant(value.String, typeof(string)),
-            Expression.Constant(StringComparison.Ordinal));
+            comparison);
         return Expression.AndAlso(Expression.NotEqual(actual, Expression.Constant(null, typeof(string))), match);
     }
 

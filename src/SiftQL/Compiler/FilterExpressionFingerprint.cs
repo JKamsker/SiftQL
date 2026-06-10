@@ -25,6 +25,7 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
         FilterExpressionKind kind,
         string field,
         FilterOperator op,
+        bool ignoreCase,
         FilterValueKey value,
         StructuralKeyArray<FilterValueKey> values,
         StructuralKeyArray<FilterExpressionKey> children)
@@ -32,15 +33,17 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
         Kind = kind;
         Field = field;
         Operator = op;
+        IgnoreCase = ignoreCase;
         Value = value;
         Values = values;
         Children = children;
-        _hashCode = HashCode.Combine(Kind, Field, Operator, Value, Values, Children);
+        _hashCode = HashCode.Combine(Kind, Field, Operator, IgnoreCase, Value, Values, Children);
     }
 
     public FilterExpressionKind Kind { get; }
     public string Field { get; }
     public FilterOperator Operator { get; }
+    public bool IgnoreCase { get; }
     public FilterValueKey Value { get; }
     public StructuralKeyArray<FilterValueKey> Values { get; }
     public StructuralKeyArray<FilterExpressionKey> Children { get; }
@@ -50,6 +53,7 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
             expression.Kind,
             expression.Field,
             expression.Operator,
+            expression.IgnoreCase,
             FilterValueKey.From(expression.Value),
             expression.Values.Length == 0
                 ? StructuralKeyArray<FilterValueKey>.Empty
@@ -64,6 +68,7 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
             Kind == other.Kind &&
             string.Equals(Field, other.Field, StringComparison.Ordinal) &&
             Operator == other.Operator &&
+            IgnoreCase == other.IgnoreCase &&
             Value.Equals(other.Value) &&
             Values.Equals(other.Values) &&
             Children.Equals(other.Children));
@@ -88,6 +93,8 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
             case FilterExpressionKind.Compare:
                 FilterKeyText.AppendText(builder, Field);
                 builder.Append(':').Append((int)Operator);
+                if (IgnoreCase)
+                    builder.Append('i');
                 Value.AppendTo(builder);
                 break;
             case FilterExpressionKind.In:

@@ -224,8 +224,13 @@ public static class FilterIndexExtractor
             return null;
         }
 
-        FilterValues.ValidateComparison(field, expression.Operator, expression.Value, errorFactory);
+        FilterValues.ValidateComparison(field, expression.Operator, expression.Value, errorFactory, expression.IgnoreCase);
         if (expression.Operator != FilterOperator.Equal)
+            return null;
+
+        // Case-insensitive equality cannot use the ordinal-keyed buckets; leave it
+        // unindexed (matching stays correct via the full predicate).
+        if (expression.IgnoreCase)
             return null;
 
         return TryCreateFieldValue(field, expression.Value, out FilterIndexValue value)

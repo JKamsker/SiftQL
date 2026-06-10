@@ -84,10 +84,13 @@ public sealed class KernelStringPrefixTranslationTests
     }
 
     [Fact]
-    public void StringComparisonOverloadIsNotTranslated()
+    public void OrdinalStringComparisonOverloadStaysCaseSensitive()
     {
-        Assert.Throws<KernelExpressionException>(() => QueryKernel.For<StringSubject>()
-            .Where(subject => subject.Name!.StartsWith("x", StringComparison.OrdinalIgnoreCase)));
+        QueryKernel<StringSubject> kernel = QueryKernel.For<StringSubject>()
+            .Where(subject => subject.Name!.StartsWith("x", StringComparison.Ordinal));
+
+        Assert.Equal(FilterOperator.StringStartsWith, kernel.Filter.Operator);
+        Assert.False(kernel.Filter.IgnoreCase);
     }
 
     [Fact]

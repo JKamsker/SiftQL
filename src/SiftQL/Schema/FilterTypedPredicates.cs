@@ -9,7 +9,8 @@ internal static class FilterTypedPredicates
     public static Func<object, bool>? TryCompileCompare(
         FilterField field,
         FilterValue value,
-        FilterOperator op)
+        FilterOperator op,
+        bool ignoreCase = false)
     {
         var scalar = field.ScalarAccessor;
         if (scalar is null)
@@ -21,7 +22,7 @@ internal static class FilterTypedPredicates
             FilterScalarKind.Number => CanUseDoubleAccessor(field.ValueType)
                 ? CompileNumberCompare(scalar.Number!, value, op)
                 : null,
-            FilterScalarKind.String => CompileStringCompare(scalar.Text!, value, op),
+            FilterScalarKind.String => CompileStringCompare(scalar.Text!, value, op, ignoreCase),
             FilterScalarKind.Guid => CompileGuidCompare(scalar.Guid!, value, op),
             FilterScalarKind.Enum => CompileEnumCompare(scalar.Enumeration!, value, op),
             _ => null,
@@ -105,7 +106,8 @@ internal static class FilterTypedPredicates
     private static Func<object, bool> CompileStringCompare(
         Func<object, string?> getter,
         FilterValue value,
-        FilterOperator op)
+        FilterOperator op,
+        bool ignoreCase)
     {
         if (value.Kind == FilterValueKind.Null)
             return op == FilterOperator.Equal
@@ -117,13 +119,14 @@ internal static class FilterTypedPredicates
                 : static _ => false;
 
         string expected = value.String;
+        StringComparison comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         return op switch
         {
-            FilterOperator.Equal => subject => string.Equals(getter(subject), expected, StringComparison.Ordinal),
-            FilterOperator.NotEqual => subject => !string.Equals(getter(subject), expected, StringComparison.Ordinal),
-            FilterOperator.StringContains => subject => getter(subject)?.Contains(expected, StringComparison.Ordinal) == true,
-            FilterOperator.StringStartsWith => subject => getter(subject)?.StartsWith(expected, StringComparison.Ordinal) == true,
-            FilterOperator.StringEndsWith => subject => getter(subject)?.EndsWith(expected, StringComparison.Ordinal) == true,
+            FilterOperator.Equal => subject => string.Equals(getter(subject), expected, comparison),
+            FilterOperator.NotEqual => subject => !string.Equals(getter(subject), expected, comparison),
+            FilterOperator.StringContains => subject => getter(subject)?.Contains(expected, comparison) == true,
+            FilterOperator.StringStartsWith => subject => getter(subject)?.StartsWith(expected, comparison) == true,
+            FilterOperator.StringEndsWith => subject => getter(subject)?.EndsWith(expected, comparison) == true,
             _ => static _ => false,
         };
     }

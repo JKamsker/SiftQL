@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SiftQL.Translation;
 
 namespace SiftQL.Expressions;
@@ -61,15 +62,24 @@ public sealed record FilterExpression
     public FilterValue[] Values { get; init; } = [];
     public FilterExpression[] Children { get; init; } = [];
 
+    // Case-insensitive (OrdinalIgnoreCase) matching for string operators
+    // (Equal, NotEqual, StringContains, StringStartsWith, StringEndsWith).
+    // Serialized only when true so ordinal filters keep their existing wire
+    // format and compile fingerprints.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IgnoreCase { get; init; }
+
     public static FilterExpression Compare(
         string field,
         FilterOperator op,
-        FilterValue value) =>
+        FilterValue value,
+        bool ignoreCase = false) =>
         new(FilterExpressionKind.Compare)
         {
             Field = RequireField(field),
             Operator = op,
             Value = value ?? throw new ArgumentNullException(nameof(value)),
+            IgnoreCase = ignoreCase,
         };
 
     public static FilterExpression In(string field, IReadOnlyCollection<FilterValue> values) =>
@@ -86,14 +96,14 @@ public sealed record FilterExpression
             Value = value ?? throw new ArgumentNullException(nameof(value)),
         };
 
-    public static FilterExpression StringContains(string field, FilterValue value) =>
-        Compare(field, FilterOperator.StringContains, value);
+    public static FilterExpression StringContains(string field, FilterValue value, bool ignoreCase = false) =>
+        Compare(field, FilterOperator.StringContains, value, ignoreCase);
 
-    public static FilterExpression StringStartsWith(string field, FilterValue value) =>
-        Compare(field, FilterOperator.StringStartsWith, value);
+    public static FilterExpression StringStartsWith(string field, FilterValue value, bool ignoreCase = false) =>
+        Compare(field, FilterOperator.StringStartsWith, value, ignoreCase);
 
-    public static FilterExpression StringEndsWith(string field, FilterValue value) =>
-        Compare(field, FilterOperator.StringEndsWith, value);
+    public static FilterExpression StringEndsWith(string field, FilterValue value, bool ignoreCase = false) =>
+        Compare(field, FilterOperator.StringEndsWith, value, ignoreCase);
 
     public static FilterExpression Exists(string field) =>
         new(FilterExpressionKind.Exists) { Field = RequireField(field) };

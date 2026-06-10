@@ -83,13 +83,14 @@ internal sealed class NotFilterPlanNode(ParameterizedFilterPlanNode child) : Par
 internal sealed class CompareFilterPlanNode(
     FilterField field,
     FilterOperator op,
-    FilterValueRef value) : ParameterizedFilterPlanNode
+    FilterValueRef value,
+    bool ignoreCase) : ParameterizedFilterPlanNode
 {
     public override Func<object, bool> Bind(FilterValue[] parameters)
     {
         FilterValue bound = value.Get(parameters);
-        return FilterTypedPredicates.TryCompileCompare(field, bound, op) ??
-            (subject => FilterValues.Compare(field.Getter(subject), bound, op));
+        return FilterTypedPredicates.TryCompileCompare(field, bound, op, ignoreCase) ??
+            (subject => FilterValues.Compare(field.Getter(subject), bound, op, ignoreCase));
     }
 }
 

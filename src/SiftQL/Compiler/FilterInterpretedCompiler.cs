@@ -130,9 +130,10 @@ internal static class FilterInterpretedCompiler
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
-        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory);
-        var typed = FilterTypedPredicates.TryCompileCompare(field, value, expression.Operator);
-        return typed ?? (subject => FilterValues.Compare(field.Getter(subject), value, expression.Operator));
+        bool ignoreCase = expression.IgnoreCase;
+        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, ignoreCase);
+        var typed = FilterTypedPredicates.TryCompileCompare(field, value, expression.Operator, ignoreCase);
+        return typed ?? (subject => FilterValues.Compare(field.Getter(subject), value, expression.Operator, ignoreCase));
     }
 
     private static Func<object, bool> CompileIn(

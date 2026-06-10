@@ -94,6 +94,9 @@ internal static class KernelExpressionTranslator
         if (IsContains(expression.Method))
             return TranslateContains(expression, parameter, ref parameterIndex);
 
+        if (IsStringMethod(expression.Method, nameof(string.Equals)))
+            return TranslateStringEquals(expression, parameter, ref parameterIndex);
+
         if (IsStringMethod(expression.Method, nameof(string.StartsWith)))
             return TranslateStringMatch(expression, parameter, ref parameterIndex, FilterExpression.StringStartsWith);
 
@@ -131,19 +134,88 @@ internal static class KernelExpressionTranslator
         MethodCallExpression expression,
         ParameterExpression parameter,
         ref int parameterIndex,
-        Func<string, FilterValue, FilterExpression> factory)
+        Func<string, FilterValue, bool, FilterExpression> factory)
     {
         if (expression.Object is null ||
             expression.Object.Type != typeof(string) ||
-            expression.Arguments.Count != 1 ||
+            expression.Arguments.Count < 1 ||
             expression.Arguments[0].Type != typeof(string) ||
             !TryGetFieldPath(expression.Object, parameter, out string? field))
         {
             throw Unsupported(expression);
         }
 
+        bool ignoreCase = expression.Arguments.Count switch
+        {
+            1 => false,
+            2 when expression.Arguments[1].Type == typeof(StringComparison) =>
+                ResolveIgnoreCase(expression.Arguments[1], parameter),
+            _ => throw Unsupported(expression),
+        };
+
         FilterValue value = KernelExpressionValues.ToValue(expression.Arguments[0], parameter, ref parameterIndex);
-        return factory(field, value);
+        return factory(field, value, ignoreCase);
+    }
+
+    private static FilterExpression TranslateStringEquals(
+        MethodCallExpression expression,
+        ParameterExpression parameter,
+        ref int parameterIndex)
+    {
+        Expression left;
+        Expression right;
+        Expression? comparison;
+        if (expression.Object is not null)
+        {
+            left = expression.Object;
+            (right, comparison) = expression.Arguments.Count switch
+            {
+                1 => (expression.Arguments[0], (Expression?)null),
+                2 when expression.Arguments[1].Type == typeof(StringComparison) =>
+                    (expression.Arguments[0], expression.Arguments[1]),
+                _ => throw Unsupported(expression),
+            };
+        }
+        else
+        {
+            (left, right, comparison) = expression.Arguments.Count switch
+            {
+                2 => (expression.Arguments[0], expression.Arguments[1], (Expression?)null),
+                3 when expression.Arguments[2].Type == typeof(StringComparison) =>
+                    (expression.Arguments[0], expression.Arguments[1], expression.Arguments[2]),
+                _ => throw Unsupported(expression),
+            };
+        }
+
+        bool ignoreCase = comparison is not null && ResolveIgnoreCase(comparison, parameter);
+
+        if (TryGetFieldPath(left, parameter, out string? leftField))
+            return FilterExpression.Compare(
+                leftField,
+                FilterOperator.Equal,
+                KernelExpressionValues.ToValue(right, parameter, ref parameterIndex),
+                ignoreCase);
+
+        if (TryGetFieldPath(right, parameter, out string? rightField))
+            return FilterExpression.Compare(
+                rightField,
+                FilterOperator.Equal,
+                KernelExpressionValues.ToValue(left, parameter, ref parameterIndex),
+                ignoreCase);
+
+        throw Unsupported(expression);
+    }
+
+    private static bool ResolveIgnoreCase(Expression comparison, ParameterExpression parameter)
+    {
+        object? value = KernelExpressionEvaluator.Evaluate(StripConvert(comparison), parameter);
+        return value switch
+        {
+            StringComparison.Ordinal => false,
+            StringComparison.OrdinalIgnoreCase => true,
+            _ => throw new KernelExpressionException(
+                $"String comparison '{value}' is not supported in filters; use Ordinal or OrdinalIgnoreCase."),
+        };
     }
 
     private static FilterExpression TranslateContains(
@@ -155,13 +227,22 @@ internal static class KernelExpressionTranslator
         {
             if (TryGetFieldPath(expression.Object, parameter, out string? field))
             {
-                if (expression.Object.Type == typeof(string) && expression.Arguments.Count != 1)
-                    throw Unsupported(expression);
+                if (expression.Object.Type == typeof(string))
+                {
+                    bool ignoreCase = expression.Arguments.Count switch
+                    {
+                        1 => false,
+                        2 when expression.Arguments[1].Type == typeof(StringComparison) =>
+                            ResolveIgnoreCase(expression.Arguments[1], parameter),
+                        _ => throw Unsupported(expression),
+                    };
+
+                    FilterValue stringValue = KernelExpressionValues.ToValue(expression.Arguments[0], parameter, ref parameterIndex);
+                    return FilterExpression.StringContains(field, stringValue, ignoreCase);
+                }
 
                 FilterValue value = KernelExpressionValues.ToValue(expression.Arguments[0], parameter, ref parameterIndex);
-                return expression.Object.Type == typeof(string)
-                    ? FilterExpression.StringContains(field, value)
-                    : FilterExpression.Contains(field, value);
+                return FilterExpression.Contains(field, value);
             }
 
             return FilterExpression.In(

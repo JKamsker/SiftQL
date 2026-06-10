@@ -17,9 +17,19 @@ public static class FilterValues
         FilterField field,
         FilterOperator op,
         FilterValue value,
-        Func<string, Exception>? errorFactory = null)
+        Func<string, Exception>? errorFactory = null,
+        bool ignoreCase = false)
     {
         ValidateValue(field, value, errorFactory);
+        if (ignoreCase &&
+            !(value.Kind is FilterValueKind.String or FilterValueKind.Null &&
+                (field.ValueType == typeof(string) || IsProjectedDynamic(field.ValueType))))
+        {
+            throw Error(
+                errorFactory,
+                $"Case-insensitive matching on field '{field.Name}' requires a string field and value.");
+        }
+
         if (op is FilterOperator.StringContains or
             FilterOperator.StringStartsWith or
             FilterOperator.StringEndsWith)
@@ -90,18 +100,18 @@ public static class FilterValues
             throw Error(errorFactory, $"Filter value '{value.Kind}' is not compatible with field '{field.Name}'.");
     }
 
-    public static bool Compare(object? actual, FilterValue expected, FilterOperator op) =>
+    public static bool Compare(object? actual, FilterValue expected, FilterOperator op, bool ignoreCase = false) =>
         op switch
         {
-            FilterOperator.Equal => AreEqual(actual, expected),
-            FilterOperator.NotEqual => !AreEqual(actual, expected),
+            FilterOperator.Equal => AreEqual(actual, expected, ignoreCase),
+            FilterOperator.NotEqual => !AreEqual(actual, expected, ignoreCase),
             FilterOperator.GreaterThan => TryCompareOrdered(actual, expected, out int comparison) && comparison > 0,
             FilterOperator.GreaterThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison >= 0,
             FilterOperator.LessThan => TryCompareOrdered(actual, expected, out int comparison) && comparison < 0,
             FilterOperator.LessThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison <= 0,
-            FilterOperator.StringContains => ContainsString(actual, expected),
-            FilterOperator.StringStartsWith => MatchesString(actual, expected, static (text, s) => text.StartsWith(s, StringComparison.Ordinal)),
-            FilterOperator.StringEndsWith => MatchesString(actual, expected, static (text, s) => text.EndsWith(s, StringComparison.Ordinal)),
+            FilterOperator.StringContains => MatchesString(actual, expected, ignoreCase, static (text, s, c) => text.Contains(s, c)),
+            FilterOperator.StringStartsWith => MatchesString(actual, expected, ignoreCase, static (text, s, c) => text.StartsWith(s, c)),
+            FilterOperator.StringEndsWith => MatchesString(actual, expected, ignoreCase, static (text, s, c) => text.EndsWith(s, c)),
             _ => false,
         };
 
@@ -135,23 +145,20 @@ public static class FilterValues
         return false;
     }
 
-    private static bool ContainsString(object? actual, FilterValue expected) =>
-        MatchesString(actual, expected, static (text, substring) =>
-            text.Contains(substring, StringComparison.Ordinal));
-
     private static bool MatchesString(
         object? actual,
         FilterValue expected,
-        Func<string, string, bool> match) =>
+        bool ignoreCase,
+        Func<string, string, StringComparison, bool> match) =>
         actual is string text &&
         expected.Kind == FilterValueKind.String &&
         expected.String is string value &&
-        match(text, value);
+        match(text, value, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
         new(TooManyRuntimeArrayItemsMessage);
 
-    private static bool AreEqual(object? actual, FilterValue expected)
+    private static bool AreEqual(object? actual, FilterValue expected, bool ignoreCase = false)
     {
         if (actual is null || expected.Kind == FilterValueKind.Null)
             return actual is null && expected.Kind == FilterValueKind.Null;
@@ -177,7 +184,7 @@ public static class FilterValues
             FilterValueKind.Number => FilterNumericComparison.AreNumberEqual(actual, expected.Number),
             FilterValueKind.Decimal => FilterNumericComparison.AreDecimalEqual(actual, expected.Decimal),
             FilterValueKind.String => actual is string item &&
-                string.Equals(item, expected.String, StringComparison.Ordinal),
+                string.Equals(item, expected.String, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal),
             FilterValueKind.Guid => actual is Guid item && item == expected.Guid,
             _ => false,
         };
