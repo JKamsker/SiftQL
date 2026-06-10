@@ -3,6 +3,7 @@ using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Kernel;
+using SiftQL.Schema;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
@@ -70,6 +71,31 @@ public sealed class KernelCollectionCountTranslationTests
     }
 
     [Fact]
+    public void WhereCountMethodOnObjectCollectionCompilesAndMatches()
+    {
+        FilterSchema.RegisterValueObject(typeof(CountLootItem));
+        QueryKernel<LootCart> query = QueryKernel.For<LootCart>()
+            .Where(static cart => cart.Items.Count() > 0);
+
+        Assert.Equal(FilterExpressionKind.Count, query.Filter.Kind);
+        Assert.Equal(nameof(LootCart.Items), query.Filter.Field);
+
+        CompiledKernel immediate = FilterCompiler.Compile(
+            typeof(LootCart),
+            query.Filter,
+            FilterCompilerOptions.Immediate);
+        CompiledKernel tiered = FilterCompiler.Compile(
+            typeof(LootCart),
+            query.Filter,
+            FilterCompilerOptions.Tiered);
+
+        Assert.True(immediate.Matches(new LootCart([new CountLootItem("Sword")])));
+        Assert.False(immediate.Matches(new LootCart([])));
+        Assert.True(tiered.Matches(new LootCart([new CountLootItem("Sword")])));
+        Assert.False(tiered.Matches(new LootCart([])));
+    }
+
+    [Fact]
     public void CountOnScalarFieldIsRejected()
     {
         FilterExpression filter = FilterExpression.Count(
@@ -93,5 +119,7 @@ public sealed class KernelCollectionCountTranslationTests
     }
 
     private sealed record Cart(string[] Tags, List<int> Quantities, string Name = "") : IFilterSubject;
+    private sealed record LootCart(CountLootItem[] Items) : IFilterSubject;
+    private sealed record CountLootItem(string Name);
     private sealed record FilterCase(Cart Subject, bool Expected);
 }
