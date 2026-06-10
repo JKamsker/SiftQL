@@ -99,8 +99,7 @@ public sealed class RemoteServerService(
         where TRecord : IServerRecord
     {
         ArgumentNullException.ThrowIfNull(record);
-        IRemoteClient client = _client ??
-            throw new InvalidOperationException("No remote client is attached.");
+        IRemoteClient? client = null;
 
         foreach (Subscription subscription in SubscriptionsFor(record))
         {
@@ -110,6 +109,8 @@ public sealed class RemoteServerService(
             if (projected is null)
                 continue;
 
+            client ??= _client ??
+                throw new InvalidOperationException("No remote client is attached.");
             await client.DispatchAsync(
                 new SubscriptionDispatch(subscription.Id, subscription.Subject, projected),
                 cancellationToken).ConfigureAwait(false);
