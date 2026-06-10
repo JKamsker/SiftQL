@@ -233,7 +233,8 @@ internal static class FilterSchemaFallbackBuilder
 
     private static bool IsReservedMetadataField(string name) =>
         string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase) ||
+        SubjectTypeMetadata.IsReservedName(name);
 
     private static FilterValidationException ReservedMetadataCollision(
         Type subjectType,

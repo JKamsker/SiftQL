@@ -188,7 +188,8 @@ internal static class SchemaFieldDiscovery
 
     private static bool IsReservedTopLevelField(string name) =>
         string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "subjectTypes", StringComparison.OrdinalIgnoreCase);
 
     internal static ITypeSymbol UnwrapNullable(ITypeSymbol type) =>
         type is INamedTypeSymbol named && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T

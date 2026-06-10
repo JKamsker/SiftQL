@@ -31,7 +31,11 @@ public sealed class FilterSchema
     internal FilterSchema(Type subjectType, IReadOnlyList<FilterField> fields)
     {
         SubjectType = subjectType;
-        _fields = fields.ToDictionary(static field => field.Name, StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, FilterField>(StringComparer.OrdinalIgnoreCase);
+        foreach (FilterField field in fields)
+            map.Add(field.Name, field);
+        SubjectTypeMetadata.Augment(subjectType, fields, map);
+        _fields = map;
     }
 
     public Type SubjectType { get; }

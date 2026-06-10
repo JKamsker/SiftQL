@@ -75,8 +75,39 @@ internal static class ContextKernelExpressionTranslator
                 ExpressionType.LessThanOrEqual => TranslateComparison((BinaryExpression)expression, FilterOperator.LessThanOrEqual),
                 ExpressionType.Call => TranslateMethodCall((MethodCallExpression)expression),
                 ExpressionType.MemberAccess => TranslateBooleanField(expression),
+                ExpressionType.TypeIs => TranslateTypeIs((TypeBinaryExpression)expression),
                 _ => throw Unsupported(expression),
             };
+        }
+
+        // Translates `subject.Member is T` into a Contains over the projected
+        // `<path>.subjectTypes` discriminator, matching T and every subtype.
+        // See [[SubjectTypeMetadata]].
+        private FilterExpression TranslateTypeIs(TypeBinaryExpression expression)
+        {
+            string sourcePath;
+            if (StripConvert(expression.Expression) == _subject)
+                sourcePath = "subjectTypes";
+            else if (TryGetSubjectFieldPath(expression.Expression, out string field))
+                sourcePath = field + ".subjectTypes";
+            else
+                throw Unsupported(expression);
+
+            string typeName = expression.TypeOperand.FullName ??
+                throw new KernelExpressionException(
+                    $"'is {expression.TypeOperand.Name}' is not supported: the type has no metadata full name.");
+            return FilterExpression.Contains(
+                ProjectSubjectPath(sourcePath),
+                ToValue(Expression.Constant(typeName, typeof(string))));
+        }
+
+        private string ProjectSubjectPath(string sourcePath)
+        {
+            if (_projectSubjectFields)
+                _sourceFields.Add(sourcePath);
+            return _projectSubjectFields
+                ? ContextProjectionPipeline.ProjectedPath(_pipeline, sourcePath)
+                : sourcePath;
         }
 
         private FilterExpression TranslateBinary(

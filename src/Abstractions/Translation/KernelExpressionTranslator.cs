@@ -40,8 +40,39 @@ internal static class KernelExpressionTranslator
             ExpressionType.LessThanOrEqual => TranslateComparison((BinaryExpression)expression, parameter, ref parameterIndex, FilterOperator.LessThanOrEqual),
             ExpressionType.Call => TranslateMethodCall((MethodCallExpression)expression, parameter, ref parameterIndex),
             ExpressionType.MemberAccess => TranslateBooleanField((MemberExpression)expression, parameter),
+            ExpressionType.TypeIs => TranslateTypeIs((TypeBinaryExpression)expression, parameter, ref parameterIndex),
             _ => throw Unsupported(expression),
         };
+    }
+
+    // Translates the C# `is` operator (e.g. attacker is Player) into a Contains
+    // over the synthetic `subjectTypes` discriminator, so the test matches the
+    // target type and every subtype/interface implementation. See
+    // [[SubjectTypeMetadata]].
+    private static FilterExpression TranslateTypeIs(
+        TypeBinaryExpression expression,
+        ParameterExpression parameter,
+        ref int parameterIndex)
+    {
+        string field = ResolveTypeTestField(expression, parameter);
+        string typeName = expression.TypeOperand.FullName ??
+            throw new KernelExpressionException(
+                $"'is {expression.TypeOperand.Name}' is not supported: the type has no metadata full name.");
+        return FilterExpression.Contains(
+            field,
+            KernelExpressionValues.ToValue(
+                Expression.Constant(typeName, typeof(string)),
+                parameter,
+                ref parameterIndex));
+    }
+
+    private static string ResolveTypeTestField(TypeBinaryExpression expression, ParameterExpression parameter)
+    {
+        if (StripConvert(expression.Expression) == parameter)
+            return "subjectTypes";
+        if (TryGetFieldPath(expression.Expression, parameter, out string field))
+            return field + ".subjectTypes";
+        throw Unsupported(expression);
     }
 
     private static FilterExpression TranslateBinary(

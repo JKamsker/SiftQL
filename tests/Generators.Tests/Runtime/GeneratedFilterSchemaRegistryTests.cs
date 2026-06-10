@@ -50,8 +50,10 @@ public sealed class GeneratedFilterSchemaRegistryTests
         };
         FilterSchema schema = GeneratedFilterSchemaRegistry.Create(typeof(ItemUsedEvent), fields);
         Assert.Equal(typeof(ItemUsedEvent), schema.SubjectType);
-        Assert.Single(schema.FieldNames);
         Assert.Contains("TestField", schema.FieldNames);
+        // Every schema gains the reserved `subjectTypes` runtime-type discriminator
+        // that backs the `is` operator.
+        Assert.Contains("subjectTypes", schema.FieldNames);
     }
 
     private enum IntEnum { A = 1, B = 2, C = 3 }

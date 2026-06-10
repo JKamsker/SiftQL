@@ -292,6 +292,7 @@ public static class ProjectionCompiler
     private static bool IsVirtualMetadataField(Type subjectType, string name) =>
         string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase) ||
+        SubjectTypeMetadata.IsDiscriminatorPath(name) ||
         subjectType == typeof(ProjectedEvent) &&
         (string.Equals(name, "eventType", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(name, "eventName", StringComparison.OrdinalIgnoreCase));
