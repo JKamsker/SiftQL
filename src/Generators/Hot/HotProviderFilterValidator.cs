@@ -246,7 +246,8 @@ internal static class HotProviderFilterValidator
         if (projectedDynamic && IsNumeric(value.Kind))
             return true;
         return scalarKind == GeneratedScalarKind.Number ||
-            Unsupported(diagnostics, path, "Hot ordered comparisons require a numeric field.");
+            scalarKind == GeneratedScalarKind.Temporal && value.Kind == HotFilterValueKind.Timestamp ||
+            Unsupported(diagnostics, path, "Hot ordered comparisons require a numeric or temporal field.");
     }
 
     private static bool ValidateValue(
@@ -265,6 +266,7 @@ internal static class HotProviderFilterValidator
             GeneratedScalarKind.Number => IsNumeric(value.Kind),
             GeneratedScalarKind.String => value.Kind == HotFilterValueKind.String,
             GeneratedScalarKind.Guid => value.Kind == HotFilterValueKind.Guid,
+            GeneratedScalarKind.Temporal => value.Kind == HotFilterValueKind.Timestamp,
             GeneratedScalarKind.Enum => value.Kind is HotFilterValueKind.String or
                 HotFilterValueKind.Integer or
                 HotFilterValueKind.UnsignedInteger,

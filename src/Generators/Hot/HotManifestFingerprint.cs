@@ -151,6 +151,9 @@ internal static class HotManifestFingerprint
             case HotFilterValueKind.Guid:
                 builder.Append(value.Guid);
                 break;
+            case HotFilterValueKind.Timestamp:
+                builder.Append(value.TimestampTicks.ToString(CultureInfo.InvariantCulture));
+                break;
         }
     }
 

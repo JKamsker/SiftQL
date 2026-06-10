@@ -23,6 +23,7 @@ internal static partial class HotManifestParser
         decimal exactDecimal = 0;
         string? text = null;
         string guid = "00000000-0000-0000-0000-000000000000";
+        long timestampTicks = 0;
         if (!TryReadValuePayload(
             element,
             kind,
@@ -34,7 +35,8 @@ internal static partial class HotManifestParser
             ref number,
             ref exactDecimal,
             ref text,
-            ref guid))
+            ref guid,
+            ref timestampTicks))
         {
             return null;
         }
@@ -48,7 +50,8 @@ internal static partial class HotManifestParser
             number,
             exactDecimal,
             text,
-            guid);
+            guid,
+            timestampTicks);
     }
 
     private static bool TryReadValuePayload(
@@ -62,7 +65,8 @@ internal static partial class HotManifestParser
         ref double number,
         ref decimal exactDecimal,
         ref string? text,
-        ref string guid)
+        ref string guid,
+        ref long timestampTicks)
     {
         switch (kind)
         {
@@ -101,6 +105,10 @@ internal static partial class HotManifestParser
                 if (TryReadGuid(element, out guid))
                     return true;
                 return Invalid("Hot filter GUID value is missing or invalid.");
+            case HotFilterValueKind.Timestamp:
+                if (TryReadTimestamp(element, "Timestamp", out timestampTicks))
+                    return true;
+                return Invalid("Hot filter timestamp value is missing or invalid.");
             default:
                 return Invalid("Hot filter value kind is missing or invalid.");
         }
@@ -181,6 +189,19 @@ internal static partial class HotManifestParser
         }
 
         value = parsed.ToString("D");
+        return true;
+    }
+
+    private static bool TryReadTimestamp(JsonElement element, string name, out long utcTicks)
+    {
+        utcTicks = 0;
+        if (!element.TryGetProperty(name, out JsonElement item) ||
+            !item.TryGetDateTimeOffset(out DateTimeOffset timestamp))
+        {
+            return false;
+        }
+
+        utcTicks = timestamp.UtcTicks;
         return true;
     }
 }

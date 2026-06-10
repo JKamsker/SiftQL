@@ -287,6 +287,12 @@ internal static class HotProviderEmitter
             AppendLiteral(source, value.Guid);
             source.Append(")");
         }
+        if (value.Kind == HotFilterValueKind.Timestamp)
+        {
+            source.Append(", Timestamp = new DateTimeOffset(")
+                .Append(value.TimestampTicks.ToString(CultureInfo.InvariantCulture))
+                .Append("L, TimeSpan.Zero)");
+        }
         source.Append(" }");
     }
 

@@ -221,5 +221,6 @@ internal static partial class HotManifestParser
             Number: 0,
             Decimal: 0,
             String: null,
-            Guid: "00000000-0000-0000-0000-000000000000");
+            Guid: "00000000-0000-0000-0000-000000000000",
+            TimestampTicks: 0);
 }
