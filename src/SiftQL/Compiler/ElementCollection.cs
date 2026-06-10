@@ -57,7 +57,7 @@ internal static class ElementCollection
 
     private static PropertyInfo? FindProperty(Type type, string name)
     {
-        foreach (PropertyInfo property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        foreach (PropertyInfo property in EnumerateProperties(type))
         {
             if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) &&
                 property.GetMethod is not null &&
@@ -68,6 +68,21 @@ internal static class ElementCollection
         }
 
         return null;
+    }
+
+    private static IEnumerable<PropertyInfo> EnumerateProperties(Type type)
+    {
+        foreach (PropertyInfo property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            yield return property;
+
+        if (!type.IsInterface)
+            yield break;
+
+        foreach (Type inherited in type.GetInterfaces())
+        {
+            foreach (PropertyInfo property in inherited.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+                yield return property;
+        }
     }
 
     private static Type? GetElementType(Type type)
