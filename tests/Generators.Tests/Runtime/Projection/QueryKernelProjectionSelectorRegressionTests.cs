@@ -1,6 +1,7 @@
 using SiftQL.Expressions;
 using SiftQL.Projected;
 using SiftQL.Projection;
+using SiftQL.Schema;
 
 namespace SiftQL.Generators.Tests;
 
@@ -109,6 +110,30 @@ public sealed class QueryKernelProjectionSelectorRegressionTests
         Assert.Equal(label, projected.Field("Label").String);
     }
 
+    [Fact]
+    public async Task SelectorProjectsSubtypeMemberPath()
+    {
+        FilterSchema.RegisterValueObject(typeof(SelectorEntity));
+        FilterSchema.RegisterValueObject(typeof(SelectorPlayer));
+        QueryKernel<SelectorCombat> query = QueryKernel.For<SelectorCombat>()
+            .Select(static combat => new
+            {
+                Level = (combat.Actor as SelectorPlayer)!.Level,
+            });
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(SelectorCombat),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new SelectorCombat(new SelectorPlayer(9)),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(9, projected!.Field("Level").Integer);
+    }
+
     private static int StaticProjectionValue => 42;
 
     private static EventProjectionExpression FirstProjection(QueryKernel<ItemUsedEvent> query) =>
@@ -127,6 +152,10 @@ public sealed class QueryKernelProjectionSelectorRegressionTests
             new object(),
             CancellationToken.None) ?? throw new InvalidOperationException("Projection was filtered out.");
     }
+
+    private abstract record SelectorEntity;
+    private sealed record SelectorPlayer(int Level) : SelectorEntity;
+    private sealed record SelectorCombat(SelectorEntity? Actor) : IFilterSubject;
 
     private sealed class WideProjectionEvent : IFilterSubject
     {
