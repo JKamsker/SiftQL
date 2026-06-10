@@ -13,14 +13,15 @@ internal static class ClientPayload
             [nameof(ProjectedEvent.EventName)] = projected.EventName,
         };
 
-        AddFields(projected.Fields, payload);
-        AddFields(projected.Context, payload);
+        AddFields(projected.Fields, payload, overwrite: true);
+        AddFields(projected.Context, payload, overwrite: false);
         return payload;
     }
 
     private static void AddFields(
         IEnumerable<ProjectedEventField>? fields,
-        Dictionary<string, object?> payload)
+        Dictionary<string, object?> payload,
+        bool overwrite)
     {
         if (fields is null)
             return;
@@ -30,7 +31,10 @@ internal static class ClientPayload
             if (field is null || IsMetadataKey(field.Name))
                 continue;
 
-            payload[field.Name] = ToObject(field.Value);
+            if (overwrite)
+                payload[field.Name] = ToObject(field.Value);
+            else
+                payload.TryAdd(field.Name, ToObject(field.Value));
         }
     }
 
