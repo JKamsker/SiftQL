@@ -135,6 +135,12 @@ internal static class FilterInterpretedCompiler
         Func<string, Exception>? errorFactory)
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (FilterNullCheck.IsPresenceCheck(field, expression))
+        {
+            bool present = FilterNullCheck.MatchesPresent(expression);
+            return subject => (field.Getter(subject) is not null) == present;
+        }
+
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");

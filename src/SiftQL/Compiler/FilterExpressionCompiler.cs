@@ -130,6 +130,15 @@ internal static class FilterExpressionCompiler
         Func<string, Exception>? errorFactory)
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (FilterNullCheck.IsPresenceCheck(field, expression))
+        {
+            Expression? presenceAccess = BuildAccess(subject, field);
+            if (presenceAccess is null)
+                return null;
+            Expression isNull = FilterExpressionNull.IsNull(presenceAccess);
+            return FilterNullCheck.MatchesPresent(expression) ? Expression.Not(isNull) : isNull;
+        }
+
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");

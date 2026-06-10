@@ -153,11 +153,22 @@ public static class FilterValidator
         string path,
         List<FilterValidationError> errors)
     {
-        if (!RequireScalarField(schema, node.Field, path, errors, out FilterField? field))
+        if (!RequireField(schema, node.Field, path, errors, out FilterField? field))
             return;
         if (node.Value is null)
         {
             errors.Add(new FilterValidationError(path, $"Filter field '{node.Field}' is missing a value."));
+            return;
+        }
+
+        // Object/array member presence checks (field ==/!= null) are valid regardless
+        // of scalar kind; they lower to Exists / Not(Exists) at compile time.
+        if (FilterNullCheck.IsPresenceCheck(field!, node))
+            return;
+
+        if (field!.Kind != FilterFieldKind.Scalar)
+        {
+            errors.Add(new FilterValidationError(path, $"Filter field '{node.Field}' is not scalar."));
             return;
         }
 

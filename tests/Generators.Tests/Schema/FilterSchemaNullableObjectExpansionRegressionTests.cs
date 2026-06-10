@@ -58,7 +58,115 @@ public sealed class FilterSchemaNullableObjectExpansionRegressionTests
         Assert.False(schema.TryGetField("Coordinate.X", out _));
     }
 
+    [Fact]
+    public void MemberNotEqualNull_LowersToExists()
+    {
+        FilterSchema.RegisterValueObject<ExpansionLocation>();
+        FilterExpression filter = FilterExpression.Compare(
+            "Location",
+            FilterOperator.NotEqual,
+            FilterValue.Null);
+
+        var kernel = FilterCompiler.Compile(typeof(NullableLocationEvent), filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new NullableLocationEvent(new ExpansionLocation("AT"))));
+        Assert.False(kernel.Matches(new NullableLocationEvent(null)));
+    }
+
+    [Fact]
+    public void MemberEqualNull_LowersToNotExists()
+    {
+        FilterSchema.RegisterValueObject<ExpansionLocation>();
+        FilterExpression filter = FilterExpression.Compare(
+            "Location",
+            FilterOperator.Equal,
+            FilterValue.Null);
+
+        var kernel = FilterCompiler.Compile(typeof(NullableLocationEvent), filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new NullableLocationEvent(null)));
+        Assert.False(kernel.Matches(new NullableLocationEvent(new ExpansionLocation("AT"))));
+    }
+
+    [Fact]
+    public void MemberPresenceCheck_InterpretedPath_LowersToExists()
+    {
+        FilterSchema.RegisterValueObject<ExpansionLocation>();
+        // Between has no expression-tree builder, so the whole filter compiles via
+        // the interpreted compiler -- exercising its presence-check path.
+        FilterExpression filter = FilterExpression.And(
+            FilterExpression.Compare("Location", FilterOperator.NotEqual, FilterValue.Null),
+            FilterExpression.Between("Score", FilterValue.From(1L), FilterValue.From(10L)));
+
+        var kernel = FilterCompiler.Compile(typeof(PresenceEvent), filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new PresenceEvent(new ExpansionLocation("AT"), 5)));
+        Assert.False(kernel.Matches(new PresenceEvent(null, 5)));
+        Assert.False(kernel.Matches(new PresenceEvent(new ExpansionLocation("AT"), 50)));
+    }
+
+    [Fact]
+    public void MemberPresenceCheck_ParameterizedPlan_LowersToExists()
+    {
+        FilterSchema.RegisterValueObject<ExpansionLocation>();
+        // The parameter forces the parameterized plan builder, whose BuildCompare
+        // must also lower the object null-check to Exists.
+        FilterExpression filter = FilterExpression.And(
+            FilterExpression.Compare("Location", FilterOperator.NotEqual, FilterValue.Null),
+            FilterExpression.Compare(
+                "Location.Code",
+                FilterOperator.Equal,
+                FilterValue.From("AT") with { ParameterKey = "code" }));
+
+        var kernel = FilterCompiler.Compile(typeof(NullableLocationEvent), filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new NullableLocationEvent(new ExpansionLocation("AT"))));
+        Assert.False(kernel.Matches(new NullableLocationEvent(null)));
+        Assert.False(kernel.Matches(new NullableLocationEvent(new ExpansionLocation("DE"))));
+    }
+
+    [Fact]
+    public void Validator_AcceptsMemberPresenceCheck()
+    {
+        FilterSchema.RegisterValueObject<ExpansionLocation>();
+        FilterExpression filter = FilterExpression.Compare(
+            "Location",
+            FilterOperator.NotEqual,
+            FilterValue.Null);
+
+        FilterValidationResult result = FilterValidator.Validate(typeof(NullableLocationEvent), filter);
+
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void LinqMemberNotNull_LowersToExists()
+    {
+        FilterSchema.RegisterValueObject<ExpansionLocation>();
+
+        var query = QueryKernel.For<NullableLocationEvent>().Where(x => x.Location != null);
+        var kernel = FilterCompiler.Compile(typeof(NullableLocationEvent), query.Filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new NullableLocationEvent(new ExpansionLocation("AT"))));
+        Assert.False(kernel.Matches(new NullableLocationEvent(null)));
+    }
+
+    [Fact]
+    public void LinqMemberEqualNull_LowersToNotExists()
+    {
+        FilterSchema.RegisterValueObject<ExpansionLocation>();
+
+        var query = QueryKernel.For<NullableLocationEvent>().Where(x => x.Location == null);
+        var kernel = FilterCompiler.Compile(typeof(NullableLocationEvent), query.Filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new NullableLocationEvent(null)));
+        Assert.False(kernel.Matches(new NullableLocationEvent(new ExpansionLocation("AT"))));
+    }
+
     public sealed record ExpansionLocation(string Code);
+
+    public sealed record PresenceEvent(ExpansionLocation? Location, int Score) : IFilterSubject;
 
     public sealed record NullableLocationEvent(ExpansionLocation? Location) : IFilterSubject;
 

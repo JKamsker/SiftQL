@@ -97,6 +97,12 @@ internal static class ParameterizedFilterPlanBuilder
         Func<string, Exception>? errorFactory)
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (FilterNullCheck.IsPresenceCheck(field, expression))
+        {
+            ParameterizedFilterPlanNode exists = new ExistsFilterPlanNode(field);
+            return FilterNullCheck.MatchesPresent(expression) ? exists : new NotFilterPlanNode(exists);
+        }
+
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
