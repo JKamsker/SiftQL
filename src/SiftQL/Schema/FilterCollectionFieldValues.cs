@@ -16,7 +16,8 @@ public static class FilterCollectionFieldValues
         string[] segments = propertyPath.Split('.');
         ValidateSegments(propertyPath, segments);
         var values = new List<object?>();
-        if (Collect(subject, propertyPath, segments, segmentIndex: 0, values))
+        int traversedItems = 0;
+        if (Collect(subject, propertyPath, segments, segmentIndex: 0, values, ref traversedItems))
             return values.ToArray();
 
         return null;
@@ -40,7 +41,8 @@ public static class FilterCollectionFieldValues
         string propertyPath,
         IReadOnlyList<string> segments,
         int segmentIndex,
-        List<object?> values)
+        List<object?> values,
+        ref int traversedItems)
     {
         if (current is null)
         {
@@ -55,7 +57,12 @@ public static class FilterCollectionFieldValues
         if (current is IEnumerable enumerable && current is not string)
         {
             foreach (object? item in enumerable)
-                Collect(item, propertyPath, segments, segmentIndex, values);
+            {
+                if (++traversedItems > MaxRuntimeArrayItems)
+                    throw TooManyRuntimeArrayItems(propertyPath);
+
+                Collect(item, propertyPath, segments, segmentIndex, values, ref traversedItems);
+            }
 
             return true;
         }
@@ -91,7 +98,7 @@ public static class FilterCollectionFieldValues
             return false;
         }
 
-        return Collect(val, propertyPath, segments, segmentIndex + 1, values);
+        return Collect(val, propertyPath, segments, segmentIndex + 1, values, ref traversedItems);
     }
 
     private static void AddValue(List<object?> values, object? value, string propertyPath)
