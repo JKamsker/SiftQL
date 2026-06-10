@@ -385,8 +385,10 @@ internal static class FilterExpressionCanonical
             FilterValueKind.Boolean => value.Boolean ? "b1" : "b0",
             FilterValueKind.Integer => "i" + value.Integer.ToString(CultureInfo.InvariantCulture),
             FilterValueKind.UnsignedInteger => "u" + value.UnsignedInteger.ToString(CultureInfo.InvariantCulture),
-            FilterValueKind.Number => "d" + value.Number.ToString("R", CultureInfo.InvariantCulture),
-            FilterValueKind.Decimal => "m" + value.Decimal.ToString(CultureInfo.InvariantCulture),
+            FilterValueKind.Number => "d" + (value.Number == 0D
+                ? "0"
+                : value.Number.ToString("R", CultureInfo.InvariantCulture)),
+            FilterValueKind.Decimal => "m" + value.Decimal.ToString("G29", CultureInfo.InvariantCulture),
             FilterValueKind.String => value.String is null
                 ? "s_"
                 : "s" + value.String.Length.ToString(CultureInfo.InvariantCulture) + ":" + value.String,
