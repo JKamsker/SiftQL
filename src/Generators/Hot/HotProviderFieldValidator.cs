@@ -13,7 +13,13 @@ internal static class HotProviderFieldValidator
         string path,
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics)
     {
-        if (IsAllowedMetadataField(projectedEvent, name))
+        if (IsSubjectTypesMetadataField(fields, projectedEvent, name))
+        {
+            return scalar == true
+                ? Unsupported(diagnostics, path, $"Hot entry field '{name}' is not scalar.")
+                : true;
+        }
+        if (IsAllowedScalarMetadataField(projectedEvent, name))
         {
             return scalar == false
                 ? Unsupported(diagnostics, path, $"Hot entry field '{name}' is not a scalar array.")
@@ -37,14 +43,40 @@ internal static class HotProviderFieldValidator
         name.Equals("eventType", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("eventName", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("subjectType", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("subjectName", StringComparison.OrdinalIgnoreCase);
+        name.Equals("subjectName", StringComparison.OrdinalIgnoreCase) ||
+        IsSubjectTypesMetadataPath(name);
 
-    private static bool IsAllowedMetadataField(bool projectedEvent, string name) =>
+    private static bool IsAllowedScalarMetadataField(bool projectedEvent, string name) =>
         name.Equals("subjectType", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("subjectName", StringComparison.OrdinalIgnoreCase) ||
         projectedEvent &&
         (name.Equals("eventType", StringComparison.OrdinalIgnoreCase) ||
             name.Equals("eventName", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSubjectTypesMetadataField(
+        EquatableArray<GeneratedField> fields,
+        bool projectedEvent,
+        string name)
+    {
+        if (projectedEvent)
+            return false;
+
+        if (name.Equals("subjectTypes", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        const string suffix = ".subjectTypes";
+        if (!name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string owner = name.Substring(0, name.Length - suffix.Length);
+        return fields.Items.Any(field =>
+            field.FieldKind == GeneratedFieldKind.Object &&
+            string.Equals(field.Name, owner, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSubjectTypesMetadataPath(string name) =>
+        name.Equals("subjectTypes", StringComparison.OrdinalIgnoreCase) ||
+        name.EndsWith(".subjectTypes", StringComparison.OrdinalIgnoreCase);
 
     public static bool Unsupported(
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
