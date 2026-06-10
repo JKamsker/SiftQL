@@ -1,0 +1,89 @@
+using System.Text.Json;
+using SiftQL.Compiler;
+using SiftQL.Expressions;
+using SiftQL.Hot;
+using SiftQL.Kernel;
+
+namespace SiftQL.Generators.Tests;
+
+public sealed class HotCompilationManifestExistingEntryRegressionTests
+{
+    [Fact]
+    public void ManifestWriterDropsExistingUnsupportedAndMismatchedFilterEntries()
+    {
+        string path = TempManifestPath();
+        FilterExpression valid = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(100L));
+        FilterExpression unsupported = FilterExpression.Count(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.GreaterThan,
+            FilterValue.From(0L));
+        FilterExpression mismatched = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(200L));
+        SeedManifest(path, unsupported, mismatched);
+        var writer = new HotCompilationManifestWriter(
+            path,
+            new HotCompilationManifestWriterOptions { CoalesceDelay = TimeSpan.Zero });
+
+        writer.RecordHotFilter(typeof(ItemUsedEvent), valid, evaluations: 1, matches: 1);
+        writer.Flush();
+
+        HotCompilationManifest manifest = ReadManifest(path);
+        HotCompilationManifestEntry entry = Assert.Single(manifest.Entries);
+        Assert.Equal(Fingerprint(valid), entry.Fingerprint);
+    }
+
+    private static void SeedManifest(
+        string path,
+        FilterExpression unsupported,
+        FilterExpression mismatched)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(new HotCompilationManifest
+            {
+                Entries =
+                [
+                    Entry("unsupported", Fingerprint(unsupported), unsupported),
+                    Entry("mismatched", "not-" + Fingerprint(mismatched), mismatched),
+                ],
+            }));
+    }
+
+    private static HotCompilationManifestEntry Entry(
+        string key,
+        string fingerprint,
+        FilterExpression definition) =>
+        new()
+        {
+            Key = key,
+            Kind = "filter",
+            SubjectType = typeof(ItemUsedEvent).AssemblyQualifiedName!,
+            Fingerprint = fingerprint,
+            Definition = JsonSerializer.SerializeToElement(definition),
+            Observed = new HotCompilationObserved
+            {
+                FirstSeenUtc = DateTimeOffset.UtcNow,
+                LastSeenUtc = DateTimeOffset.UtcNow,
+            },
+        };
+
+    private static string Fingerprint(FilterExpression expression) =>
+        FilterExpressionFingerprint.CreateKey(expression).ToString();
+
+    private static HotCompilationManifest ReadManifest(string path) =>
+        JsonSerializer.Deserialize<HotCompilationManifest>(File.ReadAllText(path)) ??
+        throw new InvalidOperationException("Manifest did not deserialize.");
+
+    private static string TempManifestPath() =>
+        Path.Combine(
+            Path.GetTempPath(),
+            "SiftQLHotExistingManifest",
+            Guid.NewGuid().ToString("N"),
+            "hot.json");
+}
