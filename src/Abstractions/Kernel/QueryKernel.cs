@@ -74,14 +74,21 @@ public sealed record QueryKernel<TSubject>
             : _pipeline);
         init
         {
-            _pipeline = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
-            if (_pipeline.IsDefault)
+            EventPipelineExpression pipeline =
+                KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
+            if (pipeline.IsDefault)
             {
-                _filter = FilterExpression.Any;
-                _projection = EventProjectionExpression.Default;
+                if (!_pipeline.IsDefault)
+                {
+                    _filter = FilterExpression.Any;
+                    _projection = EventProjectionExpression.Default;
+                }
+
+                _pipeline = pipeline;
                 return;
             }
 
+            _pipeline = pipeline;
             _filter = QueryKernelPipelineState.SourceFilter(_pipeline);
             _projection = QueryKernelPipelineState.LastProjectionOrDefault(_pipeline);
         }
