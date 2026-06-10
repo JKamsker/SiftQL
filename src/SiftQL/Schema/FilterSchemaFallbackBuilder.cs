@@ -216,7 +216,7 @@ internal static class FilterSchemaFallbackBuilder
             {
                 if (property.GetMethod is null ||
                     property.GetMethod.GetParameters().Length != 0 ||
-                    FindProperty(baseType, property.Name) is not null)
+                    IsReachableFromBase(baseType, property))
                 {
                     continue;
                 }
@@ -259,6 +259,20 @@ internal static class FilterSchemaFallbackBuilder
                 }
             }
         }
+    }
+
+    private static bool IsReachableFromBase(Type baseType, PropertyInfo property)
+    {
+        if (property.DeclaringType is null ||
+            property.DeclaringType.IsAssignableFrom(baseType))
+        {
+            return true;
+        }
+
+        MethodInfo? baseDefinition = property.GetMethod?.GetBaseDefinition();
+        return baseDefinition?.DeclaringType is { } declaringType &&
+            declaringType != property.DeclaringType &&
+            declaringType.IsAssignableFrom(baseType);
     }
 
     // Null-safe `(owner as subtype)?.property`: when the runtime value is not the
