@@ -5,6 +5,7 @@ using SiftQL.Kernel;
 using SiftQL.Projected;
 using SiftQL.Projection;
 using SiftQL.Schema;
+using SiftQL.Translation;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
@@ -149,14 +150,14 @@ public sealed class KernelTypeTestTranslationTests
     [Fact]
     public void AsCastToSubtypeMemberProjectsUnderSubtypePath()
     {
-        // Level is Player-specific, so the read is projected under a
-        // <Player>-qualified path that the schema can resolve.
+        // Level is Player-specific, so the read is projected under a shared
+        // subtype-qualified path that the schema can resolve.
         FilterExpression filter = QueryKernel.For<Combat>()
             .Where(static c => (c.Attacker as Player)!.Level > 5)
             .Filter;
 
         Assert.Equal(FilterExpressionKind.Compare, filter.Kind);
-        Assert.Equal("Attacker.<Player>.Level", filter.Field);
+        Assert.Equal("Attacker." + SubtypeProjection.Segment(typeof(Player)) + ".Level", filter.Field);
         Assert.Equal(FilterOperator.GreaterThan, filter.Operator);
     }
 

@@ -1,18 +1,32 @@
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace SiftQL.Translation;
 
 // Shared path-segment format for subtype-projected member reads. A downcast
 // member read `(x.Member as Sub).Prop`, where `Prop` is declared only on the
-// subtype, lowers to the field path `Member.<Sub>.Prop`. The angle-bracketed
-// segment cannot collide with a real C# member name, so each subtype keeps its
-// extra members in a distinct field namespace. The translator emits the segment
-// and the schema builder expands registered value-object subtypes under it; both
-// sides call Segment() so the format never drifts. See [[SubjectTypeMetadata]].
+// subtype, lowers to a field path under an angle-bracketed subtype segment. The
+// segment includes a short hash of the type identity so same-named subtypes keep
+// distinct field namespaces without introducing '.' into the dot-separated path.
+// The translator emits the segment and the schema builder expands registered
+// value-object subtypes under it; both sides call Segment() so the format never
+// drifts. See [[SubjectTypeMetadata]].
 internal static class SubtypeProjection
 {
-    public static string Segment(Type subtype) => "<" + subtype.Name + ">";
+    private static readonly ConcurrentDictionary<Type, string> s_segments = new();
+
+    public static string Segment(Type subtype) =>
+        s_segments.GetOrAdd(subtype, CreateSegment);
+
+    private static string CreateSegment(Type subtype)
+    {
+        string identity = subtype.AssemblyQualifiedName ?? subtype.FullName ?? subtype.Name;
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..16];
+        return "<" + subtype.Name + "#" + hash + ">";
+    }
 
     // Recognizes `(operand as Sub)` / `((Sub)operand)` wrapping a member access
     // where the accessed member is genuinely subtype-specific (not reachable
