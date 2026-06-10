@@ -316,5 +316,60 @@ internal static class KernelExpressionTranslator
             FilterOperator.LessThanOrEqual => FilterOperator.GreaterThanOrEqual,
             _ => op,
         };
-    internal static KernelExpressionException Unsupported(Expression expression) => new($"Unsupported server kernel expression '{expression}'.");
+    internal static KernelExpressionException Unsupported(Expression expression) =>
+        new($"Unsupported server kernel expression '{expression}'. {Explain(expression)}");
+
+    private static string Explain(Expression expression) =>
+        expression.NodeType switch
+        {
+            ExpressionType.Add or ExpressionType.AddChecked or
+            ExpressionType.Subtract or ExpressionType.SubtractChecked or
+            ExpressionType.Multiply or ExpressionType.MultiplyChecked or
+            ExpressionType.Divide or ExpressionType.Modulo or ExpressionType.Power =>
+                "Arithmetic is not supported inside filter predicates; precompute the value or capture it as a variable so it becomes a constant.",
+            ExpressionType.Conditional =>
+                "Conditional (ternary) expressions are not supported; express each branch as a separate predicate combined with && or ||.",
+            ExpressionType.Coalesce =>
+                "Null-coalescing (??) is not supported; compare the field explicitly (e.g. field == null || field == value).",
+            ExpressionType.Call when expression is MethodCallExpression call =>
+                $"The method '{call.Method.Name}' cannot be translated. Supported methods: Contains, StartsWith, EndsWith, IsNullOrEmpty, In, Exists, and Any over a collection.",
+            ExpressionType.Equal or ExpressionType.NotEqual or
+            ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual or
+            ExpressionType.LessThan or ExpressionType.LessThanOrEqual
+                when expression is BinaryExpression binary => ExplainComparison(binary),
+            _ =>
+                "Filter predicates support field comparisons (==, !=, <, <=, >, >=), &&, ||, !, Contains, StartsWith, EndsWith, IsNullOrEmpty, In, Exists, and Any.",
+        };
+
+    private static string ExplainComparison(BinaryExpression binary)
+    {
+        if (IsArithmetic(binary.Left) || IsArithmetic(binary.Right))
+            return "Arithmetic is not supported inside filter predicates; precompute the value or capture it as a variable so it becomes a constant.";
+        if (TryGetUnsupportedCall(binary.Left, out string? method) ||
+            TryGetUnsupportedCall(binary.Right, out method))
+        {
+            return $"The method '{method}' cannot be translated; SiftQL compares raw field values. Supported string methods: Contains, StartsWith, EndsWith, IsNullOrEmpty.";
+        }
+
+        return "One side of the comparison must be a filter field (a property of the event parameter) and the other a constant or captured value.";
+    }
+
+    private static bool IsArithmetic(Expression expression) =>
+        StripConvert(expression).NodeType is
+            ExpressionType.Add or ExpressionType.AddChecked or
+            ExpressionType.Subtract or ExpressionType.SubtractChecked or
+            ExpressionType.Multiply or ExpressionType.MultiplyChecked or
+            ExpressionType.Divide or ExpressionType.Modulo or ExpressionType.Power;
+
+    private static bool TryGetUnsupportedCall(Expression expression, out string? method)
+    {
+        if (StripConvert(expression) is MethodCallExpression call)
+        {
+            method = call.Method.Name;
+            return true;
+        }
+
+        method = null;
+        return false;
+    }
 }
