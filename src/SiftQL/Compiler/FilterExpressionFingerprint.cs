@@ -113,6 +113,10 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
                 builder.Append(':').Append((int)Operator);
                 Value.AppendTo(builder);
                 break;
+            case FilterExpressionKind.ElemMatch:
+                FilterKeyText.AppendText(builder, Field);
+                AppendChildren(builder);
+                break;
             case FilterExpressionKind.And:
             case FilterExpressionKind.Or:
             case FilterExpressionKind.Not:

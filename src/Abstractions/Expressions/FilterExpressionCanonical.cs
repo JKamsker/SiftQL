@@ -218,8 +218,17 @@ internal static class FilterExpressionCanonical
             FilterExpressionKind.Or => CanonicalizeOr(filter),
             FilterExpressionKind.Not => CanonicalizeNot(filter),
             FilterExpressionKind.In => CanonicalizeIn(filter),
+            FilterExpressionKind.ElemMatch => CanonicalizeElemMatch(filter),
             _ => filter,
         };
+
+    private static FilterExpression CanonicalizeElemMatch(FilterExpression filter)
+    {
+        if (filter.Children.Length != 1)
+            return filter;
+
+        return filter with { Children = [CanonicalizeCore(filter.Children[0])] };
+    }
 
     private static FilterExpression CanonicalizeAnd(FilterExpression filter)
     {
@@ -334,6 +343,12 @@ internal static class FilterExpressionCanonical
                 AppendField(builder, filter.Field);
                 builder.Append(':').Append((int)filter.Operator);
                 AppendValue(builder, filter.Value);
+                break;
+            case FilterExpressionKind.ElemMatch:
+                AppendField(builder, filter.Field);
+                builder.Append('[').Append(filter.Children.Length).Append(']');
+                foreach (FilterExpression child in filter.Children)
+                    AppendExpression(builder, child);
                 break;
             case FilterExpressionKind.And:
             case FilterExpressionKind.Or:

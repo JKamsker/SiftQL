@@ -12,6 +12,7 @@ internal static class FilterInterpretedCompiler
     private const int MaxDepth = 16;
     private const int MaxNodes = 128;
     private const int MaxValues = 128;
+    private const int MaxRuntimeElements = 256;
 
     public static Func<object, bool> Compile(
         FilterSchema schema,
@@ -45,6 +46,7 @@ internal static class FilterInterpretedCompiler
             FilterExpressionKind.Exists => CompileExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => CompileContains(schema, expression, errorFactory),
             FilterExpressionKind.Count => CompileCount(schema, expression, errorFactory),
+            FilterExpressionKind.ElemMatch => CompileElemMatch(schema, expression, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }
@@ -173,6 +175,44 @@ internal static class FilterInterpretedCompiler
         FilterValues.ValidateValue(field, value, errorFactory);
         var typed = FilterTypedArrayPredicates.TryCompileContains(field, value);
         return typed ?? (subject => FilterValues.Contains(field.Getter(subject), value));
+    }
+
+    private static Func<object, bool> CompileElemMatch(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory)
+    {
+        if (expression.Children.Length != 1)
+            throw Error(errorFactory, "ElemMatch filters must have exactly one child.");
+        if (!ElementCollection.TryResolve(
+                schema.SubjectType,
+                expression.Field,
+                out Func<object, System.Collections.IEnumerable?> getCollection,
+                out Type elementType))
+        {
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is not an element collection.");
+        }
+
+        FilterSchema elementSchema = FilterSchema.For(elementType);
+        Func<object, bool> child = Compile(elementSchema, expression.Children[0], errorFactory);
+        return subject =>
+        {
+            System.Collections.IEnumerable? collection = getCollection(subject);
+            if (collection is null)
+                return false;
+
+            int seen = 0;
+            foreach (object? element in collection)
+            {
+                if (++seen > MaxRuntimeElements)
+                    throw new InvalidOperationException(
+                        $"ElemMatch filters support at most {MaxRuntimeElements} elements.");
+                if (element is not null && child(element))
+                    return true;
+            }
+
+            return false;
+        };
     }
 
     private static Func<object, bool> CompileCount(

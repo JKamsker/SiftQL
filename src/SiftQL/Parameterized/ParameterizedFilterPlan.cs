@@ -94,6 +94,36 @@ internal sealed class CompareFilterPlanNode(
     }
 }
 
+internal sealed class ElemMatchFilterPlanNode(
+    Func<object, System.Collections.IEnumerable?> getCollection,
+    ParameterizedFilterPlanNode child) : ParameterizedFilterPlanNode
+{
+    private const int MaxRuntimeElements = 256;
+
+    public override Func<object, bool> Bind(FilterValue[] parameters)
+    {
+        Func<object, bool> childPredicate = child.Bind(parameters);
+        return subject =>
+        {
+            System.Collections.IEnumerable? collection = getCollection(subject);
+            if (collection is null)
+                return false;
+
+            int seen = 0;
+            foreach (object? element in collection)
+            {
+                if (++seen > MaxRuntimeElements)
+                    throw new InvalidOperationException(
+                        $"ElemMatch filters support at most {MaxRuntimeElements} elements.");
+                if (element is not null && childPredicate(element))
+                    return true;
+            }
+
+            return false;
+        };
+    }
+}
+
 internal sealed class CountFilterPlanNode(
     FilterField field,
     FilterOperator op,

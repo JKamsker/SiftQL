@@ -9,7 +9,8 @@ internal static class FilterExpressionInspector
         expression.Kind is FilterExpressionKind.Compare or
             FilterExpressionKind.In or
             FilterExpressionKind.Contains or
-            FilterExpressionKind.Count ||
+            FilterExpressionKind.Count or
+            FilterExpressionKind.ElemMatch ||
         HasSelectiveChild(expression.Children);
 
     public static int PromotionMinimumEvaluations(FilterExpression expression) =>

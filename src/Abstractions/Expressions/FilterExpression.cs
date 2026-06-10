@@ -14,6 +14,7 @@ public enum FilterExpressionKind
     Exists = 6,
     Contains = 7,
     Count = 8,
+    ElemMatch = 9,
 }
 
 public enum FilterOperator
@@ -134,6 +135,16 @@ public sealed record FilterExpression
             Field = RequireField(field),
             Operator = op,
             Value = value ?? throw new ArgumentNullException(nameof(value)),
+        };
+
+    // Matches a collection where at least one element satisfies the whole child
+    // filter (correlated, MongoDB $elemMatch semantics). Field is the collection
+    // path; the single child's fields are relative to the element.
+    public static FilterExpression ElemMatch(string field, FilterExpression child) =>
+        new(FilterExpressionKind.ElemMatch)
+        {
+            Field = RequireField(field),
+            Children = [child ?? throw new ArgumentNullException(nameof(child))],
         };
 
     public static FilterExpression Not(FilterExpression child) =>

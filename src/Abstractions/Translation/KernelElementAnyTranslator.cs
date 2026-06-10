@@ -66,6 +66,18 @@ internal static class KernelElementAnyTranslator
             throw KernelExpressionTranslator.Unsupported(expression);
         }
 
+        // A correlated conjunction (e.g. i.Name == "X" && i.Equipped) cannot be
+        // decorrelated soundly -- splitting it would match different elements per
+        // condition. Lower it to an ElemMatch evaluated per element instead.
+        if (string.IsNullOrEmpty(fieldPrefix) &&
+            StripConvert(predicate.Body).NodeType == ExpressionType.AndAlso)
+        {
+            filter = FilterExpression.ElemMatch(
+                sourceField,
+                KernelExpressionTranslator.TranslateElement(predicate.Body, predicate.Parameters[0]));
+            return true;
+        }
+
         string nextPrefix = CombinePath(fieldPrefix, sourceField);
         filter = TranslatePredicate(predicate.Body, predicate.Parameters[0], nextPrefix, ref parameterIndex);
         return true;

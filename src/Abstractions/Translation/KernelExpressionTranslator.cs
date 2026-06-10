@@ -16,6 +16,14 @@ internal static class KernelExpressionTranslator
         return Translate(predicate.Body, predicate.Parameters[0], ref parameterIndex);
     }
 
+    // Translates a lambda body against an element parameter, producing a filter
+    // whose field paths are relative to the element. Used for ElemMatch children.
+    internal static FilterExpression TranslateElement(Expression body, ParameterExpression parameter)
+    {
+        int parameterIndex = 0;
+        return Translate(body, parameter, ref parameterIndex);
+    }
+
     private static FilterExpression Translate(Expression expression, ParameterExpression parameter, ref int parameterIndex)
     {
         expression = StripConvert(expression);

@@ -51,6 +51,7 @@ internal static class ParameterizedFilterPlanBuilder
             FilterExpressionKind.Exists => BuildExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => BuildContains(schema, expression, indexes, errorFactory),
             FilterExpressionKind.Count => BuildCount(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.ElemMatch => BuildElemMatch(schema, expression, indexes, depth, ref nodes, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }
@@ -100,6 +101,38 @@ internal static class ParameterizedFilterPlanBuilder
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
         FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, expression.IgnoreCase);
         return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes), expression.IgnoreCase);
+    }
+
+    private static ParameterizedFilterPlanNode BuildElemMatch(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        int depth,
+        ref int nodes,
+        Func<string, Exception>? errorFactory)
+    {
+        if (expression.Children.Length != 1)
+            throw Error(errorFactory, "ElemMatch filters must have exactly one child.");
+        if (!ElementCollection.TryResolve(
+                schema.SubjectType,
+                expression.Field,
+                out Func<object, System.Collections.IEnumerable?> getCollection,
+                out Type elementType))
+        {
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is not an element collection.");
+        }
+
+        // The child binds against the same parameter array, so it keeps the
+        // global indexes while resolving its fields against the element schema.
+        FilterSchema elementSchema = FilterSchema.For(elementType);
+        ParameterizedFilterPlanNode child = BuildNode(
+            elementSchema,
+            expression.Children[0],
+            indexes,
+            depth + 1,
+            ref nodes,
+            errorFactory);
+        return new ElemMatchFilterPlanNode(getCollection, child);
     }
 
     private static ParameterizedFilterPlanNode BuildCount(
