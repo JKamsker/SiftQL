@@ -22,6 +22,8 @@ internal static class SchemaCollectionFieldDiscovery
             return false;
         }
 
+        if (!SchemaFieldDiscovery.ContainsField(fields, name))
+            fields.Add(CollectionField(name, access, elementType, collectionType));
         AddProperties(fields, name, access, owner, depth + 1);
         return true;
     }
@@ -93,6 +95,25 @@ internal static class SchemaCollectionFieldDiscovery
             GeneratedFieldKind.Array,
             scalarKind,
             SchemaFieldDiscovery.IsNullable(propertyType),
+            AccessCanReturnNull: false,
+            EmitsScalarAccessor: false,
+            ArrayContainsMethod: null,
+            UsesCollectionAccessor: true);
+
+    private static GeneratedField CollectionField(
+        string name,
+        string access,
+        ITypeSymbol elementType,
+        ITypeSymbol collectionType) =>
+        new(
+            name,
+            access,
+            access,
+            elementType.ToDisplayString(s_format),
+            collectionType.ToDisplayString(s_format),
+            GeneratedFieldKind.Array,
+            GeneratedScalarKind.Object,
+            SchemaFieldDiscovery.IsNullable(collectionType),
             AccessCanReturnNull: false,
             EmitsScalarAccessor: false,
             ArrayContainsMethod: null,
