@@ -98,6 +98,7 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
                 Value.AppendTo(builder);
                 break;
             case FilterExpressionKind.In:
+            case FilterExpressionKind.Between:
                 FilterKeyText.AppendText(builder, Field);
                 AppendValues(builder);
                 break;

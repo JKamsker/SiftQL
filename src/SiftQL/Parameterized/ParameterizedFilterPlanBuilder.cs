@@ -51,6 +51,7 @@ internal static class ParameterizedFilterPlanBuilder
             FilterExpressionKind.Exists => BuildExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => BuildContains(schema, expression, indexes, errorFactory),
             FilterExpressionKind.Count => BuildCount(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.Between => BuildBetween(schema, expression, indexes, errorFactory),
             FilterExpressionKind.ElemMatch => BuildElemMatch(schema, expression, indexes, depth, ref nodes, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
@@ -101,6 +102,23 @@ internal static class ParameterizedFilterPlanBuilder
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
         FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, expression.IgnoreCase);
         return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes), expression.IgnoreCase);
+    }
+
+    private static ParameterizedFilterPlanNode BuildBetween(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        EnsureScalar(field, errorFactory);
+        if (expression.Values.Length != 2)
+            throw Error(errorFactory, $"Between filters on '{field.Name}' require exactly two values.");
+
+        return new BetweenFilterPlanNode(
+            field,
+            FilterValueRef.Create(expression.Values[0], indexes),
+            FilterValueRef.Create(expression.Values[1], indexes));
     }
 
     private static ParameterizedFilterPlanNode BuildElemMatch(

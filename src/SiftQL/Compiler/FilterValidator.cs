@@ -113,6 +113,9 @@ public static class FilterValidator
             case FilterExpressionKind.Count:
                 ValidateCount(schema, node, path, errors);
                 break;
+            case FilterExpressionKind.Between:
+                ValidateBetween(schema, node, path, errors);
+                break;
             case FilterExpressionKind.Exists:
                 RequireField(schema, node.Field, path, errors, out _);
                 break;
@@ -223,6 +226,28 @@ public static class FilterValidator
             node.Value.Kind is not (FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
         {
             errors.Add(new FilterValidationError(path, $"Count comparisons on '{node.Field}' require an integer value."));
+        }
+    }
+
+    private static void ValidateBetween(
+        FilterSchema schema,
+        FilterExpression node,
+        string path,
+        List<FilterValidationError> errors)
+    {
+        if (!RequireScalarField(schema, node.Field, path, errors, out FilterField? field))
+            return;
+        if (node.Values.Length != 2)
+        {
+            errors.Add(new FilterValidationError(path, $"Between filters on '{node.Field}' require exactly two values."));
+            return;
+        }
+
+        for (int i = 0; i < node.Values.Length; i++)
+        {
+            int index = i;
+            Capture($"{path}.values[{index}]", errors, () =>
+                FilterValues.ValidateValue(field!, node.Values[index], Signal));
         }
     }
 

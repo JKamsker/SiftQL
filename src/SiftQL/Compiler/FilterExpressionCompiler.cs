@@ -73,6 +73,7 @@ internal static class FilterExpressionCompiler
             // Count and ElemMatch have no expression-tree builder; returning null
             // routes the whole filter to the interpreted compiler, which handles them.
             FilterExpressionKind.Count => null,
+            FilterExpressionKind.Between => null,
             FilterExpressionKind.ElemMatch => null,
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };

@@ -124,6 +124,24 @@ internal sealed class ElemMatchFilterPlanNode(
     }
 }
 
+internal sealed class BetweenFilterPlanNode(
+    FilterField field,
+    FilterValueRef lower,
+    FilterValueRef upper) : ParameterizedFilterPlanNode
+{
+    public override Func<object, bool> Bind(FilterValue[] parameters)
+    {
+        FilterValue boundLower = lower.Get(parameters);
+        FilterValue boundUpper = upper.Get(parameters);
+        return subject =>
+        {
+            object? actual = field.Getter(subject);
+            return FilterValues.Compare(actual, boundLower, FilterOperator.GreaterThanOrEqual) &&
+                FilterValues.Compare(actual, boundUpper, FilterOperator.LessThanOrEqual);
+        };
+    }
+}
+
 internal sealed class CountFilterPlanNode(
     FilterField field,
     FilterOperator op,

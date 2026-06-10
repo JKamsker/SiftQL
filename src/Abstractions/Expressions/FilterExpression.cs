@@ -15,6 +15,7 @@ public enum FilterExpressionKind
     Contains = 7,
     Count = 8,
     ElemMatch = 9,
+    Between = 10,
 }
 
 public enum FilterOperator
@@ -105,6 +106,19 @@ public sealed record FilterExpression
         {
             Field = RequireField(field),
             Values = ToValues(values),
+        };
+
+    // Inclusive numeric/temporal range: lower &lt;= field &lt;= upper, as a single
+    // node. Values are [lower, upper].
+    public static FilterExpression Between(string field, FilterValue lower, FilterValue upper) =>
+        new(FilterExpressionKind.Between)
+        {
+            Field = RequireField(field),
+            Values =
+            [
+                lower ?? throw new ArgumentNullException(nameof(lower)),
+                upper ?? throw new ArgumentNullException(nameof(upper)),
+            ],
         };
 
     public static FilterExpression Contains(string field, FilterValue value) =>

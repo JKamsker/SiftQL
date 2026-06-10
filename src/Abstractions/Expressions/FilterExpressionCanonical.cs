@@ -327,6 +327,7 @@ internal static class FilterExpressionCanonical
                 AppendValue(builder, filter.Value);
                 break;
             case FilterExpressionKind.In:
+            case FilterExpressionKind.Between:
                 AppendField(builder, filter.Field);
                 builder.Append('[').Append(filter.Values.Length).Append(']');
                 foreach (FilterValue value in filter.Values)

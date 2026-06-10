@@ -263,6 +263,13 @@ public static class FilterQuery
             string op = ReadOperator();
             if (op == "in")
                 return FilterExpression.In(field, ReadValueList());
+            if (op == "between")
+            {
+                IReadOnlyList<FilterValue> bounds = ReadValueList();
+                if (bounds.Count != 2)
+                    throw Error("between requires exactly two values: field between [lower, upper].");
+                return FilterExpression.Between(field, bounds[0], bounds[1]);
+            }
 
             FilterValue value = ReadValue();
             return op switch
@@ -290,7 +297,7 @@ public static class FilterQuery
             }
 
             if (Current.Kind == TokenKind.Identifier &&
-                Current.Text.ToLowerInvariant() is "in" or "contains" or "startswith" or "endswith")
+                Current.Text.ToLowerInvariant() is "in" or "between" or "contains" or "startswith" or "endswith")
             {
                 string keyword = Current.Text.ToLowerInvariant();
                 _index++;
@@ -399,7 +406,10 @@ public static class FilterQuery
                     AppendCompare(builder, filter);
                     break;
                 case FilterExpressionKind.In:
-                    AppendIn(builder, filter);
+                    AppendValueList(builder, filter, "in");
+                    break;
+                case FilterExpressionKind.Between:
+                    AppendValueList(builder, filter, "between");
                     break;
                 default:
                     throw new FilterQueryException(
@@ -451,9 +461,9 @@ public static class FilterQuery
             AppendValue(builder, filter.Value);
         }
 
-        private static void AppendIn(StringBuilder builder, FilterExpression filter)
+        private static void AppendValueList(StringBuilder builder, FilterExpression filter, string keyword)
         {
-            builder.Append(filter.Field).Append(" in [");
+            builder.Append(filter.Field).Append(' ').Append(keyword).Append(" [");
             for (int i = 0; i < filter.Values.Length; i++)
             {
                 if (i > 0)

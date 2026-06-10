@@ -46,6 +46,7 @@ internal static class FilterInterpretedCompiler
             FilterExpressionKind.Exists => CompileExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => CompileContains(schema, expression, errorFactory),
             FilterExpressionKind.Count => CompileCount(schema, expression, errorFactory),
+            FilterExpressionKind.Between => CompileBetween(schema, expression, errorFactory),
             FilterExpressionKind.ElemMatch => CompileElemMatch(schema, expression, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
@@ -175,6 +176,29 @@ internal static class FilterInterpretedCompiler
         FilterValues.ValidateValue(field, value, errorFactory);
         var typed = FilterTypedArrayPredicates.TryCompileContains(field, value);
         return typed ?? (subject => FilterValues.Contains(field.Getter(subject), value));
+    }
+
+    private static Func<object, bool> CompileBetween(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        EnsureScalar(field, errorFactory);
+        if (expression.Values.Length != 2)
+            throw Error(errorFactory, $"Between filters on '{field.Name}' require exactly two values.");
+
+        FilterValue lower = expression.Values[0];
+        FilterValue upper = expression.Values[1];
+        FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, lower, errorFactory);
+        FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
+
+        return subject =>
+        {
+            object? actual = field.Getter(subject);
+            return FilterValues.Compare(actual, lower, FilterOperator.GreaterThanOrEqual) &&
+                FilterValues.Compare(actual, upper, FilterOperator.LessThanOrEqual);
+        };
     }
 
     private static Func<object, bool> CompileElemMatch(
