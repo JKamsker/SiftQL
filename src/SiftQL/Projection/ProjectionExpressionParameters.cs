@@ -101,10 +101,31 @@ internal static class ProjectionExpressionParameters
             return;
         }
 
-        if (!existing.Equals(value))
+        if (!SameValue(existing, value))
         {
             throw new FilterValidationException(
                 $"Projection parameter '{key}' is used with conflicting values.");
         }
+    }
+
+    private static bool SameValue(FilterValue left, FilterValue right)
+    {
+        if (left.Kind != right.Kind)
+            return false;
+
+        return left.Kind switch
+        {
+            FilterValueKind.Null => true,
+            FilterValueKind.Boolean => left.Boolean == right.Boolean,
+            FilterValueKind.Integer => left.Integer == right.Integer,
+            FilterValueKind.UnsignedInteger => left.UnsignedInteger == right.UnsignedInteger,
+            FilterValueKind.Number => BitConverter.DoubleToInt64Bits(left.Number) ==
+                BitConverter.DoubleToInt64Bits(right.Number),
+            FilterValueKind.Decimal => left.Decimal == right.Decimal,
+            FilterValueKind.String => string.Equals(left.String, right.String, StringComparison.Ordinal),
+            FilterValueKind.Guid => left.Guid == right.Guid,
+            FilterValueKind.Timestamp => left.Timestamp.UtcTicks == right.Timestamp.UtcTicks,
+            _ => false,
+        };
     }
 }
