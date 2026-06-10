@@ -55,6 +55,36 @@ public sealed class ProjectionContextIncludeCompilerRegressionTests
         Assert.Equal("user-42", projected!.Field("Name").String);
     }
 
+    [Fact]
+    public async Task ProjectedEventIncludeSourceArgumentsUseDynamicSchemaFields()
+    {
+        var include = new EventProjectionInclude(
+            EventProjectionContextIntrinsics.Method(nameof(ProjectedSourceContext.Echo), ""),
+            "echo",
+            EventProjectionArgument.FromSourceField("itemId", ProjectedEventPaths.Field("ItemId")));
+        EventProjectionExpression projection = EventProjectionExpression.Default
+            .WithIncludes([include]);
+        CompiledProjection<ProjectedSourceContext> compiled =
+            ProjectionCompiler.Compile<ProjectedSourceContext>(
+                typeof(ProjectedEvent),
+                projection,
+                ProjectionContextIncludeCompiler.Compile<ProjectedSourceContext>,
+                ProjectionCompilerOptions.Immediate);
+        var source = new ProjectedEvent
+        {
+            EventType = "Projected",
+            EventName = "Projected",
+            Fields = [new ProjectedEventField("ItemId", ProjectedEventValue.FromScalar(42L))],
+        };
+
+        ProjectedEvent projected = await compiled.ProjectAsync(
+            source,
+            new ProjectedSourceContext(),
+            CancellationToken.None);
+
+        Assert.Equal(42, projected.ContextValue("echo").Integer);
+    }
+
     private sealed record PairEvent(string Left, string Right) : IFilterSubject;
 
     private sealed class PairContext
@@ -74,5 +104,10 @@ public sealed class ProjectionContextIncludeCompilerRegressionTests
 
         public UserSnapshot User(string name) =>
             new("user-" + name);
+    }
+
+    private sealed class ProjectedSourceContext
+    {
+        public long Echo(long itemId) => itemId;
     }
 }
