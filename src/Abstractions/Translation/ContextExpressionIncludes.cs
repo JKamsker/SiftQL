@@ -239,23 +239,23 @@ internal sealed class ContextExpressionIncludes
         AppendText(
             builder
             .Append(':')
-            .Append((int)value.Kind)
+            .Append(((int)value.Kind).ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.Boolean)
+            .Append(value.Boolean.ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.Integer)
+            .Append(value.Integer.ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.UnsignedInteger)
+            .Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(BitConverter.DoubleToInt64Bits(value.Number))
+            .Append(BitConverter.DoubleToInt64Bits(value.Number).ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.Decimal)
+            .Append(value.Decimal.ToString(CultureInfo.InvariantCulture))
             .Append(':'),
             value.String)
             .Append(':')
-            .Append(value.Guid)
+            .Append(value.Guid.ToString("D"))
             .Append(':')
-            .Append(value.Timestamp.UtcTicks);
+            .Append(value.Timestamp.UtcTicks.ToString(CultureInfo.InvariantCulture));
     private static StringBuilder AppendText(StringBuilder builder, string? value) =>
         builder.Append(value is null
             ? "-1:"
