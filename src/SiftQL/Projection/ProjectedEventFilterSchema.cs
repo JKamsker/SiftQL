@@ -100,6 +100,8 @@ public static class ProjectedEventFilterSchema
         string[] segments = name.Split('.');
         if (segments.Length == 0)
             return ProjectedEventValue.Null;
+        if (TryPrefixedValue(projected, context, segments, out ProjectedEventValue prefixed))
+            return prefixed;
 
         ProjectedEventValue value = context
             ? projected.ContextValue(segments[0])
@@ -118,6 +120,30 @@ public static class ProjectedEventFilterSchema
         context
             ? projected.TryGetContext(name, out value)
             : projected.TryGetField(name, out value);
+
+    private static bool TryPrefixedValue(
+        ProjectedEvent projected,
+        bool context,
+        string[] segments,
+        out ProjectedEventValue value)
+    {
+        for (int count = segments.Length - 1; count > 0; count--)
+        {
+            string prefix = string.Join(".", segments, 0, count);
+            bool found = context
+                ? projected.TryGetContext(prefix, out value)
+                : projected.TryGetField(prefix, out value);
+            if (!found)
+                continue;
+
+            for (int i = count; i < segments.Length; i++)
+                value = ObjectField(value, segments[i]);
+            return true;
+        }
+
+        value = ProjectedEventValue.Null;
+        return false;
+    }
 
     private static ProjectedEventValue ObjectField(ProjectedEventValue value, string name)
     {
