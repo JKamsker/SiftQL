@@ -61,6 +61,28 @@ public sealed class ServerPluginHostPayloadRegressionTests
     }
 
     [Fact]
+    public void ClientPayloadKeepsProjectedFieldWhenContextNameCollides()
+    {
+        var clients = new ClientGateway();
+        clients.Register(1001);
+
+        bool sent = clients.SendToAvatar(
+            1001,
+            "collision",
+            new ProjectedEvent
+            {
+                EventType = "Test",
+                EventName = "Test",
+                Fields = [new ProjectedEventField("Item", ProjectedEventValue.FromScalar("field-item"))],
+                Context = [new ProjectedEventField("Item", ProjectedEventValue.FromScalar("context-item"))],
+            });
+
+        Assert.True(sent);
+        ClientMessage message = Assert.Single(clients.Sessions.Single().Messages);
+        Assert.Equal("field-item", message.Payload["Item"]);
+    }
+
+    [Fact]
     public void ClientPayloadTreatsNullFieldCollectionsAsEmpty()
     {
         var clients = new ClientGateway();
