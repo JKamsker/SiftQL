@@ -328,7 +328,10 @@ internal static class FilterSchemaFallbackBuilder
         type == typeof(double) ||
         type == typeof(decimal) ||
         type == typeof(string) ||
-        type == typeof(Guid);
+        type == typeof(Guid) ||
+        type == typeof(DateTimeOffset) ||
+        type == typeof(DateTime) ||
+        type == typeof(DateOnly);
 
     private static int Depth(string name) =>
         name.Count(static item => item == '.') + 1;

@@ -17,10 +17,22 @@ public static class FilterValues
         FilterField field,
         FilterOperator op,
         FilterValue value,
-        Func<string, Exception>? errorFactory = null)
+        Func<string, Exception>? errorFactory = null,
+        bool ignoreCase = false)
     {
         ValidateValue(field, value, errorFactory);
-        if (op == FilterOperator.StringContains)
+        if (ignoreCase &&
+            !(value.Kind is FilterValueKind.String or FilterValueKind.Null &&
+                (field.ValueType == typeof(string) || IsProjectedDynamic(field.ValueType))))
+        {
+            throw Error(
+                errorFactory,
+                $"Case-insensitive matching on field '{field.Name}' requires a string field and value.");
+        }
+
+        if (op is FilterOperator.StringContains or
+            FilterOperator.StringStartsWith or
+            FilterOperator.StringEndsWith)
         {
             if (value.Kind == FilterValueKind.String &&
                 (field.ValueType == typeof(string) || IsProjectedDynamic(field.ValueType)))
@@ -28,7 +40,7 @@ public static class FilterValues
                 return;
             }
 
-            throw Error(errorFactory, $"Filter field '{field.Name}' does not support string contains.");
+            throw Error(errorFactory, $"Filter field '{field.Name}' does not support string '{op}'.");
         }
 
         if (op is FilterOperator.Equal or FilterOperator.NotEqual)
@@ -50,6 +62,9 @@ public static class FilterValues
         {
             return;
         }
+
+        if (IsTemporal(field.ValueType) && value.Kind == FilterValueKind.Timestamp)
+            return;
 
         if (!FilterNumeric.IsNumeric(field.ValueType))
         {
@@ -82,22 +97,25 @@ public static class FilterValues
                 FilterValueKind.Number or
                 FilterValueKind.Decimal) ||
             type == typeof(string) && value.Kind == FilterValueKind.String ||
-            type == typeof(Guid) && value.Kind == FilterValueKind.Guid;
+            type == typeof(Guid) && value.Kind == FilterValueKind.Guid ||
+            IsTemporal(type) && value.Kind == FilterValueKind.Timestamp;
 
         if (!valid)
             throw Error(errorFactory, $"Filter value '{value.Kind}' is not compatible with field '{field.Name}'.");
     }
 
-    public static bool Compare(object? actual, FilterValue expected, FilterOperator op) =>
+    public static bool Compare(object? actual, FilterValue expected, FilterOperator op, bool ignoreCase = false) =>
         op switch
         {
-            FilterOperator.Equal => AreEqual(actual, expected),
-            FilterOperator.NotEqual => !AreEqual(actual, expected),
+            FilterOperator.Equal => AreEqual(actual, expected, ignoreCase),
+            FilterOperator.NotEqual => !AreEqual(actual, expected, ignoreCase),
             FilterOperator.GreaterThan => TryCompareOrdered(actual, expected, out int comparison) && comparison > 0,
             FilterOperator.GreaterThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison >= 0,
             FilterOperator.LessThan => TryCompareOrdered(actual, expected, out int comparison) && comparison < 0,
             FilterOperator.LessThanOrEqual => TryCompareOrdered(actual, expected, out int comparison) && comparison <= 0,
-            FilterOperator.StringContains => ContainsString(actual, expected),
+            FilterOperator.StringContains => MatchesString(actual, expected, ignoreCase, static (text, s, c) => text.Contains(s, c)),
+            FilterOperator.StringStartsWith => MatchesString(actual, expected, ignoreCase, static (text, s, c) => text.StartsWith(s, c)),
+            FilterOperator.StringEndsWith => MatchesString(actual, expected, ignoreCase, static (text, s, c) => text.EndsWith(s, c)),
             _ => false,
         };
 
@@ -131,16 +149,39 @@ public static class FilterValues
         return false;
     }
 
-    private static bool ContainsString(object? actual, FilterValue expected) =>
+    public static long Count(object? collection)
+    {
+        if (collection is null || collection is string)
+            return 0;
+        if (collection is ICollection sized)
+            return sized.Count;
+        if (collection is not IEnumerable enumerable)
+            return 0;
+
+        long count = 0;
+        foreach (object? _ in enumerable)
+        {
+            if (++count > MaxRuntimeArrayItems)
+                throw TooManyRuntimeArrayItems();
+        }
+
+        return count;
+    }
+
+    private static bool MatchesString(
+        object? actual,
+        FilterValue expected,
+        bool ignoreCase,
+        Func<string, string, StringComparison, bool> match) =>
         actual is string text &&
         expected.Kind == FilterValueKind.String &&
-        expected.String is string substring &&
-        text.Contains(substring, StringComparison.Ordinal);
+        expected.String is string value &&
+        match(text, value, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private static InvalidOperationException TooManyRuntimeArrayItems() =>
         new(TooManyRuntimeArrayItemsMessage);
 
-    private static bool AreEqual(object? actual, FilterValue expected)
+    private static bool AreEqual(object? actual, FilterValue expected, bool ignoreCase = false)
     {
         if (actual is null || expected.Kind == FilterValueKind.Null)
             return actual is null && expected.Kind == FilterValueKind.Null;
@@ -166,8 +207,10 @@ public static class FilterValues
             FilterValueKind.Number => FilterNumericComparison.AreNumberEqual(actual, expected.Number),
             FilterValueKind.Decimal => FilterNumericComparison.AreDecimalEqual(actual, expected.Decimal),
             FilterValueKind.String => actual is string item &&
-                string.Equals(item, expected.String, StringComparison.Ordinal),
+                string.Equals(item, expected.String, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal),
             FilterValueKind.Guid => actual is Guid item && item == expected.Guid,
+            FilterValueKind.Timestamp => TryGetInstantTicks(actual, out long ticks) &&
+                ticks == expected.Timestamp.UtcTicks,
             _ => false,
         };
     }
@@ -177,6 +220,14 @@ public static class FilterValues
         comparison = 0;
         if (actual is null || expected.Kind == FilterValueKind.Null)
             return false;
+
+        if (expected.Kind == FilterValueKind.Timestamp)
+        {
+            if (!TryGetInstantTicks(actual, out long actualTicks))
+                return false;
+            comparison = actualTicks.CompareTo(expected.Timestamp.UtcTicks);
+            return true;
+        }
 
         if (expected.Kind == FilterValueKind.Integer &&
             FilterNumericComparison.TryCompareInteger(actual, expected.Integer, out comparison))
@@ -222,6 +273,39 @@ public static class FilterValues
         return true;
     }
 
+    private static bool TryGetInstantTicks(object? actual, out long ticks)
+    {
+        switch (actual)
+        {
+            case DateTimeOffset dto:
+                ticks = dto.UtcTicks;
+                return true;
+            case DateTime dt:
+                ticks = ToTimestamp(dt).UtcTicks;
+                return true;
+            case DateOnly date:
+                ticks = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).UtcTicks;
+                return true;
+            default:
+                ticks = 0;
+                return false;
+        }
+    }
+
+    private static DateTimeOffset ToTimestamp(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => new DateTimeOffset(value, TimeSpan.Zero),
+            DateTimeKind.Local => new DateTimeOffset(value),
+            _ => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc), TimeSpan.Zero),
+        };
+
+    internal static bool IsTemporal(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type == typeof(DateTimeOffset) || type == typeof(DateTime) || type == typeof(DateOnly);
+    }
+
     private static bool IsProjectedDynamic(Type type) =>
         type == typeof(ProjectedEventValue);
 
@@ -233,7 +317,8 @@ public static class FilterValues
             FilterValueKind.Number or
             FilterValueKind.Decimal or
             FilterValueKind.String or
-            FilterValueKind.Guid;
+            FilterValueKind.Guid or
+            FilterValueKind.Timestamp;
 
     private static bool IsEnumStringEqual(object actual, string? expected)
     {

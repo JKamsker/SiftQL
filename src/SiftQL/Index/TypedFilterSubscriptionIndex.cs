@@ -13,12 +13,14 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     private readonly object _sync = new();
     private readonly Dictionary<string, TypedSubscriptionFieldIndex<TSubscription, TSubject>> _fields =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TypedRangeFieldIndex<TSubscription, TSubject>> _rangeFields =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<TSubscription, List<TypedSubscriptionEntry<TSubscription, TSubject>>> _entries = [];
     private readonly SubscriptionBucket<TypedSubscriptionEntry<TSubscription, TSubject>> _unindexed = new();
     private FilterSchema _schema;
     private int _schemaVersion;
     private int _count;
-    private Snapshot _snapshot = new([], [], 0);
+    private Snapshot _snapshot = new([], [], [], 0);
 
     public TypedFilterSubscriptionIndex()
     {
@@ -28,6 +30,29 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     }
 
     public int Count => Volatile.Read(ref _snapshot).Count;
+
+    public FilterSubscriptionIndexStatistics GetStatistics()
+    {
+        EnsureCurrentSchema();
+        lock (_sync)
+        {
+            var buckets = new Dictionary<string, int>(_fields.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in _fields)
+                buckets[pair.Key] = pair.Value.BucketCount;
+
+            int rangeIndexed = 0;
+            foreach (var pair in _rangeFields)
+                rangeIndexed += pair.Value.Count;
+
+            int unindexed = _unindexed.Count;
+            return new FilterSubscriptionIndexStatistics(
+                _count,
+                _count - unindexed,
+                unindexed,
+                buckets,
+                rangeIndexed);
+        }
+    }
 
     public void Add(TSubscription subscription, FilterExpression? filter)
     {
@@ -54,9 +79,11 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
             for (int i = entries.Count - 1; i >= 0; i--)
             {
                 var entry = entries[i];
-                bool removedEntry = entry.Key is null
-                    ? TryRemoveUnindexed(entry)
-                    : TryRemoveIndexed(entry);
+                bool removedEntry = entry.Keys.Count > 0
+                    ? TryRemoveIndexed(entry)
+                    : entry.RangeKey is not null
+                        ? TryRemoveRange(entry)
+                        : TryRemoveUnindexed(entry);
                 if (!removedEntry)
                     continue;
 
@@ -96,6 +123,12 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
             if (!snapshot.Fields[i].VisitCandidates(subject, ref state, visitor, seen))
                 return;
         }
+
+        for (int i = 0; i < snapshot.RangeFields.Length; i++)
+        {
+            if (!snapshot.RangeFields[i].VisitCandidates(subject, ref state, visitor, seen))
+                return;
+        }
     }
 
     public void ForEachMatch<TState>(
@@ -124,6 +157,12 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
             if (!snapshot.Fields[i].VisitMatches(subject, ref state, visitor, seen))
                 return;
         }
+
+        for (int i = 0; i < snapshot.RangeFields.Length; i++)
+        {
+            if (!snapshot.RangeFields[i].VisitMatches(subject, ref state, visitor, seen))
+                return;
+        }
     }
 
     public TSubscription[] SnapshotCandidates(TSubject subject)
@@ -142,6 +181,8 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
         for (int i = 0; i < snapshot.Fields.Length; i++)
             snapshot.Fields[i].AddCandidates(subject, candidates, seen);
+        for (int i = 0; i < snapshot.RangeFields.Length; i++)
+            snapshot.RangeFields[i].AddCandidates(subject, candidates, seen);
         return candidates.ToArray();
     }
 
@@ -161,6 +202,8 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
         for (int i = 0; i < snapshot.Fields.Length; i++)
             snapshot.Fields[i].AddMatches(subject, matches, seen);
+        for (int i = 0; i < snapshot.RangeFields.Length; i++)
+            snapshot.RangeFields[i].AddMatches(subject, matches, seen);
         return matches.ToArray();
     }
 
@@ -179,6 +222,21 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         return created;
     }
 
+    private TypedRangeFieldIndex<TSubscription, TSubject> GetOrAddRangeField(string fieldName)
+    {
+        if (_rangeFields.TryGetValue(fieldName, out var existing))
+            return existing;
+        FilterField field;
+        if (_schema.SubjectType == typeof(ProjectedEvent))
+            field = ProjectedEventFilterSchema.CreateField(fieldName);
+        else if (!_schema.TryGetField(fieldName, out field!))
+            throw new FilterValidationException($"Filter field '{fieldName}' is not supported.");
+
+        var created = new TypedRangeFieldIndex<TSubscription, TSubject>(field);
+        _rangeFields.Add(fieldName, created);
+        return created;
+    }
+
     private static TypedSubscriptionEntry<TSubscription, TSubject> CreateEntry(
         FilterSchema schema,
         TSubscription subscription,
@@ -189,11 +247,18 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         FilterSchema entrySchema = schema.SubjectType == typeof(ProjectedEvent)
             ? ProjectedEventFilterSchema.ForFilter(snapshot)
             : schema;
-        FilterIndexKey? key = FilterIndexExtractor.Extract(entrySchema, snapshot);
+        IReadOnlyList<FilterIndexKey> keys = FilterIndexExtractor.ExtractKeys(entrySchema, snapshot);
+        // A range key is kept only when it carries a bound; a bound-less condition
+        // would vanish from the sorted arrays, so it is treated as unindexed.
+        RangeCondition? range = keys.Count == 0 &&
+            FilterIndexExtractor.ExtractRange(entrySchema, snapshot) is { HasAnyBound: true } extracted
+            ? extracted
+            : null;
         return new TypedSubscriptionEntry<TSubscription, TSubject>(
             subscription,
             snapshot,
-            key,
+            keys,
+            range,
             (entrySchema.SubjectType == typeof(ProjectedEvent)
                 ? FilterCompiler.CompileWithSchema(
                     typeof(ProjectedEvent),
@@ -209,10 +274,20 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
     {
         _count++;
         Track(entry);
-        if (entry.Key is not { } key)
-            _unindexed.Add(entry);
-        else
-            GetOrAddField(key).Add(key.Value, entry);
+        if (entry.Keys.Count > 0)
+        {
+            foreach (FilterIndexKey key in entry.Keys)
+                GetOrAddField(key).Add(key.Value, entry);
+            return;
+        }
+
+        if (entry.RangeKey is { } range)
+        {
+            GetOrAddRangeField(range.Field).Add(range, entry);
+            return;
+        }
+
+        _unindexed.Add(entry);
     }
 
     private void EnsureCurrentSchema()
@@ -240,6 +315,7 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
         _schema = current.Schema;
         _fields.Clear();
+        _rangeFields.Clear();
         _entries.Clear();
         _unindexed.Clear();
         _count = 0;
@@ -265,16 +341,34 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
 
     private bool TryRemoveIndexed(TypedSubscriptionEntry<TSubscription, TSubject> entry)
     {
-        if (entry.Key is not { } key ||
-            !_fields.TryGetValue(key.Field, out var field) ||
-            !field.Remove(key.Value, entry))
+        bool removedAny = false;
+        foreach (FilterIndexKey key in entry.Keys)
+        {
+            if (!_fields.TryGetValue(key.Field, out var field) ||
+                !field.Remove(key.Value, entry))
+            {
+                continue;
+            }
+
+            removedAny = true;
+            if (field.IsEmpty)
+                _fields.Remove(key.Field);
+        }
+
+        return removedAny;
+    }
+
+    private bool TryRemoveRange(TypedSubscriptionEntry<TSubscription, TSubject> entry)
+    {
+        if (entry.RangeKey is not { } range ||
+            !_rangeFields.TryGetValue(range.Field, out var field) ||
+            !field.Remove(entry))
         {
             return false;
         }
 
         if (field.IsEmpty)
-            _fields.Remove(key.Field);
-
+            _rangeFields.Remove(range.Field);
         return true;
     }
 
@@ -284,11 +378,18 @@ public sealed class TypedFilterSubscriptionIndex<TSubscription, TSubject>
         int index = 0;
         foreach (var field in _fields.Values)
             fields[index++] = field.ToSnapshot();
-        Volatile.Write(ref _snapshot, new Snapshot(_unindexed.Snapshot(), fields, _count));
+
+        var rangeFields = new TypedRangeFieldSnapshot<TSubscription, TSubject>[_rangeFields.Count];
+        index = 0;
+        foreach (var field in _rangeFields.Values)
+            rangeFields[index++] = field.ToSnapshot();
+
+        Volatile.Write(ref _snapshot, new Snapshot(_unindexed.Snapshot(), fields, rangeFields, _count));
     }
 
     private sealed record Snapshot(
         TypedSubscriptionEntry<TSubscription, TSubject>[] Unindexed,
         TypedSubscriptionFieldSnapshot<TSubscription, TSubject>[] Fields,
+        TypedRangeFieldSnapshot<TSubscription, TSubject>[] RangeFields,
         int Count);
 }

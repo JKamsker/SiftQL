@@ -5,7 +5,7 @@ namespace SiftQL.Generators.Hot;
 
 internal static partial class HotManifestParser
 {
-    private const int StringContainsOperator = 6;
+    private const int MaxFilterOperator = 8;
 
     private static HotFilterNode? ParseFilter(
         JsonElement element,
@@ -147,7 +147,7 @@ internal static partial class HotManifestParser
         value = 0;
         if (!element.TryGetProperty("Operator", out JsonElement item) ||
             !item.TryGetInt32(out int raw) ||
-            raw is < 0 or > StringContainsOperator)
+            raw is < 0 or > MaxFilterOperator)
         {
             return false;
         }

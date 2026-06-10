@@ -13,7 +13,38 @@ internal static class KernelElementAnyTranslator
         ref int parameterIndex,
         out FilterExpression filter)
     {
+        if (IsAll(expression.Method))
+            return TryTranslateAll(expression, parameter, ref parameterIndex, out filter);
+
         return TryTranslateAny(expression, parameter, fieldPrefix: string.Empty, ref parameterIndex, out filter);
+    }
+
+    // All(predicate) == Not(Any(!predicate)). Sound for every element-predicate
+    // shape Any supports after negation (boolean members in particular); other
+    // shapes throw from the Any path, which is correct -- no silent mismatch.
+    private static bool TryTranslateAll(
+        MethodCallExpression expression,
+        ParameterExpression parameter,
+        ref int parameterIndex,
+        out FilterExpression filter)
+    {
+        filter = FilterExpression.Any;
+        if (expression.Arguments.Count != 2 ||
+            Lambda(expression.Arguments[1]) is not { } predicate ||
+            predicate.Parameters.Count != 1 ||
+            !KernelExpressionTranslator.TryGetFieldPath(expression.Arguments[0], parameter, out string? sourceField))
+        {
+            throw KernelExpressionTranslator.Unsupported(expression);
+        }
+
+        string nextPrefix = CombinePath(string.Empty, sourceField);
+        FilterExpression existsNegated = TranslatePredicate(
+            Expression.Not(predicate.Body),
+            predicate.Parameters[0],
+            nextPrefix,
+            ref parameterIndex);
+        filter = FilterExpression.Not(existsNegated);
+        return true;
     }
 
     private static bool TryTranslateAny(
@@ -33,6 +64,18 @@ internal static class KernelElementAnyTranslator
             !KernelExpressionTranslator.TryGetFieldPath(expression.Arguments[0], parameter, out string? sourceField))
         {
             throw KernelExpressionTranslator.Unsupported(expression);
+        }
+
+        // A correlated conjunction (e.g. i.Name == "X" && i.Equipped) cannot be
+        // decorrelated soundly -- splitting it would match different elements per
+        // condition. Lower it to an ElemMatch evaluated per element instead.
+        if (string.IsNullOrEmpty(fieldPrefix) &&
+            StripConvert(predicate.Body).NodeType == ExpressionType.AndAlso)
+        {
+            filter = FilterExpression.ElemMatch(
+                sourceField,
+                KernelExpressionTranslator.TranslateElement(predicate.Body, predicate.Parameters[0]));
+            return true;
         }
 
         string nextPrefix = CombinePath(fieldPrefix, sourceField);
@@ -272,6 +315,11 @@ internal static class KernelElementAnyTranslator
 
     private static bool IsAny(MethodInfo method) =>
         method.Name == nameof(Enumerable.Any) &&
+        method.DeclaringType is { } declaringType &&
+        (declaringType == typeof(Enumerable) || declaringType == typeof(Queryable));
+
+    private static bool IsAll(MethodInfo method) =>
+        method.Name == nameof(Enumerable.All) &&
         method.DeclaringType is { } declaringType &&
         (declaringType == typeof(Enumerable) || declaringType == typeof(Queryable));
 

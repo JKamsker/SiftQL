@@ -17,7 +17,7 @@ internal static class FilterExpressionCompiler
 
     private static readonly MethodInfo s_compare = typeof(FilterValues).GetMethod(
         nameof(FilterValues.Compare),
-        [typeof(object), typeof(FilterValue), typeof(FilterOperator)])!;
+        [typeof(object), typeof(FilterValue), typeof(FilterOperator), typeof(bool)])!;
     private static readonly MethodInfo s_in = typeof(FilterValues).GetMethod(
         nameof(FilterValues.In),
         [typeof(object), typeof(FilterValue[])])!;
@@ -70,6 +70,11 @@ internal static class FilterExpressionCompiler
             FilterExpressionKind.In => BuildIn(schema, subject, expression, errorFactory),
             FilterExpressionKind.Exists => BuildExists(schema, subject, expression, errorFactory),
             FilterExpressionKind.Contains => BuildContains(schema, subject, expression, errorFactory),
+            // Count and ElemMatch have no expression-tree builder; returning null
+            // routes the whole filter to the interpreted compiler, which handles them.
+            FilterExpressionKind.Count => null,
+            FilterExpressionKind.Between => null,
+            FilterExpressionKind.ElemMatch => null,
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }
@@ -128,17 +133,19 @@ internal static class FilterExpressionCompiler
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
-        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory);
+        bool ignoreCase = expression.IgnoreCase;
+        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, ignoreCase);
 
         Expression? access = BuildAccess(subject, field);
         return access is null
             ? null
-            : FilterExpressionScalarBuilder.BuildCompare(access, value, expression.Operator) ??
+            : FilterExpressionScalarBuilder.BuildCompare(access, value, expression.Operator, ignoreCase) ??
                 Expression.Call(
                     s_compare,
                     Expression.Convert(access, typeof(object)),
                     Expression.Constant(value),
-                    Expression.Constant(expression.Operator));
+                    Expression.Constant(expression.Operator),
+                    Expression.Constant(ignoreCase));
     }
 
     private static Expression? BuildIn(

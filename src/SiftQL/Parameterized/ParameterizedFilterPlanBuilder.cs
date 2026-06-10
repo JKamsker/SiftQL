@@ -50,6 +50,9 @@ internal static class ParameterizedFilterPlanBuilder
             FilterExpressionKind.In => BuildIn(schema, expression, indexes, errorFactory),
             FilterExpressionKind.Exists => BuildExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => BuildContains(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.Count => BuildCount(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.Between => BuildBetween(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.ElemMatch => BuildElemMatch(schema, expression, indexes, depth, ref nodes, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }
@@ -97,8 +100,71 @@ internal static class ParameterizedFilterPlanBuilder
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
-        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory);
-        return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
+        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, expression.IgnoreCase);
+        return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes), expression.IgnoreCase);
+    }
+
+    private static ParameterizedFilterPlanNode BuildBetween(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        EnsureScalar(field, errorFactory);
+        if (expression.Values.Length != 2)
+            throw Error(errorFactory, $"Between filters on '{field.Name}' require exactly two values.");
+
+        return new BetweenFilterPlanNode(
+            field,
+            FilterValueRef.Create(expression.Values[0], indexes),
+            FilterValueRef.Create(expression.Values[1], indexes));
+    }
+
+    private static ParameterizedFilterPlanNode BuildElemMatch(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        int depth,
+        ref int nodes,
+        Func<string, Exception>? errorFactory)
+    {
+        if (expression.Children.Length != 1)
+            throw Error(errorFactory, "ElemMatch filters must have exactly one child.");
+        if (!ElementCollection.TryResolve(
+                schema.SubjectType,
+                expression.Field,
+                out Func<object, System.Collections.IEnumerable?> getCollection,
+                out Type elementType))
+        {
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is not an element collection.");
+        }
+
+        // The child binds against the same parameter array, so it keeps the
+        // global indexes while resolving its fields against the element schema.
+        FilterSchema elementSchema = FilterSchema.For(elementType);
+        ParameterizedFilterPlanNode child = BuildNode(
+            elementSchema,
+            expression.Children[0],
+            indexes,
+            depth + 1,
+            ref nodes,
+            errorFactory);
+        return new ElemMatchFilterPlanNode(getCollection, child);
+    }
+
+    private static ParameterizedFilterPlanNode BuildCount(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (field.Kind != FilterFieldKind.Array)
+            throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
+        FilterValue value = expression.Value ??
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
+        return new CountFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
     }
 
     private static ParameterizedFilterPlanNode BuildIn(

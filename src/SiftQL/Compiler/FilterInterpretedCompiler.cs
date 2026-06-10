@@ -12,6 +12,7 @@ internal static class FilterInterpretedCompiler
     private const int MaxDepth = 16;
     private const int MaxNodes = 128;
     private const int MaxValues = 128;
+    private const int MaxRuntimeElements = 256;
 
     public static Func<object, bool> Compile(
         FilterSchema schema,
@@ -44,6 +45,9 @@ internal static class FilterInterpretedCompiler
             FilterExpressionKind.In => CompileIn(schema, expression, errorFactory),
             FilterExpressionKind.Exists => CompileExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => CompileContains(schema, expression, errorFactory),
+            FilterExpressionKind.Count => CompileCount(schema, expression, errorFactory),
+            FilterExpressionKind.Between => CompileBetween(schema, expression, errorFactory),
+            FilterExpressionKind.ElemMatch => CompileElemMatch(schema, expression, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }
@@ -130,9 +134,10 @@ internal static class FilterInterpretedCompiler
         EnsureScalar(field, errorFactory);
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
-        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory);
-        var typed = FilterTypedPredicates.TryCompileCompare(field, value, expression.Operator);
-        return typed ?? (subject => FilterValues.Compare(field.Getter(subject), value, expression.Operator));
+        bool ignoreCase = expression.IgnoreCase;
+        FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, ignoreCase);
+        var typed = FilterTypedPredicates.TryCompileCompare(field, value, expression.Operator, ignoreCase);
+        return typed ?? (subject => FilterValues.Compare(field.Getter(subject), value, expression.Operator, ignoreCase));
     }
 
     private static Func<object, bool> CompileIn(
@@ -171,6 +176,85 @@ internal static class FilterInterpretedCompiler
         FilterValues.ValidateValue(field, value, errorFactory);
         var typed = FilterTypedArrayPredicates.TryCompileContains(field, value);
         return typed ?? (subject => FilterValues.Contains(field.Getter(subject), value));
+    }
+
+    private static Func<object, bool> CompileBetween(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        EnsureScalar(field, errorFactory);
+        if (expression.Values.Length != 2)
+            throw Error(errorFactory, $"Between filters on '{field.Name}' require exactly two values.");
+
+        FilterValue lower = expression.Values[0];
+        FilterValue upper = expression.Values[1];
+        FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, lower, errorFactory);
+        FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
+
+        return subject =>
+        {
+            object? actual = field.Getter(subject);
+            return FilterValues.Compare(actual, lower, FilterOperator.GreaterThanOrEqual) &&
+                FilterValues.Compare(actual, upper, FilterOperator.LessThanOrEqual);
+        };
+    }
+
+    private static Func<object, bool> CompileElemMatch(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory)
+    {
+        if (expression.Children.Length != 1)
+            throw Error(errorFactory, "ElemMatch filters must have exactly one child.");
+        if (!ElementCollection.TryResolve(
+                schema.SubjectType,
+                expression.Field,
+                out Func<object, System.Collections.IEnumerable?> getCollection,
+                out Type elementType))
+        {
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is not an element collection.");
+        }
+
+        FilterSchema elementSchema = FilterSchema.For(elementType);
+        Func<object, bool> child = Compile(elementSchema, expression.Children[0], errorFactory);
+        return subject =>
+        {
+            System.Collections.IEnumerable? collection = getCollection(subject);
+            if (collection is null)
+                return false;
+
+            int seen = 0;
+            foreach (object? element in collection)
+            {
+                if (++seen > MaxRuntimeElements)
+                    throw new InvalidOperationException(
+                        $"ElemMatch filters support at most {MaxRuntimeElements} elements.");
+                if (element is not null && child(element))
+                    return true;
+            }
+
+            return false;
+        };
+    }
+
+    private static Func<object, bool> CompileCount(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (field.Kind != FilterFieldKind.Array)
+            throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
+
+        FilterValue value = expression.Value ??
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
+        if (value.Kind is not (FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
+            throw Error(errorFactory, $"Count comparisons on '{field.Name}' require an integer value.");
+
+        FilterOperator op = expression.Operator;
+        return subject => FilterValues.Compare(FilterValues.Count(field.Getter(subject)), value, op);
     }
 
     private static FilterField RequireField(

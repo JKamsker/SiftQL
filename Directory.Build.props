@@ -7,8 +7,7 @@
     <Deterministic>true</Deterministic>
     <AnalysisLevel>latest-default</AnalysisLevel>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <TreatWarningsAsErrors Condition=" '$(GITHUB_ACTIONS)' == 'true' ">true</TreatWarningsAsErrors>
-    <TreatWarningsAsErrors Condition=" '$(GITHUB_ACTIONS)' != 'true' ">false</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>NU1900</WarningsNotAsErrors>
   </PropertyGroup>
 

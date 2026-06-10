@@ -72,6 +72,15 @@ public sealed class FilterSchema
     public bool TryGetField(string name, out FilterField field) =>
         _fields.TryGetValue(name, out field!);
 
+    public FilterSchemaDescriptor Describe()
+    {
+        var fields = _fields.Values
+            .OrderBy(static field => field.Name, StringComparer.Ordinal)
+            .Select(FilterFieldDescriptor.Describe)
+            .ToList();
+        return new FilterSchemaDescriptor(SubjectType.FullName ?? SubjectType.Name, fields);
+    }
+
     private static FilterSchema Build(Type subjectType)
     {
         if (GeneratedFilterSchemaProvider.TryCreate(subjectType, out var schema))

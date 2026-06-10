@@ -13,6 +13,7 @@ public enum FilterValueKind
     Guid = 5,
     UnsignedInteger = 6,
     Decimal = 7,
+    Timestamp = 8,
 }
 
 public sealed record FilterValue
@@ -30,6 +31,12 @@ public sealed record FilterValue
     public decimal Decimal { get; init; }
     public string? String { get; init; }
     public Guid Guid { get; init; }
+
+    // Temporal point-in-time (DateTime/DateTimeOffset/DateOnly), compared by
+    // instant. Serialized only when set so non-temporal values keep their wire
+    // format and fingerprints.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public DateTimeOffset Timestamp { get; init; }
 
     public static FilterValue Null { get; } = new() { Kind = FilterValueKind.Null };
 
@@ -57,6 +64,24 @@ public sealed record FilterValue
 
     public static FilterValue From(Guid value) =>
         new() { Kind = FilterValueKind.Guid, Guid = value };
+
+    public static FilterValue From(DateTimeOffset value) =>
+        new() { Kind = FilterValueKind.Timestamp, Timestamp = value };
+
+    public static FilterValue From(DateTime value) =>
+        From(ToTimestamp(value));
+
+    public static FilterValue From(DateOnly value) =>
+        From(new DateTimeOffset(value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero));
+
+    private static DateTimeOffset ToTimestamp(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => new DateTimeOffset(value, TimeSpan.Zero),
+            DateTimeKind.Local => new DateTimeOffset(value),
+            // Unspecified is assumed UTC for deterministic, machine-independent results.
+            _ => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc), TimeSpan.Zero),
+        };
 
     public static FilterValue FromObject(object? value)
     {
@@ -87,6 +112,9 @@ public sealed record FilterValue
             decimal item => From(item),
             string item => From(item),
             Guid item => From(item),
+            DateTimeOffset item => From(item),
+            DateTime item => From(item),
+            DateOnly item => From(item),
             _ => throw new KernelExpressionException(
                 $"Filter constants of type '{type.FullName}' are not supported."),
         };

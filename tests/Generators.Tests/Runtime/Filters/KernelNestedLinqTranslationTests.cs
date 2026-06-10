@@ -101,14 +101,22 @@ public sealed class KernelNestedLinqTranslationTests
     }
 
     [Fact]
-    public void WhereAnyRejectsCorrelatedAndPredicate()
+    public void WhereCorrelatedAndPredicateLowersToElemMatch()
     {
         RegisterInventoryValueObjects();
 
-        Assert.Throws<KernelExpressionException>(() =>
-            QueryKernel.For<InventoryEvent>()
-                .Where(static subject => subject.Items.Any(item =>
-                    item.Name == "Destroyer" && item.Equipped)));
+        QueryKernel<InventoryEvent> query = QueryKernel.For<InventoryEvent>()
+            .Where(static subject => subject.Items.Any(item =>
+                item.Name == "Destroyer" && item.Equipped));
+
+        Assert.Equal(FilterExpressionKind.ElemMatch, query.Filter.Kind);
+        var kernel = FilterCompiler.Compile(typeof(InventoryEvent), query.Filter, FilterCompilerOptions.Immediate);
+
+        // Both conditions satisfied by the same element.
+        Assert.True(kernel.Matches(new InventoryEvent([new("Destroyer", [], Equipped: true)])));
+        // Conditions satisfied by different elements must NOT match.
+        Assert.False(kernel.Matches(new InventoryEvent(
+            [new("Destroyer", [], Equipped: false), new("Cruiser", [], Equipped: true)])));
     }
 
     private static void AssertContains(FilterExpression expression, string field, string value)

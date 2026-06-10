@@ -21,6 +21,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
         Decimal = value.Decimal;
         Text = value.String;
         Guid = value.Guid;
+        Timestamp = value.Timestamp;
     }
 
     public FilterValueKind Kind { get; }
@@ -32,6 +33,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
     public decimal Decimal { get; }
     public string? Text { get; }
     public Guid Guid { get; }
+    public DateTimeOffset Timestamp { get; }
 
     public static FilterValueKey From(FilterValue? value) =>
         value is null ? default : new FilterValueKey(value);
@@ -60,6 +62,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
             FilterValueKind.Decimal => HashCode.Combine(Kind, Decimal),
             FilterValueKind.String => HashCode.Combine(Kind, Text),
             FilterValueKind.Guid => HashCode.Combine(Kind, Guid),
+            FilterValueKind.Timestamp => HashCode.Combine(Kind, Timestamp.UtcTicks),
             _ => Kind.GetHashCode(),
         };
     }
@@ -81,6 +84,7 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
             FilterValueKind.Decimal => Decimal == other.Decimal,
             FilterValueKind.String => string.Equals(Text, other.Text, StringComparison.Ordinal),
             FilterValueKind.Guid => Guid == other.Guid,
+            FilterValueKind.Timestamp => Timestamp.UtcTicks == other.Timestamp.UtcTicks,
             _ => true,
         };
     }
@@ -139,6 +143,9 @@ internal readonly struct FilterValueKey : IEquatable<FilterValueKey>
                 break;
             case FilterValueKind.Guid:
                 builder.Append(Guid.ToString("D"));
+                break;
+            case FilterValueKind.Timestamp:
+                builder.Append(Timestamp.UtcTicks.ToString(CultureInfo.InvariantCulture));
                 break;
         }
     }

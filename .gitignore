@@ -6,6 +6,9 @@ obj/
 *.userosscache
 *.sln.docstates
 
+## Local scratch verification project
+.tmp-verify/
+
 ## IDE
 .vs/
 .vscode/

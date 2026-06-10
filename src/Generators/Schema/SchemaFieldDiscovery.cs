@@ -244,6 +244,8 @@ internal static class SchemaFieldDiscovery
                 SpecialType.System_Int64 or SpecialType.System_UInt64 or SpecialType.System_Single or
                 SpecialType.System_Double or SpecialType.System_Decimal => GeneratedScalarKind.Number,
             _ when type.ToDisplayString() == "System.Guid" => GeneratedScalarKind.Guid,
+            _ when type.ToDisplayString() is "System.DateTime" or "System.DateTimeOffset" or "System.DateOnly"
+                => GeneratedScalarKind.Temporal,
             _ => default,
         };
         return kind != default || type.SpecialType == SpecialType.System_Boolean;

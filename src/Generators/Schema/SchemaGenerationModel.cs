@@ -15,6 +15,7 @@ internal enum GeneratedScalarKind
     String,
     Guid,
     Enum,
+    Temporal,
 }
 
 internal sealed record GeneratedSchema(

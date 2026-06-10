@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ShaRPC" Version="1.0.0-ci.13" />
+    <PackageReference Include="ShaRPC" />
   </ItemGroup>
 
   <ItemGroup>

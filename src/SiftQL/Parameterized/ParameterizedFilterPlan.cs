@@ -83,13 +83,74 @@ internal sealed class NotFilterPlanNode(ParameterizedFilterPlanNode child) : Par
 internal sealed class CompareFilterPlanNode(
     FilterField field,
     FilterOperator op,
+    FilterValueRef value,
+    bool ignoreCase) : ParameterizedFilterPlanNode
+{
+    public override Func<object, bool> Bind(FilterValue[] parameters)
+    {
+        FilterValue bound = value.Get(parameters);
+        return FilterTypedPredicates.TryCompileCompare(field, bound, op, ignoreCase) ??
+            (subject => FilterValues.Compare(field.Getter(subject), bound, op, ignoreCase));
+    }
+}
+
+internal sealed class ElemMatchFilterPlanNode(
+    Func<object, System.Collections.IEnumerable?> getCollection,
+    ParameterizedFilterPlanNode child) : ParameterizedFilterPlanNode
+{
+    private const int MaxRuntimeElements = 256;
+
+    public override Func<object, bool> Bind(FilterValue[] parameters)
+    {
+        Func<object, bool> childPredicate = child.Bind(parameters);
+        return subject =>
+        {
+            System.Collections.IEnumerable? collection = getCollection(subject);
+            if (collection is null)
+                return false;
+
+            int seen = 0;
+            foreach (object? element in collection)
+            {
+                if (++seen > MaxRuntimeElements)
+                    throw new InvalidOperationException(
+                        $"ElemMatch filters support at most {MaxRuntimeElements} elements.");
+                if (element is not null && childPredicate(element))
+                    return true;
+            }
+
+            return false;
+        };
+    }
+}
+
+internal sealed class BetweenFilterPlanNode(
+    FilterField field,
+    FilterValueRef lower,
+    FilterValueRef upper) : ParameterizedFilterPlanNode
+{
+    public override Func<object, bool> Bind(FilterValue[] parameters)
+    {
+        FilterValue boundLower = lower.Get(parameters);
+        FilterValue boundUpper = upper.Get(parameters);
+        return subject =>
+        {
+            object? actual = field.Getter(subject);
+            return FilterValues.Compare(actual, boundLower, FilterOperator.GreaterThanOrEqual) &&
+                FilterValues.Compare(actual, boundUpper, FilterOperator.LessThanOrEqual);
+        };
+    }
+}
+
+internal sealed class CountFilterPlanNode(
+    FilterField field,
+    FilterOperator op,
     FilterValueRef value) : ParameterizedFilterPlanNode
 {
     public override Func<object, bool> Bind(FilterValue[] parameters)
     {
         FilterValue bound = value.Get(parameters);
-        return FilterTypedPredicates.TryCompileCompare(field, bound, op) ??
-            (subject => FilterValues.Compare(field.Getter(subject), bound, op));
+        return subject => FilterValues.Compare(FilterValues.Count(field.Getter(subject)), bound, op);
     }
 }
 

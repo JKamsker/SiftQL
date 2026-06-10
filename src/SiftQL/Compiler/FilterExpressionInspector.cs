@@ -8,7 +8,10 @@ internal static class FilterExpressionInspector
     public static bool HasSelectiveNode(FilterExpression expression) =>
         expression.Kind is FilterExpressionKind.Compare or
             FilterExpressionKind.In or
-            FilterExpressionKind.Contains ||
+            FilterExpressionKind.Contains or
+            FilterExpressionKind.Count or
+            FilterExpressionKind.ElemMatch or
+            FilterExpressionKind.Between ||
         HasSelectiveChild(expression.Children);
 
     public static int PromotionMinimumEvaluations(FilterExpression expression) =>
