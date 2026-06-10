@@ -20,6 +20,8 @@ internal static class FilterSchemaCollectionFieldBuilder
             return false;
         }
 
+        if (!ContainsField(fields, path))
+            fields.Add(BuildArrayField(path, elementType));
         AddProperties(fields, path, elementType, depth + 1, isValueObject);
         return true;
     }
