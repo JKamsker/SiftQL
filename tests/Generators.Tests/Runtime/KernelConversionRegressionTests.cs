@@ -42,6 +42,14 @@ public sealed class KernelConversionRegressionTests
                 .Where(ev => ev.LongCount == 42D));
     }
 
+    [Fact]
+    public void ContextLossyFieldSideConversionIsRejected()
+    {
+        Assert.Throws<KernelExpressionException>(() =>
+            QueryKernel.For<NumericConversionEvent, ConversionContext>()
+                .Where(static (ev, _) => (byte)ev.Count == (byte)44));
+    }
+
     private enum ItemKind : long
     {
         Common = 1,
@@ -59,4 +67,6 @@ public sealed class KernelConversionRegressionTests
         float Score,
         int Count,
         long LongCount) : IFilterSubject;
+
+    private sealed class ConversionContext;
 }
