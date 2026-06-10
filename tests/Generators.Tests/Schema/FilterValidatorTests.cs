@@ -50,6 +50,20 @@ public sealed class FilterValidatorTests
     }
 
     [Fact]
+    public void ReportsNullLiteralForOrderedComparison()
+    {
+        FilterExpression filter = FilterExpression.Compare(
+            nameof(Ev.Score),
+            FilterOperator.GreaterThan,
+            FilterValue.Null);
+
+        FilterValidationResult result = FilterValidator.Validate(typeof(Ev), filter);
+
+        Assert.False(result.IsValid);
+        Assert.Single(result.Errors);
+    }
+
+    [Fact]
     public void ReportsDepthLimitBreach()
     {
         FilterExpression filter = FilterExpression.Compare(nameof(Ev.Score), FilterOperator.Equal, FilterValue.From(1L));
