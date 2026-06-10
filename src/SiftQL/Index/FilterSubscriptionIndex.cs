@@ -59,7 +59,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
             for (int i = entries.Count - 1; i >= 0; i--)
             {
                 var entry = entries[i];
-                bool removedEntry = entry.Key is null
+                bool removedEntry = entry.Keys.Count == 0
                     ? TryRemoveUnindexed(entry)
                     : TryRemoveIndexed(entry);
                 if (!removedEntry)
@@ -206,11 +206,11 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         FilterSchema entrySchema = schema.SubjectType == typeof(ProjectedEvent)
             ? ProjectedEventFilterSchema.ForFilter(snapshot)
             : schema;
-        FilterIndexKey? key = FilterIndexExtractor.Extract(entrySchema, snapshot);
+        IReadOnlyList<FilterIndexKey> keys = FilterIndexExtractor.ExtractKeys(entrySchema, snapshot);
         return new SubscriptionEntry<TSubscription>(
             subscription,
             snapshot,
-            key,
+            keys,
             entrySchema.SubjectType == typeof(ProjectedEvent)
                 ? FilterCompiler.CompileWithSchema(
                     typeof(ProjectedEvent),
@@ -225,9 +225,13 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     {
         _count++;
         Track(entry);
-        if (entry.Key is not { } key)
+        if (entry.Keys.Count == 0)
+        {
             _unindexed.Add(entry);
-        else
+            return;
+        }
+
+        foreach (FilterIndexKey key in entry.Keys)
             GetOrAddField(key).Add(key.Value, entry);
     }
 
@@ -281,17 +285,21 @@ public sealed class FilterSubscriptionIndex<TSubscription>
 
     private bool TryRemoveIndexed(SubscriptionEntry<TSubscription> entry)
     {
-        if (entry.Key is not { } key ||
-            !_fields.TryGetValue(key.Field, out var field) ||
-            !field.Remove(key.Value, entry))
+        bool removedAny = false;
+        foreach (FilterIndexKey key in entry.Keys)
         {
-            return false;
+            if (!_fields.TryGetValue(key.Field, out var field) ||
+                !field.Remove(key.Value, entry))
+            {
+                continue;
+            }
+
+            removedAny = true;
+            if (field.IsEmpty)
+                _fields.Remove(key.Field);
         }
 
-        if (field.IsEmpty)
-            _fields.Remove(key.Field);
-
-        return true;
+        return removedAny;
     }
 
     private void PublishSnapshot()
