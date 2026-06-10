@@ -9,7 +9,7 @@ using SiftQL.Schema;
 
 namespace SiftQL.Hot;
 
-internal static class HotTieredProviderManifestValidator
+internal static partial class HotTieredProviderManifestValidator
 {
     public static bool EntriesSatisfied(
         HotCompilationManifest manifest,

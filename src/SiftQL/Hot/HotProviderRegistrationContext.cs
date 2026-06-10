@@ -99,7 +99,8 @@ public static class HotProviderRegistrationContext
         internal IPrecompiledTieredProvider[] CommittedProviders() =>
             _providers.ToArray();
 
-        internal IDisposable ClaimCommittedRegistrations()
+        internal IDisposable ClaimCommittedRegistrations(
+            Func<IPrecompiledTieredProvider, IPrecompiledTieredProvider>? wrapProvider = null)
         {
             if (!_committed || _providers.Count == 0)
                 return NullRegistration.Instance;
@@ -109,8 +110,13 @@ public static class HotProviderRegistrationContext
             try
             {
                 for (; registered < _providers.Count; registered++)
+                {
+                    IPrecompiledTieredProvider provider = wrapProvider is null
+                        ? _providers[registered]
+                        : wrapProvider(_providers[registered]);
                     registrations[registered] =
-                        PrecompiledTieredProviderRegistry.RegisterManifestProvider(_providers[registered]);
+                        PrecompiledTieredProviderRegistry.RegisterManifestProvider(provider);
+                }
             }
             catch
             {
