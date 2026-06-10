@@ -237,9 +237,14 @@ internal static class HotProviderResolver
     private static bool IsDefaultProjectionMetadataField(bool projectedEvent, string name) =>
         name.Equals("subjectType", StringComparison.OrdinalIgnoreCase) ||
         name.Equals("subjectName", StringComparison.OrdinalIgnoreCase) ||
+        IsSubjectTypesDiscriminatorPath(name) ||
         projectedEvent &&
         (name.Equals("eventType", StringComparison.OrdinalIgnoreCase) ||
             name.Equals("eventName", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSubjectTypesDiscriminatorPath(string name) =>
+        name.Equals("subjectTypes", StringComparison.OrdinalIgnoreCase) ||
+        name.EndsWith(".subjectTypes", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsProjectedEvent(INamedTypeSymbol subject) =>
         subject.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ==
