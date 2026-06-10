@@ -97,7 +97,14 @@ public sealed class TieredPromotionSystemTests
 
     private static async Task WaitForQueueDrainAsync()
     {
-        for (int i = 0; i < 50; i++)
+        for (int i = 0; i < 500; i++)
+        {
+            if (TieredPromotionQueue.IsIdle)
+                return;
+
             await Task.Delay(10);
+        }
+
+        throw new InvalidOperationException("Tiered promotion queue did not drain.");
     }
 }

@@ -9,6 +9,10 @@ internal static class TieredPromotionQueue
     private static int s_pendingJobs;
     private static int s_runningWorkers;
 
+    // True once every queued promotion has finished executing; lets tests
+    // wait for drain deterministically instead of sleeping.
+    internal static bool IsIdle => Volatile.Read(ref s_pendingJobs) == 0;
+
     public static bool TryQueue(Action action, int capacity)
     {
         ArgumentNullException.ThrowIfNull(action);

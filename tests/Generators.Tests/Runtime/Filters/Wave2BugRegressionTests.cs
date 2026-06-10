@@ -136,7 +136,6 @@ public sealed class Wave2BugRegressionTests
         for (int i = 0; i < 200; i++)
             kernel.Matches(new ItemUsedEvent(Guid.NewGuid(), 1, 42, 1));
 
-        Thread.Sleep(100);
         Assert.True(kernel.Version >= initialVersion);
     }
 
