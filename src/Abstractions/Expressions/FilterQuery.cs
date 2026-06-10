@@ -398,8 +398,8 @@ public static class FilterQuery
             if (text.Length > 0 && text[^1] is 'm' or 'M')
             {
                 string numeric = text[..^1];
-                if (decimal.TryParse(numeric, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal dec))
-                    return FilterValue.From(dec);
+                if (decimal.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal dec))
+                    return new FilterValue { Kind = FilterValueKind.Decimal, Decimal = dec };
                 throw Error($"Invalid number '{token.Text}'.");
             }
 
