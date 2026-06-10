@@ -85,20 +85,21 @@ internal static class ContextKernelExpressionTranslator
         // See [[SubjectTypeMetadata]].
         private FilterExpression TranslateTypeIs(TypeBinaryExpression expression)
         {
-            string sourcePath;
-            if (StripConvert(expression.Expression) == _subject)
-                sourcePath = "subjectTypes";
-            else if (TryGetSubjectFieldPath(expression.Expression, out string field))
-                sourcePath = field + ".subjectTypes";
-            else
-                throw Unsupported(expression);
-
             string typeName = expression.TypeOperand.FullName ??
                 throw new KernelExpressionException(
                     $"'is {expression.TypeOperand.Name}' is not supported: the type has no metadata full name.");
             return FilterExpression.Contains(
-                ProjectSubjectPath(sourcePath),
+                ResolveTypeTestField(expression.Expression),
                 ToValue(Expression.Constant(typeName, typeof(string))));
+        }
+
+        private string ResolveTypeTestField(Expression expression)
+        {
+            if (StripConvert(expression) == _subject)
+                return ProjectSubjectPath("subjectTypes");
+            if (TryGetSubjectFieldPath(expression, out string field))
+                return ProjectSubjectPath(field + ".subjectTypes");
+            throw Unsupported(expression);
         }
 
         private string ProjectSubjectPath(string sourcePath)
@@ -117,6 +118,16 @@ internal static class ContextKernelExpressionTranslator
 
         private FilterExpression TranslateComparison(BinaryExpression expression, FilterOperator op)
         {
+            if (ContextTypeAsNullComparisonTranslator.TryTranslate(
+                    expression,
+                    op,
+                    ResolveTypeTestField,
+                    ToValue,
+                    out FilterExpression? typeAsFilter))
+            {
+                return typeAsFilter!;
+            }
+
             if (TryGetProjectedPath(expression.Left, out string? leftField))
                 return FilterExpression.Compare(leftField, op, ToValue(expression.Right, ComparisonType(expression.Left)));
 
