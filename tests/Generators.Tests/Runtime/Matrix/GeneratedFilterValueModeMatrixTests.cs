@@ -14,7 +14,7 @@ public sealed class GeneratedFilterValueModeMatrixTests
 
     [Theory]
     [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
-    public void OrderedComparisonToNullReturnsFalse(GeneratedExecutionMode mode)
+    public void OrderedComparisonToNullThrowsValidationException(GeneratedExecutionMode mode)
     {
         string assemblyName = "Plugin.Matrix.ValueNullOrder." + mode;
         FilterExpression filter = FilterExpression.Compare(
@@ -26,13 +26,10 @@ public sealed class GeneratedFilterValueModeMatrixTests
             assemblyName,
             GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), filter));
 
-        CompiledKernel kernel = FilterCompiler.Compile(
+        Assert.Throws<FilterValidationException>(() => FilterCompiler.Compile(
             context.EventType,
             filter,
-            GeneratedModeMatrixSupport.FilterOptions(mode));
-
-        Assert.False(kernel.Matches(Event(context.EventType, score: 1.0, name: "alpha")));
-        Assert.False(kernel.Matches(Event(context.EventType, score: null, name: "alpha")));
+            GeneratedModeMatrixSupport.FilterOptions(mode)));
     }
 
     [Theory]
