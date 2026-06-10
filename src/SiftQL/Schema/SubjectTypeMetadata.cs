@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using SiftQL.Projected;
 
 namespace SiftQL.Schema;
@@ -14,6 +15,9 @@ internal static class SubjectTypeMetadata
 {
     public const string FieldName = "subjectTypes";
 
+    private static readonly string s_nestedSuffix = "." + FieldName;
+    private static readonly ConcurrentDictionary<Type, string[]> s_ancestry = new();
+
     public static bool IsReservedName(string name) =>
         string.Equals(name, FieldName, StringComparison.OrdinalIgnoreCase);
 
@@ -22,12 +26,17 @@ internal static class SubjectTypeMetadata
     // excluded from default projection) like subjectType/subjectName.
     public static bool IsDiscriminatorPath(string name) =>
         IsReservedName(name) ||
-        name.EndsWith("." + FieldName, StringComparison.OrdinalIgnoreCase);
+        name.EndsWith(s_nestedSuffix, StringComparison.OrdinalIgnoreCase);
 
     public static string[] Of(object? value) =>
         value is null ? [] : Of(value.GetType());
 
-    public static string[] Of(Type type)
+    // Ancestry is immutable per type and read on every Matches(); cache it. The
+    // returned array is shared and treated as read-only by all callers.
+    public static string[] Of(Type type) =>
+        s_ancestry.GetOrAdd(type, ComputeAncestry);
+
+    private static string[] ComputeAncestry(Type type)
     {
         var names = new List<string>();
         for (Type? current = type; current is not null && current != typeof(object); current = current.BaseType)

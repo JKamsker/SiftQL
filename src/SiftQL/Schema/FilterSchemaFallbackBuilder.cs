@@ -241,19 +241,23 @@ internal static class FilterSchemaFallbackBuilder
     }
 
     // Null-safe `(owner as subtype)?.property`: when the runtime value is not the
-    // subtype the cast yields null and the field reads as absent.
+    // subtype the cast yields null and the field reads as absent. The cast is
+    // bound to a local so it is evaluated once, not re-run for the null guard.
     private static Expression CastGuardedAccess(Expression owner, Type subtype, PropertyInfo property)
     {
-        Expression casted = Expression.TypeAs(owner, subtype);
+        ParameterExpression casted = Expression.Variable(subtype, "casted");
         Expression propertyAccess = Expression.Property(casted, property);
         Type resultType = LiftValueType(propertyAccess.Type);
         Expression value = resultType == propertyAccess.Type
             ? propertyAccess
             : Expression.Convert(propertyAccess, resultType);
-        return Expression.Condition(
-            Expression.NotEqual(casted, Expression.Constant(null, subtype)),
-            value,
-            Expression.Default(resultType));
+        return Expression.Block(
+            [casted],
+            Expression.Assign(casted, Expression.TypeAs(owner, subtype)),
+            Expression.Condition(
+                Expression.NotEqual(casted, Expression.Constant(null, subtype)),
+                value,
+                Expression.Default(resultType)));
     }
 
     private static FilterField BuildSubtypeField(
