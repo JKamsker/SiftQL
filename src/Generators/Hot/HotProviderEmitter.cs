@@ -85,7 +85,8 @@ internal static class HotProviderEmitter
             HotFilterNodeKind.Any => "true",
             HotFilterNodeKind.Compare => "FilterValues.Compare(" + Field(members, entry, node, index, ref fields) +
                 ".Getter(subject), " + Value(members, node.Value!, parameters, index, ref values) +
-                ", (FilterOperator)" + node.Operator.ToString(CultureInfo.InvariantCulture) + ")",
+                ", (FilterOperator)" + node.Operator.ToString(CultureInfo.InvariantCulture) +
+                (node.IgnoreCase ? ", true)" : ")"),
             HotFilterNodeKind.In => "FilterValues.In(" + Field(members, entry, node, index, ref fields) +
                 ".Getter(subject), " + Values(members, node.Values, parameters, index, ref values) + ")",
             HotFilterNodeKind.Exists => Field(members, entry, node, index, ref fields) + ".Getter(subject) is not null",

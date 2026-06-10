@@ -55,6 +55,7 @@ internal sealed record HotFilterNode(
     HotFilterNodeKind Kind,
     string Field,
     int Operator,
+    bool IgnoreCase,
     HotFilterValue? Value,
     EquatableArray<HotFilterValue> Values,
     EquatableArray<HotFilterNode> Children);

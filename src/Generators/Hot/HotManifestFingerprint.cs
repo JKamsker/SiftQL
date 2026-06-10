@@ -39,6 +39,8 @@ internal static class HotManifestFingerprint
             case HotFilterNodeKind.Compare:
                 AppendText(builder, expression.Field);
                 builder.Append(':').Append(expression.Operator);
+                if (expression.IgnoreCase)
+                    builder.Append('i');
                 AppendValue(builder, expression.Value);
                 break;
             case HotFilterNodeKind.In:

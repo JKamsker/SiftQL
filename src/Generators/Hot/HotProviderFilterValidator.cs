@@ -72,7 +72,14 @@ internal static class HotProviderFilterValidator
         if (node.Value is null)
             return Unsupported(diagnostics, path, "Hot compare filters require a value.");
 
-        return ValidateComparison(scalarKind, projectedDynamic, node.Operator, node.Value, diagnostics, path);
+        return ValidateComparison(
+            scalarKind,
+            projectedDynamic,
+            node.Operator,
+            node.IgnoreCase,
+            node.Value,
+            diagnostics,
+            path);
     }
 
     private static bool ValidateIn(
@@ -213,12 +220,20 @@ internal static class HotProviderFilterValidator
         GeneratedScalarKind scalarKind,
         bool projectedDynamic,
         int op,
+        bool ignoreCase,
         HotFilterValue value,
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string path)
     {
         if (!ValidateValue(scalarKind, projectedDynamic, value, diagnostics, path))
             return false;
+        if (ignoreCase &&
+            !(value.Kind is HotFilterValueKind.String or HotFilterValueKind.Null &&
+                (projectedDynamic || scalarKind == GeneratedScalarKind.String)))
+        {
+            return Unsupported(diagnostics, path, "Hot case-insensitive filters require a string field and value.");
+        }
+
         if (op is StringContainsOperator or StringStartsWithOperator or StringEndsWithOperator)
         {
             return value.Kind == HotFilterValueKind.String &&

@@ -49,6 +49,7 @@ internal static partial class HotManifestParser
             kind,
             ReadString(element, "Field"),
             op,
+            ReadBoolean(element, "IgnoreCase"),
             value,
             values,
             children);
