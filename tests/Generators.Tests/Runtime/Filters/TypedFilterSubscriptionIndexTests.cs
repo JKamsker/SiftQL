@@ -1,5 +1,9 @@
+using System.Reflection;
+using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Hot;
 using SiftQL.Index;
+using SiftQL.Projected;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
@@ -59,11 +63,73 @@ public sealed class TypedFilterSubscriptionIndexTests
         Assert.Equal(["id"], index.SnapshotCandidates(new IndexedSubject(10, "north")));
     }
 
+    [Fact]
+    public void TypedIndexRebuildsUnindexedMatchersAfterHotProviderChanges()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(IndexedSubject), Fingerprint(filter)));
+        var index = new TypedFilterSubscriptionIndex<string, IndexedSubject>();
+
+        index.Add("sub", filter);
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        registration.Dispose();
+
+        Assert.Empty(index.SnapshotMatches(new IndexedSubject(1, "north")));
+    }
+
     private static FilterExpression IdEquals(int id) =>
         FilterExpression.Compare(
             nameof(IndexedSubject.Id),
             FilterOperator.Equal,
             FilterValue.From(id));
 
+    private static FilterExpression RegionMissingFilter() =>
+        FilterExpression.Not(FilterExpression.Exists(nameof(IndexedSubject.Region)));
+
+    private static string Fingerprint(FilterExpression expression)
+    {
+        Type type = typeof(FilterCompiler).Assembly.GetType(
+            "SiftQL.Compiler.FilterExpressionFingerprint",
+            throwOnError: true)!;
+        return (string)type.GetMethod(
+            "Create",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(null, [expression])!;
+    }
+
     private sealed record IndexedSubject(int Id, string Region) : IFilterSubject;
+
+    private sealed class AlwaysMatchingHotProvider(
+        Type subjectType,
+        string acceptedFingerprint) : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(
+            Type type,
+            string fingerprint,
+            out Func<object, bool>? predicate)
+        {
+            if (type == subjectType && string.Equals(fingerprint, acceptedFingerprint, StringComparison.Ordinal))
+            {
+                predicate = static _ => true;
+                return true;
+            }
+
+            predicate = null;
+            return false;
+        }
+
+        public bool TryGetProjection(
+            Type type,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            _ = type;
+            _ = fingerprint;
+            projectFields = null;
+            return false;
+        }
+    }
 }
