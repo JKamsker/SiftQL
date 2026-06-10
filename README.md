@@ -102,6 +102,64 @@ string pipelineJson = JsonSerializer.Serialize(kernel.Pipeline);
 var pipeline = JsonSerializer.Deserialize<EventPipelineExpression>(pipelineJson)!;
 ```
 
+## Filter Capabilities
+
+Write filters as LINQ; SiftQL translates them to serializable expressions.
+
+```csharp
+QueryKernel.For<OrderEvent>()
+    // comparisons: == != < <= > >=
+    .Where(e => e.Region == "EU" && e.Total >= 100m && e.Total <= 500m)
+    // string ops (ordinal, or case-insensitive via StringComparison)
+    .Where(e => e.Sku.StartsWith("itm_") || e.Sku.EndsWith("-eu"))
+    .Where(e => string.Equals(e.Region, "eu-west", StringComparison.OrdinalIgnoreCase))
+    .Where(e => !string.IsNullOrEmpty(e.Coupon))
+    // IN over a captured list
+    .Where(e => accepted.Contains(e.CustomerId))
+    // temporal (DateTime / DateTimeOffset / DateOnly), compared by instant
+    .Where(e => e.OccurredAt >= cutoff)
+    // collections: Any (incl. correlated &&), All, Count
+    .Where(e => e.Lines.Any(l => l.Sku == "X" && l.Qty > 2))   // same element ($elemMatch)
+    .Where(e => e.Lines.Count() > 0);
+```
+
+The builder API exposes the same surface as data, including `Between` (single-node
+inclusive range), `Count`, `Contains`, `Exists`, `In`, `ElemMatch`, prefix/suffix
+string operators, and a case-insensitive flag:
+
+```csharp
+FilterExpression.Between("total", FilterValue.From(100L), FilterValue.From(500L));
+FilterExpression.Count("lines", FilterOperator.GreaterThan, FilterValue.From(0L));
+FilterExpression.Compare("region", FilterOperator.Equal, FilterValue.From("eu"), ignoreCase: true);
+```
+
+## Tooling
+
+```csharp
+// Text DSL for non-.NET clients
+FilterExpression f = FilterQuery.Parse("region == \"EU\" and total between [100, 500]");
+string text = FilterQuery.Format(f);
+
+// Versioned, tolerant serialization envelope
+string json = FilterDocument.Serialize(f);
+FilterExpression back = FilterDocument.Deserialize(json);
+
+// Validate untrusted filters with aggregated, path-located errors + quotas
+FilterValidationResult result = FilterValidator.Validate(typeof(OrderEvent), json,
+    new FilterLimits { MaxNodes = 64, MaxBytes = 16_384 });
+
+// Publish the filterable surface for client filter-builders (JSON Schema)
+JsonObject schema = FilterSchema.For(typeof(OrderEvent)).Describe().ToJsonSchema();
+
+// Dedupe / analyze
+string key = FilterExpression.ContentSignature(f);     // stable, canonical
+bool ok = FilterExpression.IsSatisfiable(f);           // reject contradictions
+```
+
+Subscription routing accelerates equality, `In`/`Or`, and range/threshold filters
+(`Between`, `>`, `<=`, …) in the index; `index.GetStatistics()` reports indexed vs
+unindexed placement for observability.
+
 ## How It Works
 
 1. **Define** filters using LINQ expressions or the expression builder API
