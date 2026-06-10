@@ -265,8 +265,11 @@ public sealed class FilterSubscriptionIndex<TSubscription>
             ? ProjectedEventFilterSchema.ForFilter(snapshot)
             : schema;
         IReadOnlyList<FilterIndexKey> keys = FilterIndexExtractor.ExtractKeys(entrySchema, snapshot);
-        RangeCondition? range = keys.Count == 0
-            ? FilterIndexExtractor.ExtractRange(entrySchema, snapshot)
+        // A range key is kept only when it carries a bound; a bound-less condition
+        // would vanish from the sorted arrays, so it is treated as unindexed.
+        RangeCondition? range = keys.Count == 0 &&
+            FilterIndexExtractor.ExtractRange(entrySchema, snapshot) is { HasAnyBound: true } extracted
+            ? extracted
             : null;
         return new SubscriptionEntry<TSubscription>(
             subscription,
