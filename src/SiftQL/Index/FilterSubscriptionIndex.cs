@@ -1,6 +1,7 @@
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Hot;
 using SiftQL.Projected;
 using SiftQL.Projection;
 using SiftQL.Schema;
@@ -24,6 +25,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     private readonly SubscriptionBucket<SubscriptionEntry<TSubscription>> _unindexed = new();
     private FilterSchema _schema;
     private int _schemaVersion;
+    private int _providerVersion;
     private int _count;
     private Snapshot _snapshot = new([], [], [], 0);
 
@@ -33,6 +35,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         FilterSchemaSnapshot snapshot = FilterSchemaSnapshot.For(subjectType);
         _schema = snapshot.Schema;
         _schemaVersion = snapshot.Version;
+        _providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
     }
     public int Count => Volatile.Read(ref _snapshot).Count;
 
@@ -308,8 +311,12 @@ public sealed class FilterSubscriptionIndex<TSubscription>
 
     private void EnsureCurrentSchema()
     {
-        if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version)
+        int providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
+        if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version &&
+            Volatile.Read(ref _providerVersion) == providerVersion)
+        {
             return;
+        }
 
         lock (_sync)
             EnsureCurrentSchemaLocked();
@@ -317,12 +324,19 @@ public sealed class FilterSubscriptionIndex<TSubscription>
 
     private void EnsureCurrentSchemaLocked()
     {
-        if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version)
+        int providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
+        if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version &&
+            Volatile.Read(ref _providerVersion) == providerVersion)
+        {
             return;
+        }
 
         FilterSchemaSnapshot current = FilterSchemaSnapshot.For(_schema.SubjectType);
-        if (Volatile.Read(ref _schemaVersion) == current.Version)
+        if (Volatile.Read(ref _schemaVersion) == current.Version &&
+            Volatile.Read(ref _providerVersion) == providerVersion)
+        {
             return;
+        }
 
         var existing = _entries.Values.SelectMany(static entries => entries).ToArray();
         var rebuilt = new SubscriptionEntry<TSubscription>[existing.Length];
@@ -339,6 +353,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
             AddEntry(rebuilt[i]);
         PublishSnapshot();
         Volatile.Write(ref _schemaVersion, current.Version);
+        Volatile.Write(ref _providerVersion, providerVersion);
     }
 
     private void Track(SubscriptionEntry<TSubscription> entry)
