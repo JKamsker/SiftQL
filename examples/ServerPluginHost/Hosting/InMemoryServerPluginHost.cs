@@ -15,7 +15,8 @@ public sealed class InMemoryServerPluginHost
     private readonly List<StartupHandler> _startupHandlers = [];
     private readonly Dictionary<Type, List<ISubscription>> _subscriptions = [];
     private readonly SemaphoreSlim _startupGate = new(1, 1);
-    private bool _started;
+    private volatile bool _started;
+    private volatile bool _starting;
 
     public InMemoryServerPluginHost(ClientGateway clients)
         : this(clients, new ServerDataStore())
@@ -110,6 +111,7 @@ public sealed class InMemoryServerPluginHost
             if (_started)
                 return;
 
+            _starting = true;
             for (int i = 0; i < _startupHandlers.Count; i++)
             {
                 StartupHandler startup = _startupHandlers[i];
@@ -121,6 +123,7 @@ public sealed class InMemoryServerPluginHost
         }
         finally
         {
+            _starting = false;
             _startupGate.Release();
         }
     }
@@ -158,7 +161,7 @@ public sealed class InMemoryServerPluginHost
 
     private void ThrowIfStarted()
     {
-        if (_started)
+        if (_started || _starting)
             throw new InvalidOperationException("Plugins cannot be registered after the host has started.");
     }
 
