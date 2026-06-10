@@ -137,7 +137,13 @@ public sealed record QueryKernel<TSubject, TContext>
     private EventProjectionField FinalField(ContextSelectorOutput output, bool projected)
     {
         if (output.IsContext)
-            return new EventProjectionField(output.ProjectedPath, output.Name);
+        {
+            string path = projected &&
+                ContextProjectionPipeline.TryProjectedFieldName(Pipeline, output.ProjectedPath, out string contextFieldName)
+                ? ProjectedEventPaths.Field(contextFieldName)
+                : output.ProjectedPath;
+            return new EventProjectionField(path, output.Name);
+        }
 
         string fieldName = projected
             ? ContextProjectionPipeline.ProjectedFieldName(Pipeline, output.SourcePath)
