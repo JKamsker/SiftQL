@@ -49,6 +49,18 @@ internal static class KernelExpressionTranslator
         ref int parameterIndex,
         FilterOperator op)
     {
+        if (TryGetCountField(expression.Left, parameter, out string? leftCount))
+            return FilterExpression.Count(
+                leftCount,
+                op,
+                KernelExpressionValues.ToValue(expression.Right, parameter, ref parameterIndex));
+
+        if (TryGetCountField(expression.Right, parameter, out string? rightCount))
+            return FilterExpression.Count(
+                rightCount,
+                Flip(op),
+                KernelExpressionValues.ToValue(expression.Left, parameter, ref parameterIndex));
+
         if (TryGetFieldPath(expression.Left, parameter, out string? leftField))
             return FilterExpression.Compare(
                 leftField,
@@ -383,6 +395,66 @@ internal static class KernelExpressionTranslator
 
     private static bool IsStringMethod(MethodInfo method, string name) =>
         method.Name == name && method.DeclaringType == typeof(string);
+
+    private static bool TryGetCountField(
+        Expression expression,
+        ParameterExpression parameter,
+        out string field)
+    {
+        Expression stripped = StripConvert(expression);
+
+        // array.Length compiles to an ArrayLength unary node, not a member access.
+        if (stripped is UnaryExpression { NodeType: ExpressionType.ArrayLength } arrayLength &&
+            TryGetFieldPath(arrayLength.Operand, parameter, out string? arrayField))
+        {
+            field = arrayField;
+            return true;
+        }
+
+        if (stripped is MethodCallExpression call &&
+            call.Method.Name == nameof(Enumerable.Count) &&
+            (call.Method.DeclaringType == typeof(Enumerable) || call.Method.DeclaringType == typeof(Queryable)) &&
+            call.Arguments.Count == 1 &&
+            TryGetFieldPath(call.Arguments[0], parameter, out string? methodField))
+        {
+            field = methodField;
+            return true;
+        }
+
+        if (stripped is MemberExpression member &&
+            member.Member.Name is "Count" or "Length" &&
+            member.Expression is not null &&
+            IsCollectionType(member.Expression.Type) &&
+            TryGetFieldPath(member.Expression, parameter, out string? memberField))
+        {
+            field = memberField;
+            return true;
+        }
+
+        field = string.Empty;
+        return false;
+    }
+
+    private static bool IsCollectionType(Type type)
+    {
+        if (type == typeof(string))
+            return false;
+        if (type.IsArray)
+            return true;
+        if (typeof(System.Collections.ICollection).IsAssignableFrom(type))
+            return true;
+
+        foreach (Type contract in type.GetInterfaces())
+        {
+            if (!contract.IsGenericType)
+                continue;
+            Type definition = contract.GetGenericTypeDefinition();
+            if (definition == typeof(ICollection<>) || definition == typeof(IReadOnlyCollection<>))
+                return true;
+        }
+
+        return false;
+    }
 
     private static bool IsImplicitConversion(MethodCallExpression expression) =>
         expression.Method.Name == "op_Implicit" &&

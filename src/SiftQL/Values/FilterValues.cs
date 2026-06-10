@@ -145,6 +145,25 @@ public static class FilterValues
         return false;
     }
 
+    public static long Count(object? collection)
+    {
+        if (collection is null || collection is string)
+            return 0;
+        if (collection is ICollection sized)
+            return sized.Count;
+        if (collection is not IEnumerable enumerable)
+            return 0;
+
+        long count = 0;
+        foreach (object? _ in enumerable)
+        {
+            if (++count > MaxRuntimeArrayItems)
+                throw TooManyRuntimeArrayItems();
+        }
+
+        return count;
+    }
+
     private static bool MatchesString(
         object? actual,
         FilterValue expected,

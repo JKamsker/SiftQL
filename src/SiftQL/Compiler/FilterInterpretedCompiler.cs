@@ -44,6 +44,7 @@ internal static class FilterInterpretedCompiler
             FilterExpressionKind.In => CompileIn(schema, expression, errorFactory),
             FilterExpressionKind.Exists => CompileExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => CompileContains(schema, expression, errorFactory),
+            FilterExpressionKind.Count => CompileCount(schema, expression, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }
@@ -172,6 +173,24 @@ internal static class FilterInterpretedCompiler
         FilterValues.ValidateValue(field, value, errorFactory);
         var typed = FilterTypedArrayPredicates.TryCompileContains(field, value);
         return typed ?? (subject => FilterValues.Contains(field.Getter(subject), value));
+    }
+
+    private static Func<object, bool> CompileCount(
+        FilterSchema schema,
+        FilterExpression expression,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (field.Kind != FilterFieldKind.Array)
+            throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
+
+        FilterValue value = expression.Value ??
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
+        if (value.Kind is not (FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
+            throw Error(errorFactory, $"Count comparisons on '{field.Name}' require an integer value.");
+
+        FilterOperator op = expression.Operator;
+        return subject => FilterValues.Compare(FilterValues.Count(field.Getter(subject)), value, op);
     }
 
     private static FilterField RequireField(

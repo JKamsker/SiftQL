@@ -94,6 +94,18 @@ internal sealed class CompareFilterPlanNode(
     }
 }
 
+internal sealed class CountFilterPlanNode(
+    FilterField field,
+    FilterOperator op,
+    FilterValueRef value) : ParameterizedFilterPlanNode
+{
+    public override Func<object, bool> Bind(FilterValue[] parameters)
+    {
+        FilterValue bound = value.Get(parameters);
+        return subject => FilterValues.Compare(FilterValues.Count(field.Getter(subject)), bound, op);
+    }
+}
+
 internal sealed class InFilterPlanNode(
     FilterField field,
     FilterValueRef[] values) : ParameterizedFilterPlanNode

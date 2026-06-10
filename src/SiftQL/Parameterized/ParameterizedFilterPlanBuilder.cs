@@ -50,6 +50,7 @@ internal static class ParameterizedFilterPlanBuilder
             FilterExpressionKind.In => BuildIn(schema, expression, indexes, errorFactory),
             FilterExpressionKind.Exists => BuildExists(schema, expression, errorFactory),
             FilterExpressionKind.Contains => BuildContains(schema, expression, indexes, errorFactory),
+            FilterExpressionKind.Count => BuildCount(schema, expression, indexes, errorFactory),
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }
@@ -99,6 +100,20 @@ internal static class ParameterizedFilterPlanBuilder
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
         FilterValues.ValidateComparison(field, expression.Operator, value, errorFactory, expression.IgnoreCase);
         return new CompareFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes), expression.IgnoreCase);
+    }
+
+    private static ParameterizedFilterPlanNode BuildCount(
+        FilterSchema schema,
+        FilterExpression expression,
+        IReadOnlyDictionary<string, int> indexes,
+        Func<string, Exception>? errorFactory)
+    {
+        FilterField field = RequireField(schema, expression.Field, errorFactory);
+        if (field.Kind != FilterFieldKind.Array)
+            throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
+        FilterValue value = expression.Value ??
+            throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
+        return new CountFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
     }
 
     private static ParameterizedFilterPlanNode BuildIn(

@@ -70,6 +70,9 @@ internal static class FilterExpressionCompiler
             FilterExpressionKind.In => BuildIn(schema, subject, expression, errorFactory),
             FilterExpressionKind.Exists => BuildExists(schema, subject, expression, errorFactory),
             FilterExpressionKind.Contains => BuildContains(schema, subject, expression, errorFactory),
+            // Count has no expression-tree builder yet; returning null routes the
+            // whole filter to the interpreted compiler, which handles it.
+            FilterExpressionKind.Count => null,
             _ => throw Error(errorFactory, $"Unknown filter node kind '{expression.Kind}'."),
         };
     }

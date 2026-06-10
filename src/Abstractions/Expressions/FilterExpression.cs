@@ -13,6 +13,7 @@ public enum FilterExpressionKind
     In = 5,
     Exists = 6,
     Contains = 7,
+    Count = 8,
 }
 
 public enum FilterOperator
@@ -107,6 +108,17 @@ public sealed record FilterExpression
 
     public static FilterExpression Exists(string field) =>
         new(FilterExpressionKind.Exists) { Field = RequireField(field) };
+
+    // Compares the element count of a collection field against an integer value
+    // (e.g. Items.Count() > 0). Field is the collection; Operator/Value compare
+    // its cardinality.
+    public static FilterExpression Count(string field, FilterOperator op, FilterValue value) =>
+        new(FilterExpressionKind.Count)
+        {
+            Field = RequireField(field),
+            Operator = op,
+            Value = value ?? throw new ArgumentNullException(nameof(value)),
+        };
 
     public static FilterExpression Not(FilterExpression child) =>
         new(FilterExpressionKind.Not)

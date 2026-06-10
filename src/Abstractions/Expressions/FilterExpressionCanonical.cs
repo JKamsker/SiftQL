@@ -146,6 +146,11 @@ internal static class FilterExpressionCanonical
                 AppendField(builder, filter.Field);
                 AppendValue(builder, filter.Value);
                 break;
+            case FilterExpressionKind.Count:
+                AppendField(builder, filter.Field);
+                builder.Append(':').Append((int)filter.Operator);
+                AppendValue(builder, filter.Value);
+                break;
             case FilterExpressionKind.And:
             case FilterExpressionKind.Or:
             case FilterExpressionKind.Not:
