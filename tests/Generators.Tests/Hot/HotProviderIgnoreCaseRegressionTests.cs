@@ -43,9 +43,26 @@ public sealed class HotProviderIgnoreCaseRegressionTests
         Type eventType = loaded.Assembly.GetType("Plugin.Events.NamedEvent", throwOnError: true)!;
         CompiledKernel kernel = FilterCompiler.Compile(eventType, filter, FilterCompilerOptions.Tiered);
 
-        Assert.True(!kernel.IsTiered);
+        AssertEx.True(!kernel.IsTiered, "hot provider should produce a non-tiered CompiledKernel even when Tiered is enabled");
         Assert.True(kernel.Matches(Activator.CreateInstance(eventType, "BOSS")!));
         Assert.False(kernel.Matches(Activator.CreateInstance(eventType, "minion")!));
+    }
+
+    [Fact]
+    public void FilterFingerprintIncludesIgnoreCaseFlag()
+    {
+        FilterExpression sensitive = FilterExpression.Compare(
+            nameof(NamedEvent.Name),
+            FilterOperator.Equal,
+            FilterValue.From("boss"),
+            ignoreCase: false);
+        FilterExpression insensitive = FilterExpression.Compare(
+            nameof(NamedEvent.Name),
+            FilterOperator.Equal,
+            FilterValue.From("boss"),
+            ignoreCase: true);
+
+        Assert.NotEqual(Fingerprint(sensitive), Fingerprint(insensitive));
     }
 
     private sealed record NamedEvent(string Name) : IFilterSubject;
