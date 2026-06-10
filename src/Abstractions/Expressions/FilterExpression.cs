@@ -31,6 +31,20 @@ public sealed record FilterExpression
 {
     public static FilterExpression Any { get; } = new(FilterExpressionKind.Any);
 
+    // Default record equality compares Children/Values arrays by reference, so
+    // composites built twice never compare equal. These members provide
+    // canonicalizing, value-based structural identity for deduping stored or
+    // transmitted filters in memory (StructuralComparer) or by stable key
+    // (ContentSignature). See [[FilterExpressionCanonical]].
+    public static IEqualityComparer<FilterExpression> StructuralComparer =>
+        FilterExpressionCanonical.Comparer;
+
+    public static FilterExpression Canonicalize(FilterExpression filter) =>
+        FilterExpressionCanonical.Canonicalize(filter);
+
+    public static string ContentSignature(FilterExpression filter) =>
+        FilterExpressionCanonical.Signature(filter);
+
     public FilterExpression()
     {
     }
