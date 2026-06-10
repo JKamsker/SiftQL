@@ -552,7 +552,17 @@ public static class FilterQuery
                     builder.Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture));
                     break;
                 case FilterValueKind.Number:
-                    builder.Append(value.Number.ToString("R", CultureInfo.InvariantCulture));
+                    if (double.IsNaN(value.Number) || double.IsInfinity(value.Number))
+                    {
+                        throw new FilterQueryException(
+                            $"Filter value kind '{value.Kind}' has no finite text-query representation.",
+                            0);
+                    }
+
+                    string number = value.Number.ToString("R", CultureInfo.InvariantCulture);
+                    builder.Append(number);
+                    if (!number.Contains('.') && !number.Contains('e') && !number.Contains('E'))
+                        builder.Append(".0");
                     break;
                 case FilterValueKind.Decimal:
                     builder.Append(value.Decimal.ToString(CultureInfo.InvariantCulture)).Append('m');
