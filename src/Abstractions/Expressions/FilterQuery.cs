@@ -271,8 +271,15 @@ public static class FilterQuery
             bool ignoreCase = false;
             if (Current.Kind == TokenKind.Symbol && Current.Text == "~")
             {
+                Token marker = Current;
                 ignoreCase = true;
                 _index++;
+                if (!SupportsIgnoreCase(op))
+                {
+                    throw new FilterQueryException(
+                        $"Case-insensitive marker '~' is not valid for operator '{op}'.",
+                        marker.Position);
+                }
             }
 
             if (op == "in")
@@ -300,6 +307,9 @@ public static class FilterQuery
                 _ => throw Error($"Unknown operator '{op}'."),
             };
         }
+
+        private static bool SupportsIgnoreCase(string op) =>
+            op is "==" or "!=" or "contains" or "startswith" or "endswith";
 
         private string ReadOperator()
         {
@@ -550,9 +560,13 @@ public static class FilterQuery
                 case FilterValueKind.Guid:
                     builder.Append("guid \"").Append(value.Guid.ToString("D")).Append('"');
                     break;
-                default:
+                case FilterValueKind.String:
                     AppendString(builder, value.String ?? string.Empty);
                     break;
+                default:
+                    throw new FilterQueryException(
+                        $"Filter value kind '{value.Kind}' has no text-query representation.",
+                        0);
             }
         }
 
