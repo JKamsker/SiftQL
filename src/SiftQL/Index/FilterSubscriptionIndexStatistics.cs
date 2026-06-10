@@ -7,4 +7,5 @@ public sealed record FilterSubscriptionIndexStatistics(
     int Count,
     int IndexedCount,
     int UnindexedCount,
-    IReadOnlyDictionary<string, int> BucketsByField);
+    IReadOnlyDictionary<string, int> BucketsByField,
+    int RangeIndexedCount = 0);

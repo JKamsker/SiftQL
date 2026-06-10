@@ -166,6 +166,100 @@ public static class FilterIndexExtractor
         return score;
     }
 
+    // Extracts the most selective range condition (Between, an ordered Compare, or
+    // a merged And of them) on a single range-indexable field. Used only when a
+    // subscription has no equality key, to accelerate threshold/range filters that
+    // would otherwise full-scan.
+    internal static RangeCondition? ExtractRange(FilterSchema schema, FilterExpression expression)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+        ArgumentNullException.ThrowIfNull(expression);
+        return CollectRange(schema, expression);
+    }
+
+    private static RangeCondition? CollectRange(FilterSchema schema, FilterExpression expression) =>
+        expression.Kind switch
+        {
+            FilterExpressionKind.Between => BuildBetweenRange(schema, expression),
+            FilterExpressionKind.Compare => BuildCompareRange(schema, expression),
+            FilterExpressionKind.And => CollectAndRange(schema, expression),
+            _ => null,
+        };
+
+    private static RangeCondition? BuildBetweenRange(FilterSchema schema, FilterExpression expression)
+    {
+        if (!IsRangeField(schema, expression.Field) || expression.Values.Length != 2)
+            return null;
+
+        decimal? lower = RangeKey.TryFromValue(expression.Values[0], out decimal lo) ? lo : null;
+        decimal? upper = RangeKey.TryFromValue(expression.Values[1], out decimal hi) ? hi : null;
+        return lower.HasValue || upper.HasValue ? new RangeCondition(expression.Field, lower, upper) : null;
+    }
+
+    private static RangeCondition? BuildCompareRange(FilterSchema schema, FilterExpression expression)
+    {
+        if (expression.Value is null || !IsRangeField(schema, expression.Field))
+            return null;
+        if (!RangeKey.TryFromValue(expression.Value, out decimal key))
+            return null;
+
+        return expression.Operator switch
+        {
+            FilterOperator.GreaterThan or FilterOperator.GreaterThanOrEqual =>
+                new RangeCondition(expression.Field, key, null),
+            FilterOperator.LessThan or FilterOperator.LessThanOrEqual =>
+                new RangeCondition(expression.Field, null, key),
+            _ => null,
+        };
+    }
+
+    private static RangeCondition? CollectAndRange(FilterSchema schema, FilterExpression expression)
+    {
+        var byField = new Dictionary<string, RangeCondition>(StringComparer.OrdinalIgnoreCase);
+        foreach (FilterExpression child in expression.Children)
+        {
+            if (CollectRange(schema, child) is not { } condition)
+                continue;
+
+            byField[condition.Field] = byField.TryGetValue(condition.Field, out RangeCondition existing)
+                ? Merge(existing, condition)
+                : condition;
+        }
+
+        RangeCondition? best = null;
+        int bestScore = int.MaxValue;
+        foreach (RangeCondition condition in byField.Values)
+        {
+            // Prefer bounded conditions; among equal boundedness, prefer the more
+            // selective field.
+            int score = SelectivityScore(condition.Field) - (condition.IsBounded ? 1000 : 0);
+            if (score < bestScore)
+            {
+                best = condition;
+                bestScore = score;
+            }
+        }
+
+        return best;
+    }
+
+    private static RangeCondition Merge(RangeCondition a, RangeCondition b) =>
+        new(
+            a.Field,
+            MaxBound(a.Lower, b.Lower),
+            MinBound(a.Upper, b.Upper));
+
+    private static decimal? MaxBound(decimal? x, decimal? y) =>
+        x is null ? y : y is null ? x : Math.Max(x.Value, y.Value);
+
+    private static decimal? MinBound(decimal? x, decimal? y) =>
+        x is null ? y : y is null ? x : Math.Min(x.Value, y.Value);
+
+    private static bool IsRangeField(FilterSchema schema, string field) =>
+        schema.TryGetField(field, out FilterField? resolved) &&
+        resolved.Kind == FilterFieldKind.Scalar &&
+        RangeKey.IsIndexableField(resolved.ValueType);
+
     private static FilterIndexKey? FindExactScalar(
         FilterSchema schema,
         FilterExpression expression,
