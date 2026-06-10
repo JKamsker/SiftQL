@@ -164,15 +164,24 @@ public static class EventPipelineCompiler
         Func<string, Exception>? errorFactory)
     {
         var stages = new List<PipelineStage<TContext>>();
-        bool projected = subjectType == typeof(ProjectedEvent);
+        bool projectedSource = subjectType == typeof(ProjectedEvent);
+        bool priorProjection = false;
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {
             EventPipelineStage stage = pipeline.Stages[i];
+            bool projected = projectedSource || priorProjection;
             if (stage.Kind == EventPipelineStageKind.Filter)
                 stages.Add(CompileFilterStage<TContext>(subjectType, projected, stage.Filter, options, errorFactory));
             else
-                stages.Add(CompileProjectionStage(subjectType, projected, stage.Projection, compileInclude, options, errorFactory));
-            projected |= stage.Kind == EventPipelineStageKind.Projection;
+                stages.Add(CompileProjectionStage(
+                    subjectType,
+                    projected,
+                    priorProjection,
+                    stage.Projection,
+                    compileInclude,
+                    options,
+                    errorFactory));
+            priorProjection |= stage.Kind == EventPipelineStageKind.Projection;
         }
 
         return new CompiledEventPipeline<TContext>(
@@ -209,6 +218,7 @@ public static class EventPipelineCompiler
     private static PipelineStage<TContext> CompileProjectionStage<TContext>(
         Type sourceType,
         bool projected,
+        bool priorProjection,
         EventProjectionExpression projection,
         Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> compileInclude,
         EventPipelineCompilerOptions options,
@@ -222,11 +232,13 @@ public static class EventPipelineCompiler
 
         ValidateProjectionShape(projection, errorFactory);
         FilterSchema schema = ProjectedEventFilterSchema.ForProjection(projection);
+        Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> includeCompiler =
+            priorProjection ? RejectProjectedInclude<TContext> : compileInclude;
         return new PipelineProjectionStage<TContext>(
             ProjectionCompiler.CompileWithSchema(
                 typeof(ProjectedEvent),
                 projection,
-                RejectProjectedInclude<TContext>,
+                includeCompiler,
                 options.ProjectionOptions,
                 errorFactory,
                 _ => schema,
