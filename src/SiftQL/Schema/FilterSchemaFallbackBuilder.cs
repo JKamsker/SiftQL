@@ -28,6 +28,7 @@ internal static class FilterSchemaFallbackBuilder
             parameter,
             depth: 0,
             isValueObject);
+        AddSubtypeProjectedFields(fields, string.Empty, subjectType, typedSubject, parameter);
         return new FilterSchema(subjectType, fields);
     }
 
@@ -210,7 +211,8 @@ internal static class FilterSchemaFallbackBuilder
     {
         foreach (Type subtype in FilterSchema.RegisteredValueObjectSubtypes(baseType))
         {
-            string subtypePrefix = prefix + "." + SubtypeProjection.Segment(subtype);
+            string segment = SubtypeProjection.Segment(subtype);
+            string subtypePrefix = string.IsNullOrEmpty(prefix) ? segment : prefix + "." + segment;
             foreach (PropertyInfo property in EnumeratePublicProperties(subtype))
             {
                 if (property.GetMethod is null ||
