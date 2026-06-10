@@ -108,9 +108,12 @@ public static class HotProviderRegistrationContext
             {
                 for (; registered < _providers.Count; registered++)
                 {
+                    IPrecompiledTieredProvider sourceProvider = _providers[registered];
                     IPrecompiledTieredProvider provider = wrapProvider is null
-                        ? _providers[registered]
-                        : wrapProvider(_providers[registered]);
+                        ? sourceProvider
+                        : wrapProvider(sourceProvider) ?? throw new ArgumentNullException(
+                            nameof(wrapProvider),
+                            "wrapProvider returned a null IPrecompiledTieredProvider.");
                     registrations[registered] =
                         PrecompiledTieredProviderRegistry.RegisterManifestProvider(provider);
                 }
