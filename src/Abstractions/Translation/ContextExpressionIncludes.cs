@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
@@ -208,26 +209,35 @@ internal sealed class ContextExpressionIncludes
 
     private string ContextResultName(string? preferredName) =>
         string.IsNullOrWhiteSpace(preferredName)
-            ? "__ctx" + _bindings.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ? "__ctx" + _bindings.Count.ToString(CultureInfo.InvariantCulture)
             : preferredName;
 
     private static string IncludeKey(string intrinsic, IReadOnlyList<EventProjectionArgument> arguments)
     {
-        var builder = new StringBuilder(intrinsic);
+        var builder = new StringBuilder();
+        AppendText(builder, intrinsic);
         for (int i = 0; i < arguments.Count; i++)
         {
-            builder.Append('|').Append(arguments[i].Name).Append(':').Append((int)arguments[i].Kind);
+            builder.Append('|');
+            AppendText(builder, arguments[i].Name);
+            builder.Append(':').Append((int)arguments[i].Kind);
             if (arguments[i].Kind == EventProjectionArgumentKind.SourceField)
-                builder.Append(':').Append(arguments[i].SourcePath);
+            {
+                builder.Append(':');
+                AppendText(builder, arguments[i].SourcePath);
+            }
             else
+            {
                 AppendLiteral(builder, arguments[i].Value);
+            }
         }
 
         return builder.ToString();
     }
 
     private static void AppendLiteral(StringBuilder builder, FilterValue value) =>
-        builder
+        AppendText(
+            builder
             .Append(':')
             .Append((int)value.Kind)
             .Append(':')
@@ -240,12 +250,16 @@ internal sealed class ContextExpressionIncludes
             .Append(BitConverter.DoubleToInt64Bits(value.Number))
             .Append(':')
             .Append(value.Decimal)
-            .Append(':')
-            .Append(value.String)
+            .Append(':'),
+            value.String)
             .Append(':')
             .Append(value.Guid)
             .Append(':')
             .Append(value.Timestamp.UtcTicks);
+    private static StringBuilder AppendText(StringBuilder builder, string? value) =>
+        builder.Append(value is null
+            ? "-1:"
+            : value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value);
 
     private string NextLocalParameterKey() =>
         "p" + _parameterIndex++;
