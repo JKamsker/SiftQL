@@ -24,6 +24,9 @@ public static class ProjectedEventFilterSchema
                 AddDynamicField(fields, projection.Fields[i].Path);
         }
 
+        for (int i = 0; i < projection.Includes.Length; i++)
+            AddIncludeSourceFields(fields, projection.Includes[i]);
+
         return new FilterSchema(typeof(ProjectedEvent), fields.Values.ToArray());
     }
 
@@ -70,6 +73,21 @@ public static class ProjectedEventFilterSchema
         AddDynamicField(fields, expression.Field);
         for (int i = 0; i < expression.Children.Length; i++)
             CollectFilterFields(expression.Children[i], fields);
+    }
+
+    private static void AddIncludeSourceFields(
+        Dictionary<string, FilterField> fields,
+        EventProjectionInclude? include)
+    {
+        if (include?.Arguments is not { } arguments)
+            return;
+
+        for (int i = 0; i < arguments.Length; i++)
+        {
+            EventProjectionArgument? argument = arguments[i];
+            if (argument?.Kind == EventProjectionArgumentKind.SourceField)
+                AddDynamicField(fields, argument.SourcePath);
+        }
     }
 
     private static void AddDynamicField(Dictionary<string, FilterField> fields, string path)
