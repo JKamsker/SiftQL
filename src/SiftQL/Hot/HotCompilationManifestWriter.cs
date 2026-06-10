@@ -41,8 +41,11 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
     {
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(expression);
-        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        if (HotManifestExpressionGuards.ContainsUnsupportedFilterNode(expression) ||
+            HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        {
             return;
+        }
 
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
         var observed = new HotCompilationObserved { Evaluations = evaluations, Matches = matches };

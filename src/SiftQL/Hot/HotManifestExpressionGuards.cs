@@ -4,6 +4,20 @@ namespace SiftQL.Hot;
 
 internal static class HotManifestExpressionGuards
 {
+    public static bool ContainsUnsupportedFilterNode(FilterExpression expression)
+    {
+        if (!IsSupportedFilterNode(expression.Kind))
+            return true;
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (ContainsUnsupportedFilterNode(expression.Children[i]))
+                return true;
+        }
+
+        return false;
+    }
+
     public static bool ContainsNonFiniteNumber(FilterExpression expression)
     {
         if (IsNonFiniteNumber(expression.Value))
@@ -53,4 +67,14 @@ internal static class HotManifestExpressionGuards
     private static bool IsNonFiniteNumber(FilterValue? value) =>
         value?.Kind == FilterValueKind.Number &&
         (double.IsNaN(value.Number) || double.IsInfinity(value.Number));
+
+    private static bool IsSupportedFilterNode(FilterExpressionKind kind) =>
+        kind is FilterExpressionKind.Any or
+            FilterExpressionKind.And or
+            FilterExpressionKind.Or or
+            FilterExpressionKind.Not or
+            FilterExpressionKind.Compare or
+            FilterExpressionKind.In or
+            FilterExpressionKind.Exists or
+            FilterExpressionKind.Contains;
 }

@@ -38,8 +38,11 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
     {
         if (Volatile.Read(ref _disposed) != 0)
             return;
-        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        if (HotManifestExpressionGuards.ContainsUnsupportedFilterNode(expression) ||
+            HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        {
             return;
+        }
 
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
         Record(
