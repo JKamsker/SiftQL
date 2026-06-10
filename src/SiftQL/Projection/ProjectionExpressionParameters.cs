@@ -124,7 +124,7 @@ internal static class ProjectionExpressionParameters
             FilterValueKind.Decimal => left.Decimal == right.Decimal,
             FilterValueKind.String => string.Equals(left.String, right.String, StringComparison.Ordinal),
             FilterValueKind.Guid => left.Guid == right.Guid,
-            FilterValueKind.Timestamp => left.Timestamp.UtcTicks == right.Timestamp.UtcTicks,
+            FilterValueKind.Timestamp => ProjectionTimestampKey.Equals(left.Timestamp, right.Timestamp),
             _ => false,
         };
     }

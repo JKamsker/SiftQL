@@ -119,7 +119,9 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
         Decimal = value.Decimal;
         Text = value.String;
         Guid = value.Guid;
-        TimestampTicks = value.Timestamp.UtcTicks;
+        TimestampText = value.Kind == FilterValueKind.Timestamp
+            ? ProjectionTimestampKey.From(value.Timestamp)
+            : string.Empty;
     }
 
     public FilterValueKind Kind { get; }
@@ -131,7 +133,7 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
     public decimal Decimal { get; }
     public string? Text { get; }
     public Guid Guid { get; }
-    public long TimestampTicks { get; }
+    public string TimestampText { get; }
 
     public static ProjectionArgumentValueKey From(FilterValue? value) =>
         value is null ? default : new ProjectionArgumentValueKey(value);
@@ -163,7 +165,7 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
         hash.Add(Decimal);
         hash.Add(Text);
         hash.Add(Guid);
-        hash.Add(TimestampTicks);
+        hash.Add(TimestampText, StringComparer.Ordinal);
         return hash.ToHashCode();
     }
 
@@ -198,7 +200,7 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
         Decimal == other.Decimal &&
         string.Equals(Text, other.Text, StringComparison.Ordinal) &&
         Guid == other.Guid &&
-        TimestampTicks == other.TimestampTicks;
+        string.Equals(TimestampText, other.TimestampText, StringComparison.Ordinal);
 
     private void AppendLiteral(StringBuilder builder)
     {
@@ -227,7 +229,7 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
                 builder.Append(Guid.ToString("D"));
                 break;
             case FilterValueKind.Timestamp:
-                builder.Append(TimestampTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                builder.Append(TimestampText);
                 break;
         }
     }

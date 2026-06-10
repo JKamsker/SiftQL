@@ -174,7 +174,8 @@ internal static class ProjectionContextMethodResolver
         if (argument.Kind == EventProjectionArgumentKind.SourceField)
         {
             return schema.TryGetField(argument.SourcePath, out FilterField field) &&
-                TypesMatch(field.ValueType, parameterType);
+                (TypesMatch(field.ValueType, parameterType) ||
+                    TimestampTypesMatch(field.ValueType, parameterType));
         }
 
         return ValueMatches(argument.Value, parameterType);
@@ -185,6 +186,14 @@ internal static class ProjectionContextMethodResolver
         Type source = Nullable.GetUnderlyingType(sourceType) ?? sourceType;
         Type target = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
         return target.IsAssignableFrom(source);
+    }
+
+    private static bool TimestampTypesMatch(Type sourceType, Type parameterType)
+    {
+        Type source = Nullable.GetUnderlyingType(sourceType) ?? sourceType;
+        Type target = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+        return source == typeof(DateTimeOffset) &&
+            (target == typeof(DateTime) || target == typeof(DateOnly));
     }
 
     private static bool ValueMatches(FilterValue value, Type parameterType)

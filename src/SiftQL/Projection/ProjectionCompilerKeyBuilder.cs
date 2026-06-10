@@ -103,7 +103,7 @@ internal static class ProjectionCompilerKeyBuilder
                 builder.Append(value.Guid.ToString("D"));
                 break;
             case FilterValueKind.Timestamp:
-                builder.Append(value.Timestamp.UtcTicks.ToString(CultureInfo.InvariantCulture));
+                builder.Append(ProjectionTimestampKey.From(value.Timestamp));
                 break;
         }
     }
