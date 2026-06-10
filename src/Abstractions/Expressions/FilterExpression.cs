@@ -47,6 +47,22 @@ public sealed record FilterExpression
     public static string ContentSignature(FilterExpression filter) =>
         FilterExpressionCanonical.Signature(filter);
 
+    // Always-false sentinel (Not(Any)); the simplifier collapses unsatisfiable
+    // filters to this. See [[FilterExpressionCanonical]].
+    public static FilterExpression Never => FilterExpressionCanonical.Never;
+
+    public static FilterExpression Simplify(FilterExpression filter) =>
+        FilterExpressionCanonical.Simplify(filter);
+
+    public static bool IsAlwaysTrue(FilterExpression filter) =>
+        FilterExpressionCanonical.IsAlwaysTrue(filter);
+
+    public static bool IsAlwaysFalse(FilterExpression filter) =>
+        FilterExpressionCanonical.IsAlwaysFalse(filter);
+
+    public static bool IsSatisfiable(FilterExpression filter) =>
+        !FilterExpressionCanonical.IsAlwaysFalse(filter);
+
     public FilterExpression()
     {
     }

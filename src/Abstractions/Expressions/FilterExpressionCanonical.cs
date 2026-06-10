@@ -15,11 +15,195 @@ internal static class FilterExpressionCanonical
 {
     public static readonly IEqualityComparer<FilterExpression> Comparer = new StructuralComparer();
 
+    // Always-false sentinel: Not(Any). Sound simplifications collapse
+    // unsatisfiable filters to this.
+    public static readonly FilterExpression Never =
+        new(FilterExpressionKind.Not) { Children = [FilterExpression.Any] };
+
     public static FilterExpression Canonicalize(FilterExpression filter)
     {
         ArgumentNullException.ThrowIfNull(filter);
         return CanonicalizeCore(filter);
     }
+
+    // Sound but intentionally incomplete simplifier: removes double negation,
+    // drops redundant Any, and collapses obvious contradictions (And) and
+    // tautologies (Or) to Never / Any. Never changes a filter's meaning.
+    public static FilterExpression Simplify(FilterExpression filter)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        return SimplifyCore(CanonicalizeCore(filter));
+    }
+
+    public static bool IsAlwaysTrue(FilterExpression filter) =>
+        Simplify(filter).Kind == FilterExpressionKind.Any;
+
+    public static bool IsAlwaysFalse(FilterExpression filter) =>
+        IsNever(Simplify(filter));
+
+    private static bool IsNever(FilterExpression filter) =>
+        filter.Kind == FilterExpressionKind.Not &&
+        filter.Children.Length == 1 &&
+        filter.Children[0].Kind == FilterExpressionKind.Any;
+
+    private static FilterExpression SimplifyCore(FilterExpression filter)
+    {
+        switch (filter.Kind)
+        {
+            case FilterExpressionKind.Not:
+                return SimplifyNot(filter);
+            case FilterExpressionKind.And:
+                return SimplifyAnd(filter);
+            case FilterExpressionKind.Or:
+                return SimplifyOr(filter);
+            default:
+                return filter;
+        }
+    }
+
+    private static FilterExpression SimplifyNot(FilterExpression filter)
+    {
+        if (filter.Children.Length != 1)
+            return filter;
+
+        FilterExpression child = SimplifyCore(filter.Children[0]);
+        if (child.Kind == FilterExpressionKind.Any)
+            return Never;
+        if (child.Kind == FilterExpressionKind.Not && child.Children.Length == 1)
+            return SimplifyCore(child.Children[0]);
+
+        return new FilterExpression(FilterExpressionKind.Not) { Children = [child] };
+    }
+
+    private static FilterExpression SimplifyAnd(FilterExpression filter)
+    {
+        var children = new List<FilterExpression>();
+        foreach (FilterExpression child in filter.Children)
+        {
+            FilterExpression simplified = SimplifyCore(child);
+            if (IsNever(simplified))
+                return Never;
+            if (simplified.Kind == FilterExpressionKind.Any)
+                continue;
+            if (simplified.Kind == FilterExpressionKind.And)
+                children.AddRange(simplified.Children);
+            else
+                children.Add(simplified);
+        }
+
+        if (children.Count == 0)
+            return FilterExpression.Any;
+        if (HasAndContradiction(children))
+            return Never;
+
+        return Recombine(FilterExpressionKind.And, children);
+    }
+
+    private static FilterExpression SimplifyOr(FilterExpression filter)
+    {
+        var children = new List<FilterExpression>();
+        foreach (FilterExpression child in filter.Children)
+        {
+            FilterExpression simplified = SimplifyCore(child);
+            if (simplified.Kind == FilterExpressionKind.Any)
+                return FilterExpression.Any;
+            if (IsNever(simplified))
+                continue;
+            if (simplified.Kind == FilterExpressionKind.Or)
+                children.AddRange(simplified.Children);
+            else
+                children.Add(simplified);
+        }
+
+        if (children.Count == 0)
+            return Never;
+        if (HasOrTautology(children))
+            return FilterExpression.Any;
+
+        return Recombine(FilterExpressionKind.Or, children);
+    }
+
+    private static FilterExpression Recombine(FilterExpressionKind kind, List<FilterExpression> children) =>
+        Combine(kind, children);
+
+    private static bool HasAndContradiction(List<FilterExpression> children)
+    {
+        var signatures = new HashSet<string>(StringComparer.Ordinal);
+        var equalities = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (FilterExpression child in children)
+            signatures.Add(SignatureOf(child));
+
+        foreach (FilterExpression child in children)
+        {
+            // x AND Not(x)
+            if (child.Kind == FilterExpressionKind.Not &&
+                child.Children.Length == 1 &&
+                signatures.Contains(SignatureOf(child.Children[0])))
+            {
+                return true;
+            }
+
+            // field == a AND field == b (a != b)
+            if (child.Kind == FilterExpressionKind.Compare &&
+                child.Operator == FilterOperator.Equal &&
+                child.Value is not null)
+            {
+                string key = EqualityKey(child);
+                string valueSig = ValueSignature(child.Value);
+                if (equalities.TryGetValue(key, out string? existing) && existing != valueSig)
+                    return true;
+                equalities[key] = valueSig;
+            }
+        }
+
+        // field == v AND field != v
+        foreach (FilterExpression child in children)
+        {
+            if (child.Kind == FilterExpressionKind.Compare &&
+                child.Operator == FilterOperator.NotEqual &&
+                child.Value is not null &&
+                equalities.TryGetValue(EqualityKey(child), out string? eqSig) &&
+                eqSig == ValueSignature(child.Value))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasOrTautology(List<FilterExpression> children)
+    {
+        var signatures = new HashSet<string>(StringComparer.Ordinal);
+        foreach (FilterExpression child in children)
+            signatures.Add(SignatureOf(child));
+
+        foreach (FilterExpression child in children)
+        {
+            // x OR Not(x)
+            if (child.Kind == FilterExpressionKind.Not &&
+                child.Children.Length == 1 &&
+                signatures.Contains(SignatureOf(child.Children[0])))
+            {
+                return true;
+            }
+
+            // field == v OR field != v
+            if (child.Kind == FilterExpressionKind.Compare &&
+                child.Operator == FilterOperator.Equal &&
+                child.Value is not null)
+            {
+                FilterExpression complement = child with { Operator = FilterOperator.NotEqual };
+                if (signatures.Contains(SignatureOf(complement)))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string EqualityKey(FilterExpression compare) =>
+        compare.Field + (compare.IgnoreCase ? "~i" : string.Empty);
 
     public static string Signature(FilterExpression filter)
     {
