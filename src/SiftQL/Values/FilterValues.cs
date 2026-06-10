@@ -46,6 +46,13 @@ public static class FilterValues
         if (op is FilterOperator.Equal or FilterOperator.NotEqual)
             return;
 
+        if (value.Kind == FilterValueKind.Null)
+        {
+            throw Error(
+                errorFactory,
+                $"Filter field '{field.Name}' does not support ordered comparisons against null.");
+        }
+
         if (op is not FilterOperator.GreaterThan and
             not FilterOperator.GreaterThanOrEqual and
             not FilterOperator.LessThan and
