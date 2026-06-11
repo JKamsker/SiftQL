@@ -160,17 +160,20 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
         if (HasParameter)
             return HashCode.Combine(Kind, ParameterKey);
 
-        var hash = new HashCode();
-        hash.Add(Kind);
-        hash.Add(Boolean);
-        hash.Add(Integer);
-        hash.Add(UnsignedInteger);
-        hash.Add(NumberBits);
-        hash.Add(Decimal);
-        hash.Add(Text);
-        hash.Add(Guid);
-        hash.Add(TimestampText, StringComparer.Ordinal);
-        return hash.ToHashCode();
+        return Kind switch
+        {
+            FilterValueKind.Boolean => HashCode.Combine(Kind, Boolean),
+            FilterValueKind.Integer => HashCode.Combine(Kind, Integer),
+            FilterValueKind.UnsignedInteger => HashCode.Combine(Kind, UnsignedInteger),
+            FilterValueKind.Number => HashCode.Combine(Kind, NumberBits),
+            FilterValueKind.Decimal => HashCode.Combine(Kind, Decimal),
+            FilterValueKind.String => HashCode.Combine(Kind, Text),
+            FilterValueKind.Guid => HashCode.Combine(Kind, Guid),
+            FilterValueKind.Timestamp => HashCode.Combine(
+                Kind,
+                StringComparer.Ordinal.GetHashCode(TimestampText)),
+            _ => Kind.GetHashCode(),
+        };
     }
 
     public void AppendTo(StringBuilder builder)
@@ -197,14 +200,22 @@ internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgum
     private bool HasParameter => !string.IsNullOrWhiteSpace(ParameterKey);
 
     private bool EqualsLiteral(ProjectionArgumentValueKey other) =>
-        Boolean == other.Boolean &&
-        Integer == other.Integer &&
-        UnsignedInteger == other.UnsignedInteger &&
-        NumberBits == other.NumberBits &&
-        Decimal == other.Decimal &&
-        string.Equals(Text, other.Text, StringComparison.Ordinal) &&
-        Guid == other.Guid &&
-        string.Equals(TimestampText, other.TimestampText, StringComparison.Ordinal);
+        Kind switch
+        {
+            FilterValueKind.Null => true,
+            FilterValueKind.Boolean => Boolean == other.Boolean,
+            FilterValueKind.Integer => Integer == other.Integer,
+            FilterValueKind.UnsignedInteger => UnsignedInteger == other.UnsignedInteger,
+            FilterValueKind.Number => NumberBits == other.NumberBits,
+            FilterValueKind.Decimal => Decimal == other.Decimal,
+            FilterValueKind.String => string.Equals(Text, other.Text, StringComparison.Ordinal),
+            FilterValueKind.Guid => Guid == other.Guid,
+            FilterValueKind.Timestamp => string.Equals(
+                TimestampText,
+                other.TimestampText,
+                StringComparison.Ordinal),
+            _ => false,
+        };
 
     private void AppendLiteral(StringBuilder builder)
     {
