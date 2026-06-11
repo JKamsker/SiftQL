@@ -19,7 +19,7 @@ public static class PrecompiledTieredProviderRegistry
 
     public static IDisposable CreateIsolatedScope()
     {
-        var scope = new ProviderScope(s_scope.Value);
+        var scope = new ProviderScope(CurrentActiveScope());
         s_scope.Value = scope;
         IncrementProviderViewVersion();
         return scope;
@@ -46,8 +46,8 @@ public static class PrecompiledTieredProviderRegistry
     {
         ArgumentNullException.ThrowIfNull(provider);
         IDisposable registration;
-        ProviderScope? scope = s_scope.Value;
-        if (scope is { IsActive: true })
+        ProviderScope? scope = CurrentActiveScope();
+        if (scope is not null)
         {
             scope.Add(provider);
             IncrementGlobalVersion();
@@ -67,7 +67,7 @@ public static class PrecompiledTieredProviderRegistry
         return registration;
     }
 
-    internal static bool IsolatedScopeActive => s_scope.Value is { IsActive: true };
+    internal static bool IsolatedScopeActive => CurrentActiveScope() is not null;
     internal static int GlobalVersion => Volatile.Read(ref s_globalVersion);
     internal static int ProviderViewVersion =>
         HashCode.Combine(
@@ -79,7 +79,7 @@ public static class PrecompiledTieredProviderRegistry
     internal static void RemoveAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
-        s_scope.Value?.RemoveAssembly(assembly);
+        CurrentActiveScope()?.RemoveAssembly(assembly);
         bool changed;
         lock (s_gate)
         {
@@ -184,7 +184,7 @@ public static class PrecompiledTieredProviderRegistry
     }
 
     private static IPrecompiledTieredProvider[] Providers() =>
-        s_scope.Value is { IsActive: true } scope
+        CurrentActiveScope() is { } scope
             ? scope.Providers
             : Volatile.Read(ref s_providers);
 
@@ -198,9 +198,17 @@ public static class PrecompiledTieredProviderRegistry
         Interlocked.Increment(ref s_providerViewVersion);
 
     private static int CurrentScopeIdentity() =>
-        s_scope.Value is { IsActive: true } scope
+        CurrentActiveScope() is { } scope
             ? RuntimeHelpers.GetHashCode(scope)
             : 0;
+
+    private static ProviderScope? CurrentActiveScope()
+    {
+        ProviderScope? scope = s_scope.Value;
+        while (scope is not null && !scope.IsActive)
+            scope = scope.Parent;
+        return scope;
+    }
 
     private static void Track(IDisposable registration, bool enabled)
     {
@@ -244,6 +252,7 @@ public static class PrecompiledTieredProviderRegistry
         private IPrecompiledTieredProvider[] _providers = [];
         private int _disposed;
 
+        public ProviderScope? Parent { get; } = parent;
         public bool IsActive => Volatile.Read(ref _disposed) == 0;
 
         public IPrecompiledTieredProvider[] Providers
@@ -313,7 +322,7 @@ public static class PrecompiledTieredProviderRegistry
 
             if (ReferenceEquals(s_scope.Value, this))
             {
-                s_scope.Value = parent;
+                s_scope.Value = Parent;
                 IncrementProviderViewVersion();
             }
             if (hadProviders)
