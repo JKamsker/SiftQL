@@ -243,6 +243,8 @@ internal static class HotProviderFilterValidator
 
         if (op is 0 or 1)
             return true;
+        if (value.Kind == HotFilterValueKind.Null)
+            return Unsupported(diagnostics, path, "Hot ordered comparisons require a non-null value.");
         if (projectedDynamic && IsNumeric(value.Kind))
             return true;
         return scalarKind == GeneratedScalarKind.Number ||

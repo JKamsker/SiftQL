@@ -44,9 +44,12 @@ internal static partial class HotManifestParser
             return null;
         }
 
+        if (!TryReadParameterKey(element, path, diagnostics, out string? parameterKey))
+            return null;
+
         return new(
             kind,
-            ReadNullableString(element, "ParameterKey"),
+            parameterKey,
             boolean,
             integer,
             unsignedInteger,
@@ -195,6 +198,29 @@ internal static partial class HotManifestParser
 
         value = parsed.ToString("D");
         return true;
+    }
+
+    private static bool TryReadParameterKey(
+        JsonElement element,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        out string? parameterKey)
+    {
+        parameterKey = null;
+        if (!element.TryGetProperty("ParameterKey", out JsonElement value) ||
+            value.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            parameterKey = value.GetString();
+            return true;
+        }
+
+        Add(diagnostics, "FSFHOT009", path, "Hot filter parameter key must be a string.");
+        return false;
     }
 
     private static bool TryReadTimestamp(

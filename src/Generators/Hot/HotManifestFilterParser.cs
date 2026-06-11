@@ -45,11 +45,17 @@ internal static partial class HotManifestParser
         if (!valuesValid || !childrenValid)
             return null;
 
+        if (!TryReadOptionalBoolean(element, "IgnoreCase", out bool ignoreCase))
+        {
+            Add(diagnostics, "FSFHOT009", path, "Hot filter ignoreCase flag must be a boolean.");
+            return null;
+        }
+
         return new(
             kind,
             ReadString(element, "Field"),
             op,
-            ReadBoolean(element, "IgnoreCase"),
+            ignoreCase,
             value,
             values,
             children);
