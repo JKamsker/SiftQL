@@ -39,7 +39,7 @@ public sealed class HotProviderSubtypeDiscriminatorRegressionTests
         Type otherType = loaded.Assembly.GetType("Plugin.Events.OtherEvent", throwOnError: true)!;
         CompiledKernel kernel = FilterCompiler.Compile(baseType, filter, FilterCompilerOptions.Tiered);
 
-        Assert.True(!kernel.IsTiered);
+        Assert.False(kernel.IsTiered);
         Assert.True(kernel.Matches(Activator.CreateInstance(specialType, 1)!));
         Assert.False(kernel.Matches(Activator.CreateInstance(otherType, 1)!));
     }

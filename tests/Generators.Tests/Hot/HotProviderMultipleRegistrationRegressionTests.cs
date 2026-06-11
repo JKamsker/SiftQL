@@ -57,8 +57,8 @@ public sealed class HotProviderMultipleRegistrationRegressionTests
                 secondFilter,
                 FilterCompilerOptions.Tiered);
 
-            Assert.True(!first.IsTiered);
-            Assert.True(!second.IsTiered);
+            Assert.False(first.IsTiered);
+            Assert.False(second.IsTiered);
         }
         finally
         {

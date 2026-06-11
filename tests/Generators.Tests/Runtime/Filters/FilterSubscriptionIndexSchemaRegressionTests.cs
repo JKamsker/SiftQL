@@ -41,8 +41,10 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
             schema = GeneratedFilterSchemaRegistry.Create(
                 type,
                 [
-                    ReservedField("subjectType", static subject => subject.GetType().FullName ?? subject.GetType().Name),
-                    ReservedField("subjectName", static subject => subject.GetType().Name),
+                    TestFilterHelpers.ReservedField(
+                        "subjectType",
+                        static subject => subject.GetType().FullName ?? subject.GetType().Name),
+                    TestFilterHelpers.ReservedField("subjectName", static subject => subject.GetType().Name),
                     new FilterField(
                         "Flag",
                         typeof(bool),
@@ -63,7 +65,7 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
         FilterExpression filter = RegionMissingFilter();
         using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
-            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), Fingerprint(filter)));
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), TestFilterHelpers.Fingerprint(filter)));
         var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
 
         index.Add("sub", filter);
@@ -81,7 +83,7 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         using var outer = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
         FilterExpression filter = RegionMissingFilter();
         using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
-            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), Fingerprint(filter)));
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), TestFilterHelpers.Fingerprint(filter)));
         var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
         index.Add("sub", filter);
         Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
@@ -101,7 +103,7 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
         FilterExpression filter = RegionMissingFilter();
         using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
-            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), Fingerprint(filter)));
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), TestFilterHelpers.Fingerprint(filter)));
         var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
         index.Add("sub", filter);
 
@@ -117,16 +119,6 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
     private static FilterExpression RegionMissingFilter() =>
         FilterExpression.Not(FilterExpression.Exists(nameof(HotIndexedSubject.Region)));
 
-    private static string Fingerprint(FilterExpression expression)
-    {
-        Type type = typeof(FilterCompiler).Assembly.GetType(
-            "SiftQL.Compiler.FilterExpressionFingerprint",
-            throwOnError: true)!;
-        return (string)type.GetMethod(
-            "Create",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(null, [expression])!;
-    }
-
     private static async Task<T> RunWithoutExecutionContextAsync<T>(Func<T> action)
     {
         Task<T> task;
@@ -134,14 +126,6 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
             task = Task.Run(action);
         return await task;
     }
-
-    private static FilterField ReservedField(string name, Func<object, string> value) =>
-        new(
-            name,
-            typeof(string),
-            FilterFieldKind.Scalar,
-            value,
-            new FilterScalarAccessor(FilterScalarKind.String, text: value));
 
     private static Type EmitSubjectType()
     {
@@ -165,35 +149,4 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
     }
 
     private sealed record HotIndexedSubject(string Region) : IFilterSubject;
-
-    private sealed class AlwaysMatchingHotProvider(
-        Type subjectType,
-        string acceptedFingerprint) : IPrecompiledTieredProvider
-    {
-        public bool TryGetFilter(
-            Type type,
-            string fingerprint,
-            out Func<object, bool>? predicate)
-        {
-            if (type == subjectType && string.Equals(fingerprint, acceptedFingerprint, StringComparison.Ordinal))
-            {
-                predicate = static _ => true;
-                return true;
-            }
-
-            predicate = null;
-            return false;
-        }
-
-        public bool TryGetProjection(
-            Type type,
-            string fingerprint,
-            out Func<object, ProjectedEventField[]>? projectFields)
-        {
-            _ = type;
-            _ = fingerprint;
-            projectFields = null;
-            return false;
-        }
-    }
 }

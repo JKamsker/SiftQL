@@ -94,12 +94,24 @@ public sealed class KernelElementMatchTranslationTests
             typeof(GroupedLootBag),
             query.Filter,
             FilterCompilerOptions.Immediate);
+        var tiered = FilterCompiler.Compile(
+            typeof(GroupedLootBag),
+            query.Filter,
+            FilterCompilerOptions.Tiered);
 
         Assert.True(kernel.Matches(new GroupedLootBag(
         [
             new LootGroup([new("Sword", false, 11)]),
         ])));
         Assert.False(kernel.Matches(new GroupedLootBag(
+        [
+            new LootGroup([new("Sword", false, 5), new("Axe", false, 99)]),
+        ])));
+        Assert.True(tiered.Matches(new GroupedLootBag(
+        [
+            new LootGroup([new("Sword", false, 11)]),
+        ])));
+        Assert.False(tiered.Matches(new GroupedLootBag(
         [
             new LootGroup([new("Sword", false, 5), new("Axe", false, 99)]),
         ])));

@@ -41,7 +41,7 @@ public sealed class HotUnsupportedFilterManifestRegressionTests
             return;
 
         HotCompilationManifest manifest = JsonSerializer.Deserialize<HotCompilationManifest>(
-            File.ReadAllText(path))!;
+            File.ReadAllText(path)) ?? throw new InvalidOperationException("Hot manifest could not be deserialized.");
         Assert.Empty(manifest.Entries);
     }
 
@@ -56,12 +56,11 @@ public sealed class HotUnsupportedFilterManifestRegressionTests
             {
                 MinimumEntries = 1,
                 MinimumInterval = TimeSpan.Zero,
-            });
+        });
 
         sink.RecordHotFilter(typeof(UnsupportedHotEvent), filter, evaluations: 1, matches: 0);
-        await Task.Delay(50);
 
-        Assert.False(queue.HasBatch);
+        Assert.False(await queue.WaitForBatchAsync(TimeSpan.FromSeconds(1)));
     }
 
     private static string TempManifestPath() =>

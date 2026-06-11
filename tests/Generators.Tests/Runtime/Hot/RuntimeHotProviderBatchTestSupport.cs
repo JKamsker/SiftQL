@@ -41,6 +41,25 @@ internal static class RuntimeHotProviderBatchTestSupport
             Interlocked.Decrement(ref _queued);
             return await read;
         }
+
+        public async Task<bool> WaitForBatchAsync(TimeSpan timeout)
+        {
+            using var cancellation = new CancellationTokenSource(timeout);
+            try
+            {
+                if (!await _batches.Reader.WaitToReadAsync(cancellation.Token))
+                    return false;
+                if (!_batches.Reader.TryRead(out _))
+                    return false;
+
+                Interlocked.Decrement(ref _queued);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
     }
 
     public sealed class RecordingManifestSink : ITieredHotManifestSink

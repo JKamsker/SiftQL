@@ -47,6 +47,7 @@ public sealed class SubtypeNestedObjectProjectionRegressionTests
 
         Assert.True(kernel.Matches(new NestedCombat(new NestedPlayer(Pet: new NestedDog(5)))));
         Assert.False(kernel.Matches(new NestedCombat(new NestedPlayer(Pet: new NestedDog(1)))));
+        Assert.False(kernel.Matches(new NestedCombat(new NestedPlayer(Pet: null))));
         Assert.False(kernel.Matches(new NestedCombat(new NestedPlayer(Pet: new NestedCat()))));
         Assert.False(kernel.Matches(new NestedCombat(new NestedMonster())));
     }

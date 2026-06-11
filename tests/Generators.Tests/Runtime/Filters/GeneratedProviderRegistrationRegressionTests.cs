@@ -41,8 +41,10 @@ public sealed class GeneratedProviderRegistrationRegressionTests
             schema = GeneratedFilterSchemaRegistry.Create(
                 candidate,
                 [
-                    ReservedField("subjectType", static subject => subject.GetType().FullName ?? subject.GetType().Name),
-                    ReservedField("subjectName", static subject => subject.GetType().Name),
+                    TestFilterHelpers.ReservedField(
+                        "subjectType",
+                        static subject => subject.GetType().FullName ?? subject.GetType().Name),
+                    TestFilterHelpers.ReservedField("subjectName", static subject => subject.GetType().Name),
                     BooleanField("GeneratedFlag", true),
                 ]);
             return true;
@@ -59,21 +61,15 @@ public sealed class GeneratedProviderRegistrationRegressionTests
             schema = GeneratedFilterSchemaRegistry.Create(
                 candidate,
                 [
-                    ReservedField("subjectType", static subject => subject.GetType().FullName ?? subject.GetType().Name),
-                    ReservedField("subjectName", static subject => subject.GetType().Name),
+                    TestFilterHelpers.ReservedField(
+                        "subjectType",
+                        static subject => subject.GetType().FullName ?? subject.GetType().Name),
+                    TestFilterHelpers.ReservedField("subjectName", static subject => subject.GetType().Name),
                     BooleanField("OtherGeneratedFlag", true),
                 ]);
             return true;
         }
     }
-
-    private static FilterField ReservedField(string name, Func<object, string> value) =>
-        new(
-            name,
-            typeof(string),
-            FilterFieldKind.Scalar,
-            value,
-            new FilterScalarAccessor(FilterScalarKind.String, text: value));
 
     private static FilterField BooleanField(string name, bool value) =>
         new(

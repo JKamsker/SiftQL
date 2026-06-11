@@ -39,7 +39,7 @@ public sealed class HotProviderTemporalFilterRegressionTests
         Type eventType = loaded.Assembly.GetType("Plugin.Events.TemporalEvent", throwOnError: true)!;
         CompiledKernel kernel = FilterCompiler.Compile(eventType, filter, FilterCompilerOptions.Tiered);
 
-        Assert.True(!kernel.IsTiered);
+        Assert.False(kernel.IsTiered);
         Assert.True(kernel.Matches(Activator.CreateInstance(eventType, threshold.AddTicks(1))!));
         Assert.False(kernel.Matches(Activator.CreateInstance(eventType, threshold.AddTicks(-1))!));
     }

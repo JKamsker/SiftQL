@@ -38,9 +38,8 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
                 """));
 
         using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        using HotTieredProviderLoadResult result = Load(output, assemblyName, manifestJson);
-
-        Assert.True(result.Loaded, result.Message);
+        WithLoadedProvider(output, assemblyName, manifestJson, static result =>
+            Assert.True(result.Loaded, result.Message));
     }
 
     [Fact]
@@ -70,9 +69,8 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
                 """));
 
         using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        using HotTieredProviderLoadResult result = Load(output, assemblyName, manifestJson);
-
-        Assert.True(result.Loaded, result.Message);
+        WithLoadedProvider(output, assemblyName, manifestJson, static result =>
+            Assert.True(result.Loaded, result.Message));
     }
 
     [Fact]
@@ -108,9 +106,8 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
                 """));
 
         using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        using HotTieredProviderLoadResult result = Load(output, assemblyName, runtimeManifest);
-
-        Assert.True(result.Loaded, result.Message);
+        WithLoadedProvider(output, assemblyName, runtimeManifest, static result =>
+            Assert.True(result.Loaded, result.Message));
     }
 
     [Fact]
@@ -137,9 +134,8 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
                 """));
 
         using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        using HotTieredProviderLoadResult result = Load(output, assemblyName, manifestJson);
-
-        Assert.False(result.Loaded, result.Message);
+        WithLoadedProvider(output, assemblyName, manifestJson, static result =>
+            Assert.False(result.Loaded, result.Message));
     }
 
     private static Compilation RunGenerator(
@@ -161,7 +157,25 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         return output;
     }
 
-    private static HotTieredProviderLoadResult Load(
+    private static void WithLoadedProvider(
+        Compilation output,
+        string assemblyName,
+        string manifestJson,
+        Action<HotTieredProviderLoadResult> assert)
+    {
+        (HotTieredProviderLoadResult result, string directory) = Load(output, assemblyName, manifestJson);
+        try
+        {
+            using (result)
+                assert(result);
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    private static (HotTieredProviderLoadResult Result, string Directory) Load(
         Compilation output,
         string assemblyName,
         string manifestJson)
@@ -173,12 +187,14 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         EmitResult emit = output.Emit(assemblyPath);
         Assert.True(emit.Success, string.Join(" | ", emit.Diagnostics));
         File.WriteAllText(manifestPath, manifestJson);
-        return HotTieredProviderLoader.TryLoad(new()
-        {
-            AssemblyPath = assemblyPath,
-            ManifestPath = manifestPath,
-            RequireExactRuntimeVersion = false,
-        });
+        return (
+            HotTieredProviderLoader.TryLoad(new()
+            {
+                AssemblyPath = assemblyPath,
+                ManifestPath = manifestPath,
+                RequireExactRuntimeVersion = false,
+            }),
+            directory);
     }
 
     private static string ManifestJson(
@@ -216,6 +232,18 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
             .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
             .ToArray();
         Assert.Empty(errors);
+    }
+
+    private static void TryDeleteDirectory(string? directory)
+    {
+        if (string.IsNullOrEmpty(directory))
+            return;
+
+        try { Directory.Delete(directory, recursive: true); }
+        catch
+        {
+            // Best-effort cleanup; loaded assemblies can briefly keep files open on Windows.
+        }
     }
 
     private sealed class InMemoryAdditionalText(string path, string text) : AdditionalText
