@@ -36,6 +36,8 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
         long evaluations,
         long matches)
     {
+        ArgumentNullException.ThrowIfNull(subjectType);
+        ArgumentNullException.ThrowIfNull(expression);
         if (Volatile.Read(ref _disposed) != 0)
             return;
         if (HotManifestExpressionGuards.ContainsUnsupportedFilterNode(expression) ||
@@ -63,6 +65,8 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
         long materializations,
         long payloadWrites)
     {
+        ArgumentNullException.ThrowIfNull(subjectType);
+        ArgumentNullException.ThrowIfNull(projection);
         if (Volatile.Read(ref _disposed) != 0)
             return;
         if (HotManifestExpressionGuards.ContainsNonFiniteNumber(projection))
