@@ -457,7 +457,7 @@ internal static class KernelExpressionTranslator
             names.Peek() is nameof(ProjectedEventValue.Boolean) or nameof(ProjectedEventValue.Integer) or
                 nameof(ProjectedEventValue.UnsignedInteger) or nameof(ProjectedEventValue.Number) or
                 nameof(ProjectedEventValue.Decimal) or nameof(ProjectedEventValue.String) or
-                nameof(ProjectedEventValue.Guid));
+                nameof(ProjectedEventValue.Guid) or nameof(ProjectedEventValue.Timestamp));
 
     private static bool TryGetProjectedFieldPath(
         MethodCallExpression call,
