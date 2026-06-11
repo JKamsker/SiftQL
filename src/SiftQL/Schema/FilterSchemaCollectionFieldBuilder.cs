@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Reflection;
+using SiftQL.Translation;
 
 namespace SiftQL.Schema;
 
@@ -24,6 +25,7 @@ internal static class FilterSchemaCollectionFieldBuilder
         if (!ContainsField(fields, path))
             fields.Add(BuildArrayField(path, elementType, [property]));
         AddProperties(fields, path, elementType, [property], depth + 1, isValueObject);
+        AddSubtypeProperties(fields, path, path, elementType, [property], depth + 1, isValueObject);
         return true;
     }
 
@@ -40,6 +42,14 @@ internal static class FilterSchemaCollectionFieldBuilder
 
         AddProperties(
             fields,
+            path,
+            elementType,
+            ResolveMemberPath(subjectType, path),
+            depth,
+            isValueObject);
+        AddSubtypeProperties(
+            fields,
+            path,
             path,
             elementType,
             ResolveMemberPath(subjectType, path),
@@ -107,6 +117,94 @@ internal static class FilterSchemaCollectionFieldBuilder
         }
     }
 
+    private static void AddSubtypeProperties(
+        List<FilterField> fields,
+        string fieldPrefix,
+        string readPrefix,
+        Type baseType,
+        MemberInfo[]? memberPath,
+        int depth,
+        Func<Type, bool> isValueObject)
+    {
+        if (depth > 3)
+            return;
+
+        foreach (Type subtype in FilterSchema.RegisteredValueObjectSubtypes(baseType))
+        {
+            string subtypePrefix = fieldPrefix + "." + SubtypeProjection.Segment(subtype);
+            AddSubtypeDeclaredProperties(
+                fields,
+                subtypePrefix,
+                readPrefix,
+                baseType,
+                subtype,
+                memberPath,
+                depth,
+                isValueObject);
+        }
+    }
+
+    private static void AddSubtypeDeclaredProperties(
+        List<FilterField> fields,
+        string fieldPrefix,
+        string readPrefix,
+        Type? baseType,
+        Type ownerType,
+        MemberInfo[]? memberPath,
+        int depth,
+        Func<Type, bool> isValueObject)
+    {
+        if (depth > 3)
+            return;
+
+        foreach (PropertyInfo property in FilterSchemaFallbackBuilder.EnumeratePublicProperties(ownerType))
+        {
+            if (property.GetMethod is null ||
+                property.GetMethod.GetParameters().Length != 0 ||
+                baseType is not null && IsReachableFromBase(baseType, property))
+            {
+                continue;
+            }
+
+            string fieldName = fieldPrefix + "." + property.Name;
+            if (ContainsField(fields, fieldName))
+                continue;
+
+            string readName = readPrefix + "." + property.Name;
+            MemberInfo[]? nextPath = AppendMember(memberPath, property);
+            Type propertyType = property.PropertyType;
+            Type scalarType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+            if (FilterSchemaFallbackBuilder.IsScalar(scalarType))
+            {
+                fields.Add(BuildArrayField(fieldName, scalarType, nextPath, readName));
+                continue;
+            }
+
+            Type? elementType = GetElementType(propertyType);
+            if (elementType is not null)
+            {
+                if (FilterSchemaFallbackBuilder.IsScalar(elementType))
+                    fields.Add(BuildArrayField(fieldName, elementType, nextPath, readName));
+                continue;
+            }
+
+            if (isValueObject(scalarType))
+                AddSubtypeDeclaredProperties(
+                    fields,
+                    fieldName,
+                    readName,
+                    null,
+                    scalarType,
+                    nextPath,
+                    depth + 1,
+                    isValueObject);
+        }
+    }
+
+    private static bool IsReachableFromBase(Type baseType, PropertyInfo property) =>
+        property.DeclaringType is { } declaringType &&
+        declaringType.IsAssignableFrom(baseType);
+
     private static MemberInfo[]? AppendMember(MemberInfo[]? memberPath, MemberInfo member) =>
         memberPath is null ? null : [.. memberPath, member];
 
@@ -149,14 +247,18 @@ internal static class FilterSchemaCollectionFieldBuilder
         return GetElementType(type) ?? type;
     }
 
-    private static FilterField BuildArrayField(string name, Type valueType, MemberInfo[]? memberPath) =>
+    private static FilterField BuildArrayField(
+        string name,
+        Type valueType,
+        MemberInfo[]? memberPath,
+        string? readPath = null) =>
         new(
             name,
             valueType,
             FilterFieldKind.Array,
             subject => memberPath is null
-                ? FilterCollectionFieldValues.Read(subject, name)
-                : FilterCollectionFieldValues.Read(subject, name, memberPath),
+                ? FilterCollectionFieldValues.Read(subject, readPath ?? name)
+                : FilterCollectionFieldValues.Read(subject, readPath ?? name, memberPath),
             IsCollectionDerived: true);
 
     private static Type? GetElementType(Type type)
