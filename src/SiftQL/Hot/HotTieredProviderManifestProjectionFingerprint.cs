@@ -28,6 +28,8 @@ internal static partial class HotTieredProviderManifestValidator
         {
             FilterExpression? filter = entry.Definition.Deserialize<FilterExpression>();
             return filter is not null &&
+                !HotManifestExpressionGuards.ContainsUnsupportedFilterNode(filter) &&
+                !HotManifestExpressionGuards.ContainsNonFiniteNumber(filter) &&
                 string.Equals(
                     FilterExpressionFingerprint.Create(filter),
                     entry.Fingerprint,
