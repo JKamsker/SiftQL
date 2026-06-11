@@ -1,3 +1,4 @@
+using System.Globalization;
 using SiftQL;
 using SiftQL.Expressions;
 
@@ -40,6 +41,11 @@ internal static class FilterNumeric
         number = 0;
         if (double.IsNaN(value) || double.IsInfinity(value))
             return false;
+        if (value == Math.Truncate(value) &&
+            TryIntegralDoubleToDecimal(value, out number))
+        {
+            return true;
+        }
 
         try
         {
@@ -53,6 +59,17 @@ internal static class FilterNumeric
         {
             return false;
         }
+    }
+
+    private static bool TryIntegralDoubleToDecimal(double value, out decimal number)
+    {
+        string text = value.ToString("R", CultureInfo.InvariantCulture);
+        return decimal.TryParse(
+                text,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out number) &&
+            decimal.Truncate(number) == number;
     }
 
     public static bool TryNumberDecimal(FilterValue value, out decimal number)
