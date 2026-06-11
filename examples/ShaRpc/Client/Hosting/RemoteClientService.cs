@@ -11,6 +11,7 @@ public sealed class RemoteClientService : IRemoteClient
     private const int PremiumInventorySubscribedStep = 3;
 
     private readonly string _premiumInventoryRegion = "north-gate";
+    private readonly SemaphoreSlim _startupGate = new(1, 1);
     private IRemoteServer? _server;
     private int _completedStartupStep;
 
@@ -19,32 +20,44 @@ public sealed class RemoteClientService : IRemoteClient
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        IRemoteServer server = Server;
-        ServerHello hello = await server.HelloAsync(
-            new ClientHello(
-                "catalog-client",
-                ServerKernel.SubjectTypes.Select(static type => type.Name).ToArray()),
-            cancellationToken).ConfigureAwait(false);
-
-        Console.WriteLine(
-            $"Connected to {hello.ServerName}; server subjects: {string.Join(", ", hello.Subjects)}");
-
-        if (_completedStartupStep < OffersDeliveredStep)
+        await _startupGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await QueryOffersAsync(server, cancellationToken).ConfigureAwait(false);
-            _completedStartupStep = OffersDeliveredStep;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_completedStartupStep >= PremiumInventorySubscribedStep)
+                return;
+
+            IRemoteServer server = Server;
+            ServerHello hello = await server.HelloAsync(
+                new ClientHello(
+                    "catalog-client",
+                    ServerKernel.SubjectTypes.Select(static type => type.Name).ToArray()),
+                cancellationToken).ConfigureAwait(false);
+
+            Console.WriteLine(
+                $"Connected to {hello.ServerName}; server subjects: {string.Join(", ", hello.Subjects)}");
+
+            if (_completedStartupStep < OffersDeliveredStep)
+            {
+                await QueryOffersAsync(server, cancellationToken).ConfigureAwait(false);
+                _completedStartupStep = OffersDeliveredStep;
+            }
+
+            if (_completedStartupStep < InventorySubscribedStep)
+            {
+                await SubscribeInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+                _completedStartupStep = InventorySubscribedStep;
+            }
+
+            if (_completedStartupStep < PremiumInventorySubscribedStep)
+            {
+                await SubscribePremiumInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+                _completedStartupStep = PremiumInventorySubscribedStep;
+            }
         }
-
-        if (_completedStartupStep < InventorySubscribedStep)
+        finally
         {
-            await SubscribeInventoryAsync(server, cancellationToken).ConfigureAwait(false);
-            _completedStartupStep = InventorySubscribedStep;
-        }
-
-        if (_completedStartupStep < PremiumInventorySubscribedStep)
-        {
-            await SubscribePremiumInventoryAsync(server, cancellationToken).ConfigureAwait(false);
-            _completedStartupStep = PremiumInventorySubscribedStep;
+            _startupGate.Release();
         }
     }
 
