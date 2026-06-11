@@ -1,4 +1,3 @@
-using System.Text.Json;
 using SiftQL.Examples.ShaRpc.SharedContracts.Contracts;
 using SiftQL.Examples.ShaRpc.SharedContracts.Domain;
 using SiftQL.Expressions;
@@ -63,12 +62,13 @@ public sealed class RemoteServerService(
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SubscriptionId);
         Type subjectType = ResolveSubject(request.Subject);
-        string pipelineSignature = PipelineSignature(request.Pipeline);
+        CompiledEventPipeline<ServerLookupContext> pipeline = Compile(subjectType, request.Pipeline);
+        string pipelineSignature = pipeline.Key;
         var subscription = new Subscription(
             request.SubscriptionId,
             subjectType.Name,
             pipelineSignature,
-            Compile(subjectType, request.Pipeline));
+            pipeline);
 
         lock (_subscriptionGate)
         {
@@ -169,12 +169,6 @@ public sealed class RemoteServerService(
             pipeline,
             EventPipelineCompilerOptions.Immediate,
             message => new InvalidOperationException(message));
-
-    private static string PipelineSignature(EventPipelineExpression pipeline)
-    {
-        ArgumentNullException.ThrowIfNull(pipeline);
-        return JsonSerializer.Serialize(pipeline);
-    }
 
     private sealed record Subscription(
         string Id,
