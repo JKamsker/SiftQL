@@ -70,6 +70,24 @@ public sealed class QueryKernelContextProjectedAliasRegressionTests
     }
 
     [Fact]
+    public void ReenteredContextWhereReusesIdenticalGeneratedInclude()
+    {
+        QueryKernel<MetricEvent, MetricContext> query = QueryKernel
+            .For<MetricEvent, MetricContext>()
+            .Where(static (ev, ctx) => ctx.Score(ev.Id) > 0)
+            .ToQueryKernel()
+            .WithContext<MetricEvent, MetricContext>()
+            .Where(static (ev, ctx) => ctx.Score(ev.Id) > 0);
+
+        EventProjectionInclude[] includes = query.Pipeline.Stages
+            .Where(static stage => stage.Kind == EventPipelineStageKind.Projection)
+            .SelectMany(static stage => stage.Projection.Includes)
+            .ToArray();
+
+        Assert.Single(includes);
+    }
+
+    [Fact]
     public async Task ReenteredContextWhereAllocatesDistinctGeneratedIncludeNames()
     {
         var query = QueryKernel
