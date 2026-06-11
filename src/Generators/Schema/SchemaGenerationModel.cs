@@ -43,4 +43,5 @@ internal sealed record GeneratedField(
     bool AccessCanReturnNull,
     bool EmitsScalarAccessor,
     string? ArrayContainsMethod,
-    bool UsesCollectionAccessor);
+    bool UsesCollectionAccessor,
+    EquatableArray<string> CollectionDeclaringTypes = default);

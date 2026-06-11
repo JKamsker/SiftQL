@@ -73,6 +73,7 @@ internal static class SchemaFieldDiscovery
                     name,
                     access,
                     property.Type,
+                    property,
                     depth))
             {
                 continue;

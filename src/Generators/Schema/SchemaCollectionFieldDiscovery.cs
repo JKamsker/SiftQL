@@ -12,6 +12,7 @@ internal static class SchemaCollectionFieldDiscovery
         string name,
         string access,
         ITypeSymbol collectionType,
+        IPropertySymbol property,
         int depth)
     {
         if (!TryCollectionElement(collectionType, out ITypeSymbol? elementType) ||
@@ -22,9 +23,10 @@ internal static class SchemaCollectionFieldDiscovery
             return false;
         }
 
+        ImmutableArray<string> declaringTypes = ImmutableArray.Create(DeclaringType(property));
         if (!SchemaFieldDiscovery.ContainsField(fields, name))
-            fields.Add(CollectionField(name, access, elementType, collectionType));
-        AddProperties(fields, name, access, owner, depth + 1);
+            fields.Add(CollectionField(name, access, elementType, collectionType, declaringTypes));
+        AddProperties(fields, name, access, owner, declaringTypes, depth + 1);
         return true;
     }
 
@@ -33,6 +35,7 @@ internal static class SchemaCollectionFieldDiscovery
         string prefix,
         string accessPrefix,
         INamedTypeSymbol owner,
+        ImmutableArray<string> declaringTypes,
         int depth)
     {
         if (depth > 3)
@@ -48,10 +51,11 @@ internal static class SchemaCollectionFieldDiscovery
                 continue;
 
             string access = accessPrefix + "." + property.Name;
+            ImmutableArray<string> propertyDeclaringTypes = declaringTypes.Add(DeclaringType(property));
             ITypeSymbol valueType = SchemaFieldDiscovery.UnwrapNullable(property.Type);
             if (SchemaFieldDiscovery.TryScalar(valueType, out GeneratedScalarKind scalarKind))
             {
-                fields.Add(Field(name, access, valueType, property.Type, scalarKind));
+                fields.Add(Field(name, access, valueType, property.Type, scalarKind, propertyDeclaringTypes));
                 continue;
             }
 
@@ -59,14 +63,14 @@ internal static class SchemaCollectionFieldDiscovery
             {
                 if (SchemaFieldDiscovery.TryScalar(elementType, out scalarKind))
                 {
-                    fields.Add(Field(name, access, elementType, property.Type, scalarKind));
+                    fields.Add(Field(name, access, elementType, property.Type, scalarKind, propertyDeclaringTypes));
                     continue;
                 }
 
                 if (SchemaFieldDiscovery.IsValueObject(elementType) &&
                     elementType is INamedTypeSymbol nestedCollectionElement)
                 {
-                    AddProperties(fields, name, access, nestedCollectionElement, depth + 1);
+                    AddProperties(fields, name, access, nestedCollectionElement, propertyDeclaringTypes, depth + 1);
                 }
 
                 continue;
@@ -75,7 +79,7 @@ internal static class SchemaCollectionFieldDiscovery
             if (SchemaFieldDiscovery.IsValueObject(valueType) &&
                 valueType is INamedTypeSymbol nested)
             {
-                AddProperties(fields, name, access, nested, depth + 1);
+                AddProperties(fields, name, access, nested, propertyDeclaringTypes, depth + 1);
             }
         }
     }
@@ -85,7 +89,8 @@ internal static class SchemaCollectionFieldDiscovery
         string access,
         ITypeSymbol valueType,
         ITypeSymbol propertyType,
-        GeneratedScalarKind scalarKind) =>
+        GeneratedScalarKind scalarKind,
+        ImmutableArray<string> declaringTypes) =>
         new(
             name,
             access,
@@ -98,13 +103,15 @@ internal static class SchemaCollectionFieldDiscovery
             AccessCanReturnNull: false,
             EmitsScalarAccessor: false,
             ArrayContainsMethod: null,
-            UsesCollectionAccessor: true);
+            UsesCollectionAccessor: true,
+            CollectionDeclaringTypes: declaringTypes);
 
     private static GeneratedField CollectionField(
         string name,
         string access,
         ITypeSymbol elementType,
-        ITypeSymbol collectionType) =>
+        ITypeSymbol collectionType,
+        ImmutableArray<string> declaringTypes) =>
         new(
             name,
             access,
@@ -117,7 +124,11 @@ internal static class SchemaCollectionFieldDiscovery
             AccessCanReturnNull: false,
             EmitsScalarAccessor: false,
             ArrayContainsMethod: null,
-            UsesCollectionAccessor: true);
+            UsesCollectionAccessor: true,
+            CollectionDeclaringTypes: declaringTypes);
+
+    private static string DeclaringType(IPropertySymbol property) =>
+        property.ContainingType.ToDisplayString(s_format);
 
     private static bool TryCollectionElement(ITypeSymbol type, out ITypeSymbol elementType)
     {

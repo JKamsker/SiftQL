@@ -11,14 +11,46 @@ public static class FilterCollectionFieldValues
 
     public static object?[]? Read(object? subject, string propertyPath)
     {
+        return ReadCore(subject, propertyPath, members: null, declaringTypes: null);
+    }
+
+    internal static object?[]? Read(object? subject, string propertyPath, MemberInfo[] members)
+    {
+        ArgumentNullException.ThrowIfNull(members);
+        return ReadCore(subject, propertyPath, members, declaringTypes: null);
+    }
+
+    public static object?[]? Read(object? subject, string propertyPath, Type[] declaringTypes)
+    {
+        ArgumentNullException.ThrowIfNull(declaringTypes);
+        return ReadCore(subject, propertyPath, members: null, declaringTypes);
+    }
+
+    private static object?[]? ReadCore(
+        object? subject,
+        string propertyPath,
+        IReadOnlyList<MemberInfo>? members,
+        IReadOnlyList<Type>? declaringTypes)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyPath);
 
         string[] segments = propertyPath.Split('.');
         ValidateSegments(propertyPath, segments);
+        ValidateMemberPath(propertyPath, segments, members, declaringTypes);
         var values = new List<object?>();
         int traversedItems = 0;
-        if (Collect(subject, propertyPath, segments, segmentIndex: 0, values, ref traversedItems))
+        if (Collect(
+                subject,
+                propertyPath,
+                segments,
+                members,
+                declaringTypes,
+                segmentIndex: 0,
+                values,
+                ref traversedItems))
+        {
             return values.ToArray();
+        }
 
         return null;
     }
@@ -36,10 +68,24 @@ public static class FilterCollectionFieldValues
         }
     }
 
+    private static void ValidateMemberPath(
+        string propertyPath,
+        IReadOnlyList<string> segments,
+        IReadOnlyList<MemberInfo>? members,
+        IReadOnlyList<Type>? declaringTypes)
+    {
+        if (members is not null && members.Count != segments.Count)
+            throw MemberPathMismatch(propertyPath);
+        if (declaringTypes is not null && declaringTypes.Count != segments.Count)
+            throw MemberPathMismatch(propertyPath);
+    }
+
     private static bool Collect(
         object? current,
         string propertyPath,
         IReadOnlyList<string> segments,
+        IReadOnlyList<MemberInfo>? members,
+        IReadOnlyList<Type>? declaringTypes,
         int segmentIndex,
         List<object?> values,
         ref int traversedItems)
@@ -61,7 +107,15 @@ public static class FilterCollectionFieldValues
                 if (++traversedItems > MaxRuntimeArrayItems)
                     throw TooManyRuntimeArrayItems(propertyPath);
 
-                Collect(item, propertyPath, segments, segmentIndex, values, ref traversedItems);
+                Collect(
+                    item,
+                    propertyPath,
+                    segments,
+                    members,
+                    declaringTypes,
+                    segmentIndex,
+                    values,
+                    ref traversedItems);
             }
 
             return true;
@@ -73,7 +127,12 @@ public static class FilterCollectionFieldValues
             return true;
         }
 
-        MemberInfo? member = FindMember(current.GetType(), segments[segmentIndex]);
+        MemberInfo? member = ResolveMember(
+            current.GetType(),
+            segments[segmentIndex],
+            members,
+            declaringTypes,
+            segmentIndex);
         if (member is null)
             return false;
 
@@ -98,7 +157,15 @@ public static class FilterCollectionFieldValues
             return false;
         }
 
-        return Collect(val, propertyPath, segments, segmentIndex + 1, values, ref traversedItems);
+        return Collect(
+            val,
+            propertyPath,
+            segments,
+            members,
+            declaringTypes,
+            segmentIndex + 1,
+            values,
+            ref traversedItems);
     }
 
     private static void AddValue(List<object?> values, object? value, string propertyPath)
@@ -116,6 +183,33 @@ public static class FilterCollectionFieldValues
             FieldInfo field => field.GetValue(instance),
             _ => null,
         };
+
+    private static MemberInfo? ResolveMember(
+        Type runtimeType,
+        string name,
+        IReadOnlyList<MemberInfo>? members,
+        IReadOnlyList<Type>? declaringTypes,
+        int segmentIndex)
+    {
+        if (members is not null)
+            return MemberCanRead(runtimeType, members[segmentIndex]) ? members[segmentIndex] : null;
+        if (declaringTypes is not null)
+            return FindMember(runtimeType, declaringTypes[segmentIndex], name);
+
+        return FindMember(runtimeType, name);
+    }
+
+    private static bool MemberCanRead(Type runtimeType, MemberInfo member) =>
+        member.DeclaringType is not null && member.DeclaringType.IsAssignableFrom(runtimeType);
+
+    private static MemberInfo? FindMember(Type runtimeType, Type declaringType, string name)
+    {
+        if (!declaringType.IsAssignableFrom(runtimeType))
+            return null;
+
+        return FindDeclaredMember(declaringType, name, ignoreCase: false) ??
+            FindDeclaredMember(declaringType, name, ignoreCase: true);
+    }
 
     private static MemberInfo? FindMember(Type type, string name)
     {
@@ -164,6 +258,9 @@ public static class FilterCollectionFieldValues
 
         return null;
     }
+
+    private static ArgumentException MemberPathMismatch(string propertyPath) =>
+        new($"Collection field member path does not match property path '{propertyPath}'.");
 
     private static InvalidOperationException TooManyRuntimeArrayItems(string propertyPath) =>
         new($"{TooManyRuntimeArrayItemsMessage} Property path: '{propertyPath}'.");

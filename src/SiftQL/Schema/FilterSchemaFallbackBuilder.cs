@@ -159,6 +159,7 @@ internal static class FilterSchemaFallbackBuilder
             if (FilterSchemaCollectionFieldBuilder.TryAddObjectCollectionFields(
                     fields,
                     name,
+                    property,
                     propertyType,
                     depth,
                     isValueObject))
