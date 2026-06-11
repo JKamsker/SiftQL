@@ -81,6 +81,26 @@ public sealed class TypedFilterSubscriptionIndexTests
         Assert.Empty(index.SnapshotMatches(new IndexedSubject(1, "north")));
     }
 
+    [Fact]
+    public void TypedIndexRebuildsWhenEnteringNestedIsolatedHotProviderScope()
+    {
+        using var outer = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(IndexedSubject), Fingerprint(filter)));
+        var index = new TypedFilterSubscriptionIndex<string, IndexedSubject>();
+        index.Add("sub", filter);
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        using (PrecompiledTieredProviderRegistry.CreateIsolatedScope())
+        {
+            Assert.False(PrecompiledTieredProviderRegistry.HasProviders);
+            Assert.Empty(index.SnapshotMatches(new IndexedSubject(1, "north")));
+        }
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+    }
+
     private static FilterExpression IdEquals(int id) =>
         FilterExpression.Compare(
             nameof(IndexedSubject.Id),

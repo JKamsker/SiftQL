@@ -75,6 +75,26 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         Assert.Empty(index.SnapshotMatches(new HotIndexedSubject("north")));
     }
 
+    [Fact]
+    public void IndexRebuildsWhenEnteringNestedIsolatedHotProviderScope()
+    {
+        using var outer = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), Fingerprint(filter)));
+        var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
+        index.Add("sub", filter);
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+
+        using (PrecompiledTieredProviderRegistry.CreateIsolatedScope())
+        {
+            Assert.False(PrecompiledTieredProviderRegistry.HasProviders);
+            Assert.Empty(index.SnapshotMatches(new HotIndexedSubject("north")));
+        }
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+    }
+
     private static FilterExpression RegionMissingFilter() =>
         FilterExpression.Not(FilterExpression.Exists(nameof(HotIndexedSubject.Region)));
 
