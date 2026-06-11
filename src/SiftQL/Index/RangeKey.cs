@@ -35,7 +35,12 @@ internal static class RangeKey
     public static Func<object, decimal?> CreateAccessor(FilterField field)
     {
         Func<object, object?> getter = field.Getter;
-        return subject => FromActual(getter(subject));
+        FilterScalarAccessor? scalarAccessor = field.ScalarAccessor;
+        return subject =>
+        {
+            decimal? key = FromActual(getter(subject));
+            return key ?? FromScalar(scalarAccessor, subject);
+        };
     }
 
     public static bool TryFromValue(FilterValue value, out decimal key)
@@ -82,6 +87,24 @@ internal static class RangeKey
             DateOnly v => new DateTimeOffset(v.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).UtcTicks,
             _ => null,
         };
+
+    private static decimal? FromScalar(FilterScalarAccessor? accessor, object subject)
+    {
+        if (accessor?.Kind != FilterScalarKind.Number)
+            return null;
+
+        double? value = accessor.RequiredNumber is { } requiredNumber
+            ? requiredNumber(subject)
+            : accessor.Number?.Invoke(subject);
+        if (!value.HasValue ||
+            Math.Abs(value.Value) >= (double)DecimalRangeLimit ||
+            !FilterNumeric.TryDoubleToDecimal(value.Value, out decimal key))
+        {
+            return null;
+        }
+
+        return key;
+    }
 
     private static DateTimeOffset ToTimestamp(DateTime value) =>
         value.Kind switch
