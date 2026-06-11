@@ -1,4 +1,5 @@
 using SiftQL.Expressions;
+using SiftQL.Projected;
 using Xunit;
 
 namespace SiftQL.Generators.Tests;
@@ -60,5 +61,18 @@ public sealed class FilterQueryRepresentationRegressionTests
     public void ParseRejectsIgnoreCaseMarkerWhereItHasNoMeaning(string query)
     {
         Assert.Throws<FilterQueryException>(() => FilterQuery.Parse(query));
+    }
+
+    [Fact]
+    public void FormatRoundTripsProjectedFieldPaths()
+    {
+        FilterExpression filter = FilterExpression.Compare(
+            ProjectedEventPaths.Field("ItemId"),
+            FilterOperator.Equal,
+            FilterValue.From(100L));
+
+        FilterExpression reparsed = FilterQuery.Parse(FilterQuery.Format(filter));
+
+        Assert.Equal(FilterExpression.ContentSignature(filter), FilterExpression.ContentSignature(reparsed));
     }
 }
