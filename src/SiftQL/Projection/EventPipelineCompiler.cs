@@ -116,7 +116,7 @@ public static class EventPipelineCompiler
 
     public static EventPipelineExpression ProjectionDispatchPipeline(EventPipelineExpression? pipeline)
     {
-        bool referencesProjectedFields = ReferencesProjectedFields(pipeline);
+        bool referencesProjectedFields = EventPipelineDispatchFilter.ReferencesProjectedFields(pipeline);
         Type subjectType = referencesProjectedFields
             ? typeof(ProjectedEvent)
             : typeof(object);
@@ -136,7 +136,7 @@ public static class EventPipelineCompiler
             EventPipelineStage stage = normalized.Stages[i];
             if (i < projectionIndex && stage.Kind == EventPipelineStageKind.Filter)
             {
-                FilterExpression? dispatchFilter = ProjectionDispatchFilter(stage.Filter);
+                FilterExpression? dispatchFilter = EventPipelineDispatchFilter.Prune(stage.Filter);
                 if (dispatchFilter is null)
                     continue;
 
@@ -147,60 +147,6 @@ public static class EventPipelineCompiler
         }
 
         return normalized with { Stages = stages.ToArray() };
-    }
-
-    private static FilterExpression? ProjectionDispatchFilter(FilterExpression filter)
-    {
-        if (!ReferencesProjectedFields(filter))
-            return null;
-        if (filter.Kind != FilterExpressionKind.And)
-            return filter;
-
-        FilterExpression[] projected = filter.Children
-            .Where(ReferencesProjectedFields)
-            .ToArray();
-        return projected.Length switch
-        {
-            0 => null,
-            1 => projected[0],
-            _ => filter with { Children = projected },
-        };
-    }
-
-    private static bool ReferencesProjectedFields(EventPipelineExpression? pipeline)
-    {
-        if (pipeline?.Stages is null)
-            return false;
-
-        for (int i = 0; i < pipeline.Stages.Length; i++)
-        {
-            EventPipelineStage? stage = pipeline.Stages[i];
-            if (stage?.Kind == EventPipelineStageKind.Filter &&
-                ReferencesProjectedFields(stage.Filter))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ReferencesProjectedFields(FilterExpression? expression)
-    {
-        if (expression is null)
-            return false;
-        if (ProjectedEventPaths.TrySplit(expression.Field, out _, out _))
-            return true;
-        if (expression.Children is null)
-            return false;
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (ReferencesProjectedFields(expression.Children[i]))
-                return true;
-        }
-
-        return false;
     }
 
     private static CompiledEventPipeline<TContext> CompileUncached<TContext>(
