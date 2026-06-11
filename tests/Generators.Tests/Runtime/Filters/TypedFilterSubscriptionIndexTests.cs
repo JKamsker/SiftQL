@@ -101,6 +101,25 @@ public sealed class TypedFilterSubscriptionIndexTests
         Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
     }
 
+    [Fact]
+    public async Task TypedIndexRebuildsWhenExecutionContextDropsIsolatedHotProviderScope()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(IndexedSubject), Fingerprint(filter)));
+        var index = new TypedFilterSubscriptionIndex<string, IndexedSubject>();
+        index.Add("sub", filter);
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        string[] matches = await RunWithoutExecutionContextAsync(
+            () => index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        Assert.Empty(matches);
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+    }
+
     private static FilterExpression IdEquals(int id) =>
         FilterExpression.Compare(
             nameof(IndexedSubject.Id),
@@ -118,6 +137,14 @@ public sealed class TypedFilterSubscriptionIndexTests
         return (string)type.GetMethod(
             "Create",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(null, [expression])!;
+    }
+
+    private static async Task<T> RunWithoutExecutionContextAsync<T>(Func<T> action)
+    {
+        Task<T> task;
+        using (ExecutionContext.SuppressFlow())
+            task = Task.Run(action);
+        return await task;
     }
 
     private sealed record IndexedSubject(int Id, string Region) : IFilterSubject;

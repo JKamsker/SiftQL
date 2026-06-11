@@ -95,6 +95,25 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
     }
 
+    [Fact]
+    public async Task IndexRebuildsWhenExecutionContextDropsIsolatedHotProviderScope()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), Fingerprint(filter)));
+        var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
+        index.Add("sub", filter);
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+
+        string[] matches = await RunWithoutExecutionContextAsync(
+            () => index.SnapshotMatches(new HotIndexedSubject("north")));
+
+        Assert.Empty(matches);
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+    }
+
     private static FilterExpression RegionMissingFilter() =>
         FilterExpression.Not(FilterExpression.Exists(nameof(HotIndexedSubject.Region)));
 
@@ -106,6 +125,14 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         return (string)type.GetMethod(
             "Create",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(null, [expression])!;
+    }
+
+    private static async Task<T> RunWithoutExecutionContextAsync<T>(Func<T> action)
+    {
+        Task<T> task;
+        using (ExecutionContext.SuppressFlow())
+            task = Task.Run(action);
+        return await task;
     }
 
     private static FilterField ReservedField(string name, Func<object, string> value) =>
