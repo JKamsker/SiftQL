@@ -140,6 +140,9 @@ internal static class ContextKernelExpressionTranslator
 
         private FilterExpression TranslateMethodCall(MethodCallExpression expression)
         {
+            if (KernelElementAnyTranslator.TryTranslate(expression, _subject, ref _parameterIndex, out var anyFilter))
+                return ProjectSourceFilter(anyFilter);
+
             if (IsKernelIn(expression.Method))
             {
                 string field = RequireProjectedPath(expression.Arguments[0]);
@@ -156,6 +159,24 @@ internal static class ContextKernelExpressionTranslator
                 return FilterExpression.Compare(contextPath, FilterOperator.Equal, FilterValue.From(true));
 
             throw Unsupported(expression);
+        }
+
+        private FilterExpression ProjectSourceFilter(FilterExpression expression)
+        {
+            if (!_projectSubjectFields)
+                return expression;
+
+            return expression.Kind switch
+            {
+                FilterExpressionKind.And or FilterExpressionKind.Or or FilterExpressionKind.Not => expression with
+                {
+                    Children = expression.Children.Select(ProjectSourceFilter).ToArray(),
+                },
+                FilterExpressionKind.ElemMatch => expression with { Field = ProjectSubjectPath(expression.Field) },
+                _ => string.IsNullOrEmpty(expression.Field)
+                    ? expression
+                    : expression with { Field = ProjectSubjectPath(expression.Field) },
+            };
         }
 
         private FilterExpression TranslateContains(MethodCallExpression expression)
