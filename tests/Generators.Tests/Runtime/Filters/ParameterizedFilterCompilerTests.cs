@@ -109,6 +109,38 @@ public sealed class ParameterizedFilterCompilerTests : IDisposable
     }
 
     [Fact]
+    public void DuplicateParameterKeysIgnoreInactivePayloadsOnActiveValues()
+    {
+        FilterValue lower = FilterValue.From(100L) with
+        {
+            ParameterKey = "p0",
+            String = "inactive-a",
+        };
+        FilterValue upper = FilterValue.From(100L) with
+        {
+            ParameterKey = "p0",
+            String = "inactive-b",
+        };
+        FilterExpression filter = FilterExpression.And(
+            FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.GreaterThanOrEqual,
+                lower),
+            FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.LessThanOrEqual,
+                upper));
+
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(ItemUsedEvent),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(Event(itemId: 100)));
+        Assert.False(kernel.Matches(Event(itemId: 101)));
+    }
+
+    [Fact]
     public async Task TieredFilterPromotionUsesCompileTimeExpressionSnapshot()
     {
         FilterExpression filter = FilterExpression.In(
