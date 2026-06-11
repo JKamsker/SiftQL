@@ -94,6 +94,49 @@ public sealed class FilterSchemaCollectionRegisteredValueObjectRegressionTests
         Assert.True(kernel.Matches(ev));
     }
 
+    [Fact]
+    public void GeneratedCollectionMergeUsesDeclaredCollectionWhenSubjectHidesUnsupportedProperty()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.CollectionRegisteredHiddenCollection",
+            Source("""
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed class ManualPoint
+                {
+                    public int X { get; init; }
+                }
+
+                public sealed record InventoryItem(ManualPoint Point);
+
+                public abstract record InventoryBase(InventoryItem[] Items) : IFilterSubject;
+
+                public sealed record InventoryEvent(InventoryItem[] BaseItems) : InventoryBase(BaseItems)
+                {
+                    public new object Items { get; } = new();
+                }
+                """));
+
+        AssertNoCompilationErrors(run, "hidden collection schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "hidden collection schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type pointType = assembly.GetType("Plugin.Events.ManualPoint", throwOnError: true)!;
+        Type itemType = assembly.GetType("Plugin.Events.InventoryItem", throwOnError: true)!;
+        Type eventType = assembly.GetType("Plugin.Events.InventoryEvent", throwOnError: true)!;
+        object ev = CreateEvent(pointType, itemType, eventType);
+
+        FilterSchema.RegisterValueObject(pointType);
+        FilterSchema schema = FilterSchema.For(eventType);
+        var filter = FilterExpression.Contains("Items.Point.X", FilterValue.From(7L));
+        CompiledKernel kernel = FilterCompiler.Compile(eventType, filter, FilterCompilerOptions.Immediate);
+
+        Assert.True(schema.TryGetField("Items.Point.X", out FilterField? field));
+        Assert.Equal(new object?[] { 7, 11 }, Assert.IsType<object?[]>(field!.Getter(ev)));
+        Assert.True(kernel.Matches(ev));
+    }
+
     private static object CreateEvent(Type pointType, Type itemType, Type eventType)
     {
         Array items = Array.CreateInstance(itemType, 2);
