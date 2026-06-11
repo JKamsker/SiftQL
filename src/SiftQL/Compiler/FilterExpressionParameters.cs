@@ -1,3 +1,4 @@
+using System.Globalization;
 using SiftQL;
 using SiftQL.Expressions;
 
@@ -59,12 +60,36 @@ internal static class FilterExpressionParameters
             return;
         }
 
-        if (!existing.Equals(value))
+        if (!ValuesMatch(existing, value))
         {
             throw new FilterValidationException(
                 $"{label} parameter '{key}' is used with conflicting values.");
         }
     }
+
+    private static bool ValuesMatch(FilterValue left, FilterValue right)
+    {
+        if (left.Kind != right.Kind)
+            return false;
+
+        return left.Kind switch
+        {
+            FilterValueKind.Null => true,
+            FilterValueKind.Boolean => left.Boolean == right.Boolean,
+            FilterValueKind.Integer => left.Integer == right.Integer,
+            FilterValueKind.UnsignedInteger => left.UnsignedInteger == right.UnsignedInteger,
+            FilterValueKind.Number => BitConverter.DoubleToInt64Bits(left.Number) ==
+                BitConverter.DoubleToInt64Bits(right.Number),
+            FilterValueKind.Decimal => left.Decimal == right.Decimal,
+            FilterValueKind.String => string.Equals(left.String, right.String, StringComparison.Ordinal),
+            FilterValueKind.Guid => left.Guid == right.Guid,
+            FilterValueKind.Timestamp => TimestampText(left.Timestamp) == TimestampText(right.Timestamp),
+            _ => false,
+        };
+    }
+
+    private static string TimestampText(DateTimeOffset value) =>
+        value.ToString("o", CultureInfo.InvariantCulture);
 
     private static void VisitValues(
         FilterExpression expression,
