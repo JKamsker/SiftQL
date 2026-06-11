@@ -58,6 +58,27 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
         Assert.Equal(Fingerprint(valid), entry.Fingerprint);
     }
 
+    [Fact]
+    public void ManifestWriterDropsExistingFilterEntriesWithNullChildren()
+    {
+        string path = TempManifestPath();
+        FilterExpression valid = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(100L));
+        SeedRawManifest(path, NullChildEntry(valid));
+        var writer = new HotCompilationManifestWriter(
+            path,
+            new HotCompilationManifestWriterOptions { CoalesceDelay = TimeSpan.Zero });
+
+        writer.RecordHotFilter(typeof(ItemUsedEvent), valid, evaluations: 1, matches: 1);
+        writer.Flush();
+
+        HotCompilationManifest manifest = ReadManifest(path);
+        HotCompilationManifestEntry entry = Assert.Single(manifest.Entries);
+        Assert.Equal(Fingerprint(valid), entry.Fingerprint);
+    }
+
     private static void SeedManifest(
         string path,
         FilterExpression unsupported,
@@ -99,6 +120,17 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
             }
             """);
         return Entry("null-arrays", Fingerprint(definition), document.RootElement.Clone());
+    }
+
+    private static HotCompilationManifestEntry NullChildEntry(FilterExpression definition)
+    {
+        using JsonDocument document = JsonDocument.Parse($$"""
+            {
+              "Kind": 3,
+              "Children": [null]
+            }
+            """);
+        return Entry("null-child", Fingerprint(definition), document.RootElement.Clone());
     }
 
     private static HotCompilationManifestEntry Entry(
