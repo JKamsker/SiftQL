@@ -138,6 +138,41 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
             Assert.False(result.Loaded, result.Message));
     }
 
+    [Fact]
+    public void LoaderRejectsUnsupportedHotFilterDefinitionEvenWhenProviderSatisfiesFingerprint()
+    {
+        const string assemblyName = "Plugin.Hot.UnsupportedClaim";
+        const string eventTypeName = "Plugin.Events.UnsupportedClaimEvent";
+        FilterExpression filter = FilterExpression.Count(
+            "Values",
+            FilterOperator.GreaterThan,
+            FilterValue.From(0L));
+        string subjectType = eventTypeName + ", " + assemblyName;
+        string fingerprint = FilterExpressionFingerprint.Create(filter);
+        string manifestJson = ManifestJson(
+            assemblyName,
+            "filter",
+            subjectType,
+            fingerprint,
+            filter);
+        string manifestHash = HotManifestSemanticHash.Compute(manifestJson);
+        Compilation output = GeneratorTestCompilation.Create(
+            assemblyName,
+            Source(ClaimingProviderSource(manifestHash, fingerprint)));
+        AssertNoCompilationErrors(output);
+
+        (HotTieredProviderLoadResult result, string directory) = Load(output, assemblyName, manifestJson);
+        try
+        {
+            using (result)
+                Assert.Equal(HotTieredProviderLoadStatus.InvalidAssembly, result.Status);
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
+        }
+    }
+
     private static Compilation RunGenerator(
         string assemblyName,
         AdditionalText manifest,
@@ -222,6 +257,63 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
             ],
         });
     }
+
+    private static string ClaimingProviderSource(string manifestHash, string fingerprint) =>
+        $$"""
+        using System;
+        using System.Reflection;
+        using System.Runtime.CompilerServices;
+        using SiftQL;
+        using SiftQL.Expressions;
+        using SiftQL.Hot;
+        using SiftQL.Projected;
+
+        [assembly: AssemblyMetadata("SiftQLHotManifestHash", "{{manifestHash}}")]
+        [assembly: AssemblyMetadata("SiftQLHotManifestSchema", "{{HotCompilationManifestCompatibility.Schema}}")]
+        [assembly: AssemblyMetadata("SiftQLHotFilterEngine", "{{HotCompilationManifestCompatibility.Engine}}")]
+        [assembly: AssemblyMetadata("SiftQLHotGenerator", "{{HotCompilationManifestCompatibility.Generator}}")]
+
+        namespace Plugin.Events;
+
+        public sealed record UnsupportedClaimEvent(long[] Values) : IFilterSubject;
+
+        internal sealed class ClaimingProvider : IPrecompiledTieredProvider
+        {
+            public bool TryGetFilter(
+                Type subjectType,
+                string fingerprint,
+                out Func<object, bool>? predicate)
+            {
+                if (subjectType == typeof(UnsupportedClaimEvent) &&
+                    string.Equals(fingerprint, "{{fingerprint}}", StringComparison.Ordinal))
+                {
+                    predicate = static _ => true;
+                    return true;
+                }
+
+                predicate = null;
+                return false;
+            }
+
+            public bool TryGetProjection(
+                Type subjectType,
+                string fingerprint,
+                out Func<object, ProjectedEventField[]>? projectFields)
+            {
+                _ = subjectType;
+                _ = fingerprint;
+                projectFields = null;
+                return false;
+            }
+        }
+
+        internal static class ProviderRegistration
+        {
+            [ModuleInitializer]
+            internal static void Register() =>
+                HotProviderRegistrationContext.Register(new ClaimingProvider(), "{{manifestHash}}");
+        }
+        """;
 
     private static SyntaxTree Source(string source) =>
         CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
