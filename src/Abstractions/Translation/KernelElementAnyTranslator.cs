@@ -96,7 +96,8 @@ internal static class KernelElementAnyTranslator
             ExpressionType.GreaterThan or
             ExpressionType.GreaterThanOrEqual or
             ExpressionType.LessThan or
-            ExpressionType.LessThanOrEqual ||
+            ExpressionType.LessThanOrEqual or
+            ExpressionType.TypeIs ||
         body is MethodCallExpression call && IsAny(call.Method);
 
     private static FilterExpression TranslatePredicate(
