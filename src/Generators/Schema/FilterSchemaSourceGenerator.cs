@@ -47,7 +47,7 @@ public sealed class FilterSchemaSourceGenerator : IIncrementalGenerator
 
             string source = FilterSchemaEmitter.Emit(
                 discovered,
-                "GeneratedCurrentFilterSchemaProvider",
+                CurrentProviderName(discovered),
                 registerProvider: true);
             ctx.AddSource("GeneratedCurrentFilterSchemaProvider.g.cs", SourceText.From(source, Encoding.UTF8));
         });
@@ -99,4 +99,25 @@ public sealed class FilterSchemaSourceGenerator : IIncrementalGenerator
         manifest.Diagnostics.Count == 0 &&
         !string.IsNullOrEmpty(manifest.ManifestHash) &&
         !hashes.Add(manifest.ManifestHash);
+
+    private static string CurrentProviderName(EquatableArray<GeneratedSchema> schemas)
+    {
+        var identity = new StringBuilder();
+        for (int i = 0; i < schemas.Count; i++)
+            identity.Append(schemas[i].TypeName).Append('|');
+
+        return "GeneratedCurrentFilterSchemaProvider_" + StableHash(identity.ToString());
+    }
+
+    private static string StableHash(string text)
+    {
+        uint hash = 2166136261;
+        foreach (char ch in text)
+        {
+            hash ^= ch;
+            hash *= 16777619;
+        }
+
+        return hash.ToString("X8");
+    }
 }
