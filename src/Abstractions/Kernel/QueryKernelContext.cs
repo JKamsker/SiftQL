@@ -51,7 +51,7 @@ public sealed record QueryKernel<TSubject, TContext>
                 translated.NewIncludes,
                 ContextProjectionPipeline.HasProjection(Pipeline)
                     ? RequiredSourceFields(Pipeline, translated.SourceFields)
-                    : [])
+                    : RequiredInitialSourceFields(translated.SourceFields))
             .AppendFilter(translated.Filter);
         return new QueryKernel<TSubject, TContext>(
             Kernel with { Pipeline = pipeline },
@@ -132,11 +132,22 @@ public sealed record QueryKernel<TSubject, TContext>
             if (ContextProjectionPipeline.TryProjectedFieldName(pipeline, sourcePath, out _))
                 continue;
             if (names.Add(sourcePath))
-                fields.Add(new EventProjectionField(sourcePath));
+                fields.Add(RequiredSourceField(sourcePath));
         }
 
         return fields.ToArray();
     }
+
+    private static EventProjectionField[] RequiredInitialSourceFields(
+        IReadOnlyList<string> sourceFields) =>
+        sourceFields.Any(static path => ProjectedEventPaths.TrySplit(path, out _, out _))
+            ? RequiredSourceFields(EventPipelineExpression.Default, sourceFields)
+            : [];
+
+    private static EventProjectionField RequiredSourceField(string sourcePath) =>
+        ProjectedEventPaths.TrySplit(sourcePath, out bool context, out string name) && !context
+            ? new EventProjectionField(sourcePath, name)
+            : new EventProjectionField(sourcePath);
 
     private EventProjectionField FinalField(ContextSelectorOutput output, bool projected)
     {

@@ -110,7 +110,7 @@ internal static class ContextProjectionPipeline
     }
 
     public static string ProjectedPath(EventPipelineExpression pipeline, string sourcePath) =>
-        ProjectedEventPaths.Field(ProjectedFieldName(pipeline, sourcePath));
+        ProjectedPath(ProjectedFieldName(pipeline, sourcePath));
 
     private static bool TryProjectedFieldName(
         EventProjectionExpression projection,

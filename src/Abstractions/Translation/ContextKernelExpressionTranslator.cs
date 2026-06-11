@@ -217,28 +217,8 @@ internal static class ContextKernelExpressionTranslator
             return false;
         }
 
-        private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath)
-        {
-            var names = new Stack<string>();
-            ValidateFieldConversion(expression, _subject, Unsupported);
-            Expression? current = StripConvert(expression);
-            while (current is MemberExpression member)
-            {
-                names.Push(member.Member.Name);
-                if (SubtypeProjection.TryResolveSubtypeMember(member.Expression, member.Member, out Type subtype))
-                    names.Push(SubtypeProjection.Segment(subtype));
-                current = StripConvert(member.Expression!);
-            }
-
-            if (current == _subject && names.Count > 0)
-            {
-                fieldPath = string.Join(".", names);
-                return true;
-            }
-
-            fieldPath = string.Empty;
-            return false;
-        }
+        private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath) =>
+            KernelExpressionTranslator.TryGetFieldPath(expression, _subject, out fieldPath);
 
         private IReadOnlyCollection<FilterValue> ToValues(Expression expression)
         {
