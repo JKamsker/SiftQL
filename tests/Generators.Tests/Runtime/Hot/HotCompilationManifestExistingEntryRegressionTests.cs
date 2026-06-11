@@ -81,6 +81,28 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
     }
 
     [Fact]
+    public void ManifestWriterDropsExistingSemanticallyInvalidFilterEntries()
+    {
+        string path = TempManifestPath();
+        FilterExpression valid = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(100L));
+        FilterExpression invalid = new(FilterExpressionKind.Not) { Children = [] };
+        SeedRawManifest(path, Entry("invalid-shape", Fingerprint(invalid), invalid));
+        var writer = new HotCompilationManifestWriter(
+            path,
+            new HotCompilationManifestWriterOptions { CoalesceDelay = TimeSpan.Zero });
+
+        writer.RecordHotFilter(typeof(ItemUsedEvent), valid, evaluations: 1, matches: 1);
+        writer.Flush();
+
+        HotCompilationManifest manifest = ReadManifest(path);
+        HotCompilationManifestEntry entry = Assert.Single(manifest.Entries);
+        Assert.Equal(Fingerprint(valid), entry.Fingerprint);
+    }
+
+    [Fact]
     public void ExistingEntryInspectionTreatsUnreadableDefinitionsAsInvalid()
     {
         HotCompilationManifestEntry entry;
