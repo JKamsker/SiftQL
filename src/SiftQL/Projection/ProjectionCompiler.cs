@@ -63,6 +63,7 @@ public static class ProjectionCompiler
         TieredProjectionPromotionPolicy promotionPolicy = options.CreatePromotionPolicy();
 
         var schema = schemaFactory(subjectType);
+        int schemaVersion = FilterSchema.Version;
         CompileFields<TContext>(
             schema,
             projection,
@@ -75,6 +76,7 @@ public static class ProjectionCompiler
         string compiledKey = ProjectionCompilerKeyBuilder.Build(
             subjectType,
             projectionMetadataType,
+            schemaVersion,
             fields,
             projection.Includes,
             IncludeCompilerKey.From(compileInclude).ToString());

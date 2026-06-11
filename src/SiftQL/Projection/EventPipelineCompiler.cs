@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -44,9 +45,17 @@ public static class EventPipelineCompiler
         EventPipelineExpression normalized = EventPipelineCachePolicy.Snapshot(
             EventPipelineNormalizer.Normalize(subjectType, pipeline, errorFactory));
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
+        int schemaVersion = FilterSchema.Version;
         if (EventPipelineCachePolicy.ShouldBypassCache(normalized, options))
         {
-            return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
+            return CompileUncached(
+                subjectType,
+                normalized,
+                compileInclude,
+                includeCompilerKey,
+                schemaVersion,
+                options,
+                errorFactory);
         }
 
         var key = new EventPipelineCacheKey(
@@ -55,14 +64,21 @@ public static class EventPipelineCompiler
             EventPipelineExpressionKey.From(normalized),
             includeCompilerKey,
             PrecompiledTieredProviderRegistry.GlobalVersion,
-            FilterSchema.Version,
+            schemaVersion,
             FilterCompilerOptionsCacheKey.From(options.FilterOptions),
             ProjectionCompilerOptionsCacheKey.From(options.ProjectionOptions));
         if (s_cache.TryGetValue(key, out object? cached))
             return (CompiledEventPipeline<TContext>)cached;
 
         EnsureCacheCapacity();
-        var compiled = CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
+        var compiled = CompileUncached(
+            subjectType,
+            normalized,
+            compileInclude,
+            includeCompilerKey,
+            schemaVersion,
+            options,
+            errorFactory);
         if (s_cache.TryAdd(key, compiled))
         {
             Interlocked.Increment(ref s_cacheCount);
@@ -192,6 +208,7 @@ public static class EventPipelineCompiler
         EventPipelineExpression pipeline,
         Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> compileInclude,
         IncludeCompilerKey includeCompilerKey,
+        int schemaVersion,
         EventPipelineCompilerOptions options,
         Func<string, Exception>? errorFactory)
     {
@@ -218,6 +235,7 @@ public static class EventPipelineCompiler
 
         return new CompiledEventPipeline<TContext>(
             "subject:" + SubjectKey(subjectType) + "|" +
+            "schema:" + schemaVersion.ToString(CultureInfo.InvariantCulture) + "|" +
             EventPipelineExpressionKey.FromWithParameterValues(pipeline) + "|include:" + includeCompilerKey,
             SourceFilter(pipeline),
             stages);
