@@ -6,8 +6,13 @@ namespace SiftQL.Examples.ShaRpc.Client.Hosting;
 
 public sealed class RemoteClientService : IRemoteClient
 {
+    private const int OffersDeliveredStep = 1;
+    private const int InventorySubscribedStep = 2;
+    private const int PremiumInventorySubscribedStep = 3;
+
     private readonly string _premiumInventoryRegion = "north-gate";
     private IRemoteServer? _server;
+    private int _completedStartupStep;
 
     public void Attach(IRemoteServer server) =>
         _server = server ?? throw new ArgumentNullException(nameof(server));
@@ -24,9 +29,23 @@ public sealed class RemoteClientService : IRemoteClient
         Console.WriteLine(
             $"Connected to {hello.ServerName}; server subjects: {string.Join(", ", hello.Subjects)}");
 
-        await QueryOffersAsync(server, cancellationToken).ConfigureAwait(false);
-        await SubscribeInventoryAsync(server, cancellationToken).ConfigureAwait(false);
-        await SubscribePremiumInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+        if (_completedStartupStep < OffersDeliveredStep)
+        {
+            await QueryOffersAsync(server, cancellationToken).ConfigureAwait(false);
+            _completedStartupStep = OffersDeliveredStep;
+        }
+
+        if (_completedStartupStep < InventorySubscribedStep)
+        {
+            await SubscribeInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+            _completedStartupStep = InventorySubscribedStep;
+        }
+
+        if (_completedStartupStep < PremiumInventorySubscribedStep)
+        {
+            await SubscribePremiumInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+            _completedStartupStep = PremiumInventorySubscribedStep;
+        }
     }
 
     public async Task DispatchAsync(
