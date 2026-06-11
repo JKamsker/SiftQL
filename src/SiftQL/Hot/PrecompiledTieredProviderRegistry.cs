@@ -69,8 +69,8 @@ public static class PrecompiledTieredProviderRegistry
 
     internal static bool IsolatedScopeActive => CurrentActiveScope() is not null;
     internal static int GlobalVersion => Volatile.Read(ref s_globalVersion);
-    internal static int ProviderViewVersion =>
-        HashCode.Combine(
+    internal static (int GlobalVersion, int ScopeVersion, int ScopeIdentity) ProviderViewVersion =>
+        (
             Volatile.Read(ref s_globalVersion),
             Volatile.Read(ref s_providerViewVersion),
             CurrentScopeIdentity());

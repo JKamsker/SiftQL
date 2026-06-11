@@ -25,7 +25,9 @@ public sealed class FilterSubscriptionIndex<TSubscription>
     private readonly SubscriptionBucket<SubscriptionEntry<TSubscription>> _unindexed = new();
     private FilterSchema _schema;
     private int _schemaVersion;
-    private int _providerVersion;
+    private int _providerGlobalVersion;
+    private int _providerScopeVersion;
+    private int _providerScopeIdentity;
     private int _count;
     private Snapshot _snapshot = new([], [], [], 0);
 
@@ -35,7 +37,7 @@ public sealed class FilterSubscriptionIndex<TSubscription>
         FilterSchemaSnapshot snapshot = FilterSchemaSnapshot.For(subjectType);
         _schema = snapshot.Schema;
         _schemaVersion = snapshot.Version;
-        _providerVersion = PrecompiledTieredProviderRegistry.ProviderViewVersion;
+        StoreProviderVersion(PrecompiledTieredProviderRegistry.ProviderViewVersion);
     }
     public int Count => Volatile.Read(ref _snapshot).Count;
 
@@ -311,9 +313,10 @@ public sealed class FilterSubscriptionIndex<TSubscription>
 
     private void EnsureCurrentSchema()
     {
-        int providerVersion = PrecompiledTieredProviderRegistry.ProviderViewVersion;
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion =
+            PrecompiledTieredProviderRegistry.ProviderViewVersion;
         if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version &&
-            Volatile.Read(ref _providerVersion) == providerVersion)
+            ProviderVersionMatches(providerVersion))
         {
             return;
         }
@@ -324,16 +327,17 @@ public sealed class FilterSubscriptionIndex<TSubscription>
 
     private void EnsureCurrentSchemaLocked()
     {
-        int providerVersion = PrecompiledTieredProviderRegistry.ProviderViewVersion;
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion =
+            PrecompiledTieredProviderRegistry.ProviderViewVersion;
         if (Volatile.Read(ref _schemaVersion) == FilterSchema.Version &&
-            Volatile.Read(ref _providerVersion) == providerVersion)
+            ProviderVersionMatches(providerVersion))
         {
             return;
         }
 
         FilterSchemaSnapshot current = FilterSchemaSnapshot.For(_schema.SubjectType);
         if (Volatile.Read(ref _schemaVersion) == current.Version &&
-            Volatile.Read(ref _providerVersion) == providerVersion)
+            ProviderVersionMatches(providerVersion))
         {
             return;
         }
@@ -353,7 +357,21 @@ public sealed class FilterSubscriptionIndex<TSubscription>
             AddEntry(rebuilt[i]);
         PublishSnapshot();
         Volatile.Write(ref _schemaVersion, current.Version);
-        Volatile.Write(ref _providerVersion, providerVersion);
+        StoreProviderVersion(providerVersion);
+    }
+
+    private bool ProviderVersionMatches(
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion) =>
+        Volatile.Read(ref _providerGlobalVersion) == providerVersion.GlobalVersion &&
+        Volatile.Read(ref _providerScopeVersion) == providerVersion.ScopeVersion &&
+        Volatile.Read(ref _providerScopeIdentity) == providerVersion.ScopeIdentity;
+
+    private void StoreProviderVersion(
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion)
+    {
+        Volatile.Write(ref _providerGlobalVersion, providerVersion.GlobalVersion);
+        Volatile.Write(ref _providerScopeVersion, providerVersion.ScopeVersion);
+        Volatile.Write(ref _providerScopeIdentity, providerVersion.ScopeIdentity);
     }
 
     private void Track(SubscriptionEntry<TSubscription> entry)
