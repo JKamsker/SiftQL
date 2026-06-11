@@ -193,6 +193,7 @@ public static class ProjectedEventFilterSchema
             ProjectedEventValueKind.Decimal => value.Decimal,
             ProjectedEventValueKind.String => value.String,
             ProjectedEventValueKind.Guid => value.Guid,
+            ProjectedEventValueKind.Timestamp => value.Timestamp,
             ProjectedEventValueKind.Array => value.Values?.Select(ToObject).ToArray() ?? [],
             ProjectedEventValueKind.Object => value,
             _ => null,

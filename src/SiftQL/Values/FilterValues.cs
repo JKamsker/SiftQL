@@ -65,7 +65,8 @@ public static class FilterValues
             value.Kind is (FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
                 FilterValueKind.Number or
-                FilterValueKind.Decimal))
+                FilterValueKind.Decimal or
+                FilterValueKind.Timestamp))
         {
             return;
         }
