@@ -42,6 +42,17 @@ internal static class FilterSchemaFallbackBuilder
         var typedSubject = Expression.Convert(parameter, subjectType);
         foreach (FilterField field in generatedFields)
         {
+            if (field.Kind == FilterFieldKind.Array && field.IsCollectionDerived)
+            {
+                FilterSchemaCollectionFieldBuilder.AddRegisteredFieldsUnderGeneratedCollection(
+                    fields,
+                    field.Name,
+                    field.ValueType,
+                    Depth(field.Name),
+                    isValueObject);
+                continue;
+            }
+
             if (field.Kind != FilterFieldKind.Object ||
                 field.Access?.PropertyPath is not { } path)
             {

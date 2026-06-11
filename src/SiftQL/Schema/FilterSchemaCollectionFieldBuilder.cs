@@ -27,11 +27,24 @@ internal static class FilterSchemaCollectionFieldBuilder
         return true;
     }
 
+    public static void AddRegisteredFieldsUnderGeneratedCollection(
+        List<FilterField> fields,
+        string path,
+        Type elementType,
+        int depth,
+        Func<Type, bool> isValueObject)
+    {
+        if (FilterSchemaFallbackBuilder.IsScalar(elementType))
+            return;
+
+        AddProperties(fields, path, elementType, memberPath: null, depth, isValueObject);
+    }
+
     private static void AddProperties(
         List<FilterField> fields,
         string prefix,
         Type ownerType,
-        MemberInfo[] memberPath,
+        MemberInfo[]? memberPath,
         int depth,
         Func<Type, bool> isValueObject)
     {
@@ -51,7 +64,7 @@ internal static class FilterSchemaCollectionFieldBuilder
             Type scalarType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
             if (FilterSchemaFallbackBuilder.IsScalar(scalarType))
             {
-                fields.Add(BuildArrayField(name, scalarType, [.. memberPath, property]));
+                fields.Add(BuildArrayField(name, scalarType, AppendMember(memberPath, property)));
                 continue;
             }
 
@@ -60,27 +73,44 @@ internal static class FilterSchemaCollectionFieldBuilder
             {
                 if (FilterSchemaFallbackBuilder.IsScalar(elementType))
                 {
-                    fields.Add(BuildArrayField(name, elementType, [.. memberPath, property]));
+                    fields.Add(BuildArrayField(name, elementType, AppendMember(memberPath, property)));
                     continue;
                 }
 
                 if (isValueObject(elementType))
-                    AddProperties(fields, name, elementType, [.. memberPath, property], depth + 1, isValueObject);
+                    AddProperties(
+                        fields,
+                        name,
+                        elementType,
+                        AppendMember(memberPath, property),
+                        depth + 1,
+                        isValueObject);
 
                 continue;
             }
 
             if (isValueObject(scalarType))
-                AddProperties(fields, name, scalarType, [.. memberPath, property], depth + 1, isValueObject);
+                AddProperties(
+                    fields,
+                    name,
+                    scalarType,
+                    AppendMember(memberPath, property),
+                    depth + 1,
+                    isValueObject);
         }
     }
 
-    private static FilterField BuildArrayField(string name, Type valueType, MemberInfo[] memberPath) =>
+    private static MemberInfo[]? AppendMember(MemberInfo[]? memberPath, MemberInfo member) =>
+        memberPath is null ? null : [.. memberPath, member];
+
+    private static FilterField BuildArrayField(string name, Type valueType, MemberInfo[]? memberPath) =>
         new(
             name,
             valueType,
             FilterFieldKind.Array,
-            subject => FilterCollectionFieldValues.Read(subject, name, memberPath),
+            subject => memberPath is null
+                ? FilterCollectionFieldValues.Read(subject, name)
+                : FilterCollectionFieldValues.Read(subject, name, memberPath),
             IsCollectionDerived: true);
 
     private static Type? GetElementType(Type type)
