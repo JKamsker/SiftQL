@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using SiftQL;
 using SiftQL.Expressions;
 using SiftQL.Projected;
@@ -69,7 +70,10 @@ public static class PrecompiledTieredProviderRegistry
     internal static bool IsolatedScopeActive => s_scope.Value is { IsActive: true };
     internal static int GlobalVersion => Volatile.Read(ref s_globalVersion);
     internal static int ProviderViewVersion =>
-        HashCode.Combine(Volatile.Read(ref s_globalVersion), Volatile.Read(ref s_providerViewVersion));
+        HashCode.Combine(
+            Volatile.Read(ref s_globalVersion),
+            Volatile.Read(ref s_providerViewVersion),
+            CurrentScopeIdentity());
     internal static bool HasProviders => Providers().Length != 0;
 
     internal static void RemoveAssembly(Assembly assembly)
@@ -192,6 +196,11 @@ public static class PrecompiledTieredProviderRegistry
 
     private static void IncrementProviderViewVersion() =>
         Interlocked.Increment(ref s_providerViewVersion);
+
+    private static int CurrentScopeIdentity() =>
+        s_scope.Value is { IsActive: true } scope
+            ? RuntimeHelpers.GetHashCode(scope)
+            : 0;
 
     private static void Track(IDisposable registration, bool enabled)
     {
