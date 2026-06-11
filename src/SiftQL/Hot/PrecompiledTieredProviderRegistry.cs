@@ -12,6 +12,7 @@ public static class PrecompiledTieredProviderRegistry
     private static readonly AsyncLocal<RegistrationTrackingScope?> s_tracker = new();
     private static IPrecompiledTieredProvider[] s_providers = [];
     private static int s_globalVersion;
+    private static int s_providerViewVersion;
 
     internal static event Action? Changed;
 
@@ -19,6 +20,7 @@ public static class PrecompiledTieredProviderRegistry
     {
         var scope = new ProviderScope(s_scope.Value);
         s_scope.Value = scope;
+        IncrementProviderViewVersion();
         return scope;
     }
 
@@ -66,6 +68,8 @@ public static class PrecompiledTieredProviderRegistry
 
     internal static bool IsolatedScopeActive => s_scope.Value is { IsActive: true };
     internal static int GlobalVersion => Volatile.Read(ref s_globalVersion);
+    internal static int ProviderViewVersion =>
+        HashCode.Combine(Volatile.Read(ref s_globalVersion), Volatile.Read(ref s_providerViewVersion));
     internal static bool HasProviders => Providers().Length != 0;
 
     internal static void RemoveAssembly(Assembly assembly)
@@ -186,6 +190,9 @@ public static class PrecompiledTieredProviderRegistry
         Changed?.Invoke();
     }
 
+    private static void IncrementProviderViewVersion() =>
+        Interlocked.Increment(ref s_providerViewVersion);
+
     private static void Track(IDisposable registration, bool enabled)
     {
         if (enabled)
@@ -296,7 +303,10 @@ public static class PrecompiledTieredProviderRegistry
             }
 
             if (ReferenceEquals(s_scope.Value, this))
+            {
                 s_scope.Value = parent;
+                IncrementProviderViewVersion();
+            }
             if (hadProviders)
                 IncrementGlobalVersion();
         }
