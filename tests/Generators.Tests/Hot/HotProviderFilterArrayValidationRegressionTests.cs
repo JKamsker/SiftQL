@@ -48,6 +48,7 @@ public sealed class HotProviderFilterArrayValidationRegressionTests
     private static void AssertRejected(string manifestJson)
     {
         GeneratorRun run = RunGenerator(manifestJson);
+        AssertEx.Equal(0, run.Diagnostics.Count(item => item.Id == "CS8785"), "generator did not crash with CS8785");
         AssertEx.Equal(1, run.Diagnostics.Count(item => item.Id == "FSFHOT009"), "invalid filter array diagnostic");
         AssertEx.Equal(0, HotProviderSourceCount(run), "invalid filter array emitted no provider");
     }

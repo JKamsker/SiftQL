@@ -200,7 +200,7 @@ public sealed class QueryKernelContextRegressionTests
     }
 
     [Fact]
-    public async Task ContextWhereAfterSourceProjectionPreservesSourcePredicateField()
+    public async Task ContextWhereAfterSourceProjectionDoesNotPreserveSourcePredicateField()
     {
         Guid thiefId = Guid.NewGuid();
         Guid warriorId = Guid.NewGuid();

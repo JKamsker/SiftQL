@@ -10,7 +10,7 @@ namespace SiftQL.Generators.Tests;
 public sealed class LargeIntegralNumberPrecisionRegressionTests
 {
     private const long ExactDoubleInteger = 9_007_199_254_740_992L;
-    private const long RoundedDecimalNeighbor = 9_007_199_254_740_990L;
+    private const long RoundedDecimalNeighbor = 9_007_199_254_740_993L;
 
     [Fact]
     public void RuntimeCompareUsesExactIntegralDoubleValue()
