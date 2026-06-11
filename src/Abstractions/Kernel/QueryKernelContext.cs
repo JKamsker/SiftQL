@@ -105,6 +105,9 @@ public sealed record QueryKernel<TSubject, TContext>
                 .Where(static output => !output.IsContext)
                 .Select(static output => new EventProjectionField(output.SourcePath, output.Name))
                 .ToArray();
+        if (!projected && sourceFields.Length == 0 && translated.NewIncludes.Length != 0)
+            sourceFields = [new EventProjectionField("subjectType", "__siftqlSelectorSource")];
+
         EventPipelineExpression pipeline = ContextProjectionPipeline.AddIncludes(
             Pipeline,
             translated.NewIncludes,
