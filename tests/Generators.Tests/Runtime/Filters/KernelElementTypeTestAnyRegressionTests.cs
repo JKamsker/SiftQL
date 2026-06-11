@@ -29,8 +29,28 @@ public sealed class KernelElementTypeTestAnyRegressionTests
         Assert.False(kernel.Matches(new Encounter([new EncounterPlayer()])));
     }
 
+    [Fact]
+    public void AnySubtypeEqualityOverPolymorphicElementsMatchesSubtypeMember()
+    {
+        FilterSchema.RegisterValueObject(typeof(EncounterActor));
+        FilterSchema.RegisterValueObject(typeof(EncounterPlayer));
+
+        FilterExpression filter = QueryKernel.For<Encounter>()
+            .Where(static encounter => encounter.Actors.Any(
+                actor => (actor as EncounterPlayer)!.Name == "Ada"))
+            .Filter;
+        CompiledKernel kernel = FilterCompiler.Compile(
+            typeof(Encounter),
+            filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new Encounter([new EncounterPlayer("Ada")])));
+        Assert.False(kernel.Matches(new Encounter([new EncounterPlayer("Grace")])));
+        Assert.False(kernel.Matches(new Encounter([new EncounterMonster()])));
+    }
+
     private abstract record EncounterActor;
     private sealed record EncounterMonster : EncounterActor;
-    private sealed record EncounterPlayer : EncounterActor;
+    private sealed record EncounterPlayer(string Name = "") : EncounterActor;
     private sealed record Encounter(EncounterActor[] Actors) : IFilterSubject;
 }
