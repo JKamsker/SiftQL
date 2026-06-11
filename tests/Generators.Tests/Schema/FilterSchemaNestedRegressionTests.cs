@@ -86,6 +86,52 @@ public sealed class FilterSchemaNestedRegressionTests
     }
 
     [Fact]
+    public void GeneratedSchemaMergeUsesDeclaredGeneratedObjectWhenSubjectHidesUnsupportedProperty()
+    {
+        GeneratorRun run = RunGenerator(
+            "Plugin.Schema.NestedHiddenGeneratedObject",
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed class ManualPoint
+                {
+                    public int X { get; init; } = 7;
+                }
+
+                public sealed record BaseLocation
+                {
+                    public ManualPoint Point { get; init; } = new();
+                }
+
+                public abstract record BaseMovedEvent(Guid EventId, BaseLocation Location) : IFilterSubject;
+
+                public sealed record MovedEvent(Guid EventId, BaseLocation BaseLocation)
+                    : BaseMovedEvent(EventId, BaseLocation)
+                {
+                    public new object Location { get; } = new();
+                }
+                """));
+
+        AssertNoCompilationErrors(run, "hidden generated object schema provider");
+        Assembly assembly = EmitAndLoad(run.OutputCompilation, "hidden generated object schema provider");
+        RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+        Type pointType = assembly.GetType("Plugin.Events.ManualPoint", throwOnError: true)!;
+        Type locationType = assembly.GetType("Plugin.Events.BaseLocation", throwOnError: true)!;
+        Type eventType = assembly.GetType("Plugin.Events.MovedEvent", throwOnError: true)!;
+        object location = Activator.CreateInstance(locationType)!;
+        object ev = Activator.CreateInstance(eventType, Guid.NewGuid(), location)!;
+
+        FilterSchema.RegisterValueObject(pointType);
+        FilterSchema schema = FilterSchema.For(eventType);
+
+        Assert.True(schema.TryGetField("Location.Point.X", out FilterField? field));
+        Assert.Equal(7, field!.Getter(ev));
+    }
+
+    [Fact]
     public void GeneratedSchemaMergeExpandsRegisteredValueObjectUnderGeneratedStructObjectWithReferenceParent()
     {
         GeneratorRun run = RunGenerator(
