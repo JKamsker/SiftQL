@@ -1,5 +1,6 @@
 using System.Linq;
 using SiftQL;
+using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Index;
 using Xunit;
@@ -116,5 +117,29 @@ public sealed class FilterSubscriptionIndexRangeTests
         Assert.Empty(index.SnapshotMatches(new Sensor(70, default, 0)));
     }
 
+    [Fact]
+    public void LargeExactDoubleRangeBoundKeepsIntegralCandidates()
+    {
+        const long exact = 9_007_199_254_740_991L;
+        FilterExpression filter = FilterExpression.Compare(
+            nameof(LongSensor.Id),
+            FilterOperator.LessThan,
+            FilterValue.From(9_007_199_254_740_992D));
+        var subject = new LongSensor(exact);
+        var index = new FilterSubscriptionIndex<string>(typeof(LongSensor));
+        var typedIndex = new TypedFilterSubscriptionIndex<string, LongSensor>();
+
+        index.Add("sub", filter);
+        typedIndex.Add("sub", filter);
+
+        Assert.True(FilterCompiler.Compile(typeof(LongSensor), filter).Matches(subject));
+        Assert.Equal(1, index.GetStatistics().RangeIndexedCount);
+        Assert.Equal(["sub"], index.SnapshotCandidates(subject));
+        Assert.Equal(["sub"], index.SnapshotMatches(subject));
+        Assert.Equal(["sub"], typedIndex.SnapshotCandidates(subject));
+        Assert.Equal(["sub"], typedIndex.SnapshotMatches(subject));
+    }
+
     private sealed record Sensor(int Temperature, DateTimeOffset At, double Pressure) : IFilterSubject;
+    private sealed record LongSensor(long Id) : IFilterSubject;
 }
