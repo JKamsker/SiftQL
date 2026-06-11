@@ -101,6 +101,32 @@ public sealed class QueryKernelContextIncludeKeyRegressionTests
         }
     }
 
+    [Fact]
+    public async Task ContextSelectorTimestampIncludesPreserveOffsets()
+    {
+        var utc = new DateTimeOffset(2026, 2, 3, 12, 0, 0, TimeSpan.Zero);
+        var offset = new DateTimeOffset(2026, 2, 3, 14, 0, 0, TimeSpan.FromHours(2));
+        var query = QueryKernel.For<ContextKeyEvent, TimestampOffsetContext>()
+            .Select((_, ctx) => new
+            {
+                First = ctx.OffsetTicks(utc),
+                Second = ctx.OffsetTicks(offset),
+            });
+        CompiledEventPipeline<TimestampOffsetContext> compiled = EventPipelineCompiler.Compile<TimestampOffsetContext>(
+            typeof(ContextKeyEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new ContextKeyEvent(1),
+            new TimestampOffsetContext(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(utc.Offset.Ticks, projected!.Field("First").Integer);
+        Assert.Equal(offset.Offset.Ticks, projected.Field("Second").Integer);
+    }
+
     private sealed record ContextKeyEvent(long Id) : IFilterSubject;
 
     private static string IncludeKey(FilterValue value)
@@ -126,5 +152,10 @@ public sealed class QueryKernelContextIncludeKeyRegressionTests
     private sealed class CultureContext
     {
         public long Score(double value) => value > 0 ? 1 : 0;
+    }
+
+    private sealed class TimestampOffsetContext
+    {
+        public long OffsetTicks(DateTimeOffset instant) => instant.Offset.Ticks;
     }
 }
