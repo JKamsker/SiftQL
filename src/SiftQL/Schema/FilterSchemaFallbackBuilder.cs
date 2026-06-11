@@ -79,6 +79,14 @@ internal static class FilterSchemaFallbackBuilder
                 parameter,
                 Depth(field.Name),
                 isValueObject);
+            AddSubtypeProjectedFields(
+                fields,
+                field.Name,
+                field.ValueType,
+                ownerExpression,
+                parameter,
+                isValueObject,
+                Depth(field.Name));
         }
     }
 
