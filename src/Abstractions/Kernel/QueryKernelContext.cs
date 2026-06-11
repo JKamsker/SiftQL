@@ -139,10 +139,22 @@ public sealed record QueryKernel<TSubject, TContext>
     }
 
     private static EventProjectionField[] RequiredInitialSourceFields(
-        IReadOnlyList<string> sourceFields) =>
-        sourceFields.Count != 0
-            ? RequiredSourceFields(EventPipelineExpression.Default, sourceFields)
-            : [];
+        IReadOnlyList<string> sourceFields)
+    {
+        string[] required = sourceFields
+            .Where(RequiresInitialProjection)
+            .ToArray();
+        return required.Length == 0
+            ? []
+            : RequiredSourceFields(EventPipelineExpression.Default, required);
+    }
+
+    private static bool RequiresInitialProjection(string path) =>
+        ProjectedEventPaths.TrySplit(path, out _, out _) ||
+        string.Equals(path, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path, "subjectName", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path, "subjectTypes", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".subjectTypes", StringComparison.OrdinalIgnoreCase);
 
     private static EventProjectionField RequiredSourceField(string sourcePath) =>
         ProjectedEventPaths.TrySplit(sourcePath, out bool context, out string name) && !context
