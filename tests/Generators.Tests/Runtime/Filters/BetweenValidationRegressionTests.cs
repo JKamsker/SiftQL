@@ -34,5 +34,25 @@ public sealed class BetweenValidationRegressionTests
                 FilterCompilerOptions.Immediate));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void BlankParameterKeysDoNotBypassBetweenBoundOrdering(string parameterKey)
+    {
+        FilterExpression filter = FilterExpression.Between(
+            nameof(BetweenSubject.Score),
+            FilterValue.From(20L) with { ParameterKey = parameterKey },
+            FilterValue.From(10L) with { ParameterKey = parameterKey });
+
+        FilterValidationResult result = FilterValidator.Validate(typeof(BetweenSubject), filter);
+
+        Assert.False(result.IsValid);
+        Assert.Throws<FilterValidationException>(() =>
+            FilterCompiler.Compile(
+                typeof(BetweenSubject),
+                filter,
+                FilterCompilerOptions.Immediate));
+    }
+
     private sealed record BetweenSubject(string Name, int Score) : IFilterSubject;
 }

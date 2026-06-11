@@ -77,6 +77,21 @@ public sealed class FilterExpressionCanonicalizationTests
     }
 
     [Fact]
+    public void CanonicalSignatureIgnoresBlankParameterKeys()
+    {
+        var literal = FilterExpression.Compare("score", FilterOperator.Equal, FilterValue.From(7L));
+        var blankParameter = FilterExpression.Compare(
+            "score",
+            FilterOperator.Equal,
+            FilterValue.From(7L) with { ParameterKey = " " });
+
+        Assert.Equal(
+            FilterExpression.ContentSignature(literal),
+            FilterExpression.ContentSignature(blankParameter));
+        Assert.True(FilterExpression.StructuralComparer.Equals(literal, blankParameter));
+    }
+
+    [Fact]
     public void CanonicalizeDropsRedundantAnyInAnd()
     {
         var p = FilterExpression.Compare("a", FilterOperator.Equal, FilterValue.From(1L));
