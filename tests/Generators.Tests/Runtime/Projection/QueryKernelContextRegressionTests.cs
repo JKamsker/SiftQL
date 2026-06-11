@@ -234,6 +234,7 @@ public sealed class QueryKernelContextRegressionTests
 
         Assert.NotNull(accepted);
         Assert.Equal(thiefId, accepted!.Field("Target").Guid);
+        Assert.False(accepted.TryGetField(nameof(BuffActivatedEvent.SourceId), out _));
         Assert.Null(wrongSource);
         Assert.Null(wrongProfession);
     }
