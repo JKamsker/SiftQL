@@ -113,8 +113,9 @@ public sealed class RemoteClientService : IRemoteClient
 
         foreach (var offer in offers)
         {
+            string deliveryId = $"catalog.offer:1001:{offer.Field("Offer").String}";
             await server.SendToClientAsync(
-                new ClientDelivery(1001, "catalog.offer", offer),
+                new ClientDelivery(1001, "catalog.offer", offer, deliveryId),
                 cancellationToken).ConfigureAwait(false);
         }
     }

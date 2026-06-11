@@ -6,6 +6,7 @@ public sealed class ClientMessageSink
 {
     private readonly object _gate = new();
     private readonly List<ClientDelivery> _deliveries = [];
+    private readonly HashSet<string> _deliveryIds = new(StringComparer.Ordinal);
 
     public IReadOnlyList<ClientDelivery> Deliveries
     {
@@ -20,6 +21,14 @@ public sealed class ClientMessageSink
     {
         ArgumentNullException.ThrowIfNull(delivery);
         lock (_gate)
+        {
+            if (!string.IsNullOrEmpty(delivery.DeliveryId) &&
+                !_deliveryIds.Add(delivery.DeliveryId))
+            {
+                return;
+            }
+
             _deliveries.Add(delivery);
+        }
     }
 }
