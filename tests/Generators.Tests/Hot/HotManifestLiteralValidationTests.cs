@@ -90,6 +90,70 @@ public sealed class HotManifestLiteralValidationTests
     }
 
     [Fact]
+    public void RejectsOrderedComparisonAgainstNull()
+    {
+        var filter = FilterExpression.Compare(
+            "Amount",
+            FilterOperator.GreaterThan,
+            FilterValue.Null);
+        GeneratorRun run = RunGenerator(Manifest(filter));
+
+        AssertDiagnostic(run, "FSFHOT009", "ordered null filter diagnostic");
+        AssertEx.Equal(0, HotProviderSourceCount(run), "ordered null filter emitted no provider");
+    }
+
+    [Fact]
+    public void RejectsMalformedIgnoreCaseFlag()
+    {
+        var filter = FilterExpression.Compare(
+            "Source",
+            FilterOperator.Equal,
+            FilterValue.From("alpha"));
+        GeneratorRun run = RunGenerator(RawManifest($$"""
+            {
+              "Kind": "filter",
+              "SubjectType": "Plugin.Events.PluginOwnedEvent, Plugin.Hot.Literals",
+              "Fingerprint": "{{Fingerprint(filter)}}",
+              "Definition": {
+                "Kind": 4,
+                "Field": "Source",
+                "Operator": 0,
+                "IgnoreCase": "not-bool",
+                "Value": { "Kind": 4, "String": "alpha" }
+              }
+            }
+            """));
+
+        AssertDiagnostic(run, "FSFHOT009", "malformed ignoreCase diagnostic");
+        AssertEx.Equal(0, HotProviderSourceCount(run), "malformed ignoreCase emitted no provider");
+    }
+
+    [Fact]
+    public void RejectsMalformedParameterKey()
+    {
+        var filter = FilterExpression.Compare(
+            "Amount",
+            FilterOperator.Equal,
+            FilterValue.From(1D));
+        GeneratorRun run = RunGenerator(RawManifest($$"""
+            {
+              "Kind": "filter",
+              "SubjectType": "Plugin.Events.PluginOwnedEvent, Plugin.Hot.Literals",
+              "Fingerprint": "{{Fingerprint(filter)}}",
+              "Definition": {
+                "Kind": 4,
+                "Field": "Amount",
+                "Operator": 0,
+                "Value": { "Kind": 3, "ParameterKey": 123, "Number": 1 }
+              }
+            }
+            """));
+
+        AssertDiagnostic(run, "FSFHOT009", "malformed parameter key diagnostic");
+        AssertEx.Equal(0, HotProviderSourceCount(run), "malformed parameter key emitted no provider");
+    }
+
+    [Fact]
     public void AcceptsStringContainsHotFilter()
     {
         var filter = FilterExpression.StringContains(
