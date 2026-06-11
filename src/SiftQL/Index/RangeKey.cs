@@ -1,5 +1,6 @@
 using SiftQL.Expressions;
 using SiftQL.Schema;
+using SiftQL.Values;
 
 namespace SiftQL.Index;
 
@@ -53,8 +54,9 @@ internal static class RangeKey
             case FilterValueKind.Timestamp:
                 key = value.Timestamp.UtcTicks;
                 return true;
-            case FilterValueKind.Number when double.IsFinite(value.Number) && Math.Abs(value.Number) < (double)DecimalRangeLimit:
-                key = (decimal)value.Number;
+            case FilterValueKind.Number when
+                Math.Abs(value.Number) < (double)DecimalRangeLimit &&
+                FilterNumeric.TryDoubleToDecimal(value.Number, out key):
                 return true;
             default:
                 key = 0;
