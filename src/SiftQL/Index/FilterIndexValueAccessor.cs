@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using SiftQL.Expressions;
 using SiftQL.Schema;
 using SiftQL.Values;
 
@@ -42,7 +43,9 @@ internal static class FilterIndexValueAccessor<TSubject>
         Expression? value = propertyPath is not null
             ? FilterFieldAccessExpression.Build(parameter, propertyPath)
             : null;
-        Expression? key = value is null ? null : BuildKeyExpression(field, value);
+        Expression? key = value is null || RequiresRuntimeNumericNormalization(field, value.Type)
+            ? null
+            : BuildKeyExpression(field, value);
         if (key is not null)
         {
             if (key.Type == typeof(FilterIndexValue))
@@ -63,9 +66,84 @@ internal static class FilterIndexValueAccessor<TSubject>
     }
 
     private static FilterIndexValue? TryCreateFromGetter(FilterField field, TSubject subject) =>
-        FilterIndexValue.TryCreateActual(field.Getter(subject!), out var actual)
+        TryCreateActual(field, field.Getter(subject!), out var actual)
             ? actual
             : null;
+
+    private static bool TryCreateActual(
+        FilterField field,
+        object? value,
+        out FilterIndexValue key)
+    {
+        key = default;
+        Type fieldType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        if (fieldType == typeof(decimal))
+            return false;
+        if (fieldType.IsEnum)
+            return FilterIndexValue.TryCreateActual(value, out key);
+        if (FilterNumeric.IsSignedIntegral(fieldType))
+            return TryCreateSignedIntegralActual(value, out key);
+        if (FilterNumeric.IsUnsignedIntegral(fieldType))
+            return TryCreateUnsignedIntegralActual(fieldType, value, out key);
+        if (IsFloating(fieldType))
+            return TryCreateFloatingActual(value, out key);
+
+        return FilterIndexValue.TryCreateActual(value, out key);
+    }
+
+    private static bool TryCreateSignedIntegralActual(object? value, out FilterIndexValue key)
+    {
+        key = default;
+        if (TryGetFloating(value, out double number))
+        {
+            if (!FilterNumeric.TryDoubleToInt64(number, out long integer))
+                return false;
+
+            key = FilterIndexValue.ForInteger(integer);
+            return true;
+        }
+
+        return FilterIndexValue.TryCreateActual(value, out key) &&
+            key.Kind == FilterValueKind.Integer;
+    }
+
+    private static bool TryCreateUnsignedIntegralActual(
+        Type fieldType,
+        object? value,
+        out FilterIndexValue key)
+    {
+        key = default;
+        if (TryGetFloating(value, out double number))
+        {
+            if (!FilterNumeric.TryDoubleToUInt64(number, out ulong integer))
+                return false;
+
+            if (integer <= long.MaxValue)
+            {
+                key = FilterIndexValue.ForInteger((long)integer);
+                return true;
+            }
+
+            if (fieldType != typeof(ulong))
+                return false;
+
+            key = FilterIndexValue.ForUnsignedInteger(integer);
+            return true;
+        }
+
+        return FilterIndexValue.TryCreateActual(value, out key) &&
+            key.Kind is FilterValueKind.Integer or FilterValueKind.UnsignedInteger;
+    }
+
+    private static bool TryCreateFloatingActual(object? value, out FilterIndexValue key)
+    {
+        key = default;
+        if (!FilterNumericComparison.TryNumber(value, out double number))
+            return false;
+
+        key = FilterIndexValue.ForNumber(number);
+        return true;
+    }
 
     private static bool PrefersExactNumericGetter(
         FilterField field,
@@ -87,7 +165,7 @@ internal static class FilterIndexValueAccessor<TSubject>
         }
 
         if (field.Access is not null &&
-            FilterIndexValue.TryCreateActual(field.Access.ConstantValue, out var value))
+            TryCreateActual(field, field.Access.ConstantValue, out var value))
         {
             key = value;
             return true;
@@ -145,6 +223,38 @@ internal static class FilterIndexValueAccessor<TSubject>
     {
         Type valueType = Nullable.GetUnderlyingType(type) ?? type;
         return valueType.IsEnum && Enum.GetUnderlyingType(valueType) == typeof(ulong);
+    }
+
+    private static bool RequiresRuntimeNumericNormalization(
+        FilterField field,
+        Type actualType)
+    {
+        if (field.ScalarAccessor?.Kind != FilterScalarKind.Number)
+            return false;
+
+        Type fieldType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        Type valueType = Nullable.GetUnderlyingType(actualType) ?? actualType;
+        return IsFloating(fieldType) != IsFloating(valueType);
+    }
+
+    private static bool IsFloating(Type type) =>
+        type == typeof(float) ||
+        type == typeof(double);
+
+    private static bool TryGetFloating(object? value, out double number)
+    {
+        switch (value)
+        {
+            case float item:
+                number = item;
+                return true;
+            case double item:
+                number = item;
+                return true;
+            default:
+                number = 0;
+                return false;
+        }
     }
 
     private static bool IsIntegral(Type type) =>
