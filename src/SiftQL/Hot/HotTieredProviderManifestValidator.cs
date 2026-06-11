@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
 using SiftQL.Expressions;
+using SiftQL.Projected;
 
 namespace SiftQL.Hot;
 
@@ -181,10 +182,10 @@ internal static partial class HotTieredProviderManifestValidator
             throwOnError: false);
         if (type is not null)
             return true;
-        if (assemblyQualified)
+        string fullName = TypeNameWithoutAssembly(subjectType);
+        if (assemblyQualified && !IsSharedRuntimeSubject(fullName))
             return false;
 
-        string fullName = TypeNameWithoutAssembly(subjectType);
         type = FindLoadedType(loadContext.Assemblies, fullName) ??
             FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), fullName);
         return type is not null;
@@ -221,6 +222,9 @@ internal static partial class HotTieredProviderManifestValidator
 
     private static bool HasTopLevelAssemblyName(string typeName) =>
         !string.Equals(TypeNameWithoutAssembly(typeName), typeName.Trim(), StringComparison.Ordinal);
+
+    private static bool IsSharedRuntimeSubject(string fullName) =>
+        string.Equals(fullName, typeof(ProjectedEvent).FullName, StringComparison.Ordinal);
 
     private static string TypeNameWithoutAssembly(string typeName)
     {
