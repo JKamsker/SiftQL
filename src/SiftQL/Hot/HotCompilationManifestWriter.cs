@@ -247,23 +247,23 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
 
     private static bool IsValidExistingEntry(HotCompilationManifestEntry entry)
     {
-        if (string.IsNullOrWhiteSpace(entry.Key) ||
-            !IsSupportedKind(entry.Kind) ||
-            string.IsNullOrWhiteSpace(entry.SubjectType) ||
-            string.IsNullOrWhiteSpace(entry.Fingerprint) ||
-            entry.Definition.ValueKind != JsonValueKind.Object)
-        {
-            return false;
-        }
-
         try
         {
+            if (string.IsNullOrWhiteSpace(entry.Key) ||
+                !IsSupportedKind(entry.Kind) ||
+                string.IsNullOrWhiteSpace(entry.SubjectType) ||
+                string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                entry.Definition.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
             if (string.Equals(entry.Kind, "filter", StringComparison.OrdinalIgnoreCase))
                 return IsValidExistingFilter(entry);
             if (string.Equals(entry.Kind, "projection", StringComparison.OrdinalIgnoreCase))
                 return IsValidExistingProjection(entry);
         }
-        catch (JsonException)
+        catch (Exception)
         {
             return false;
         }
