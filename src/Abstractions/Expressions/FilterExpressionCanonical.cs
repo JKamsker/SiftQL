@@ -397,7 +397,7 @@ internal static class FilterExpressionCanonical
             _ => "?" + (int)value.Kind,
         };
 
-        return value.ParameterKey is null ? payload : payload + "#" + value.ParameterKey;
+        return string.IsNullOrWhiteSpace(value.ParameterKey) ? payload : payload + "#" + value.ParameterKey;
     }
 
     private sealed class StructuralComparer : IEqualityComparer<FilterExpression>

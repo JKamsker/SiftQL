@@ -202,7 +202,8 @@ internal static class FilterInterpretedCompiler
         FilterValue upper = expression.Values[1];
         FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, lower, errorFactory);
         FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
-        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+        if (string.IsNullOrWhiteSpace(lower.ParameterKey) &&
+            string.IsNullOrWhiteSpace(upper.ParameterKey) &&
             FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
         {
             throw Error(errorFactory, $"Between filters on '{field.Name}' require the lower bound to be <= the upper bound.");

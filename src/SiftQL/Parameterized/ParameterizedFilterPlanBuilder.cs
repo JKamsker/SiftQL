@@ -127,7 +127,8 @@ internal static class ParameterizedFilterPlanBuilder
         FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
         // Literal bounds must be ordered; reversed bounds describe an empty interval.
         // Parameterized bounds are left unchecked (their values are not known here).
-        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+        if (string.IsNullOrWhiteSpace(lower.ParameterKey) &&
+            string.IsNullOrWhiteSpace(upper.ParameterKey) &&
             FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
         {
             throw Error(errorFactory, $"Between filters on '{field.Name}' require the lower bound to be <= the upper bound.");

@@ -279,7 +279,8 @@ public static class FilterValidator
 
         FilterValue lower = node.Values[0];
         FilterValue upper = node.Values[1];
-        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+        if (string.IsNullOrWhiteSpace(lower.ParameterKey) &&
+            string.IsNullOrWhiteSpace(upper.ParameterKey) &&
             FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
         {
             errors.Add(new FilterValidationError(
