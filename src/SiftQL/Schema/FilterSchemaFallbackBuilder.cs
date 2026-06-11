@@ -67,6 +67,9 @@ internal static class FilterSchemaFallbackBuilder
                 continue;
             }
 
+            if (!ExpressionMatchesFieldType(ownerExpression, field.ValueType))
+                ownerExpression = GeneratedFieldAccess(field, parameter);
+
             // Guarded access lifts struct owners to Nullable<T>; unwrap so
             // the owner's properties stay addressable during expansion.
             ownerExpression = UnwrapNullableValue(ownerExpression);
@@ -121,6 +124,22 @@ internal static class FilterSchemaFallbackBuilder
         }
 
         return null;
+    }
+
+    private static bool ExpressionMatchesFieldType(Expression expression, Type fieldType)
+    {
+        Type expressionType = Nullable.GetUnderlyingType(expression.Type) ?? expression.Type;
+        Type targetType = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
+        return targetType.IsAssignableFrom(expressionType);
+    }
+
+    private static Expression GeneratedFieldAccess(FilterField field, ParameterExpression parameter)
+    {
+        Expression access = Expression.Invoke(Expression.Constant(field.Getter), parameter);
+        Type targetType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        return targetType.IsValueType
+            ? Expression.Convert(access, targetType)
+            : Expression.TypeAs(access, targetType);
     }
 
     private static void AddProperties(
