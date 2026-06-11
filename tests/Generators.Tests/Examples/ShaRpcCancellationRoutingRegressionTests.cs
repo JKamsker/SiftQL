@@ -71,6 +71,20 @@ public sealed class ShaRpcCancellationRoutingRegressionTests
     }
 
     [Fact]
+    public async Task ClientStartAsyncCanRetryAfterAppliedSubscriptionFailure()
+    {
+        var server = new RemoteServerService(new ServerDataStore(), new ClientMessageSink());
+        var client = new RemoteClientService();
+        client.Attach(new ThrowAfterInventorySubscribeServer(server));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            client.StartAsync(CancellationToken.None));
+
+        client.Attach(server);
+        await client.StartAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task ClientStartAsyncConcurrentCallsShareStartupAttempt()
     {
         var server = new BlockingStartupServer();
@@ -130,6 +144,39 @@ public sealed class ShaRpcCancellationRoutingRegressionTests
             {
                 _canceled = true;
                 cancel.Cancel();
+            }
+        }
+
+        public Task SendToClientAsync(
+            ClientDelivery delivery,
+            CancellationToken cancellationToken = default) =>
+            inner.SendToClientAsync(delivery, cancellationToken);
+    }
+
+    private sealed class ThrowAfterInventorySubscribeServer(IRemoteServer inner) : IRemoteServer
+    {
+        private bool _thrown;
+
+        public Task<ServerHello> HelloAsync(
+            ClientHello hello,
+            CancellationToken cancellationToken = default) =>
+            inner.HelloAsync(hello, cancellationToken);
+
+        public Task<IReadOnlyList<ProjectedEvent>> QueryAsync(
+            ServerQueryRequest request,
+            CancellationToken cancellationToken = default) =>
+            inner.QueryAsync(request, cancellationToken);
+
+        public async Task SubscribeAsync(
+            SubscriptionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            await inner.SubscribeAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!_thrown &&
+                string.Equals(request.SubscriptionId, "inventory-feed", StringComparison.Ordinal))
+            {
+                _thrown = true;
+                throw new OperationCanceledException(cancellationToken);
             }
         }
 
