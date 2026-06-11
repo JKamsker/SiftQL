@@ -56,6 +56,7 @@ internal static class ClientPayload
             ProjectedEventValueKind.Decimal => value.Decimal,
             ProjectedEventValueKind.String => value.String,
             ProjectedEventValueKind.Guid => value.Guid,
+            ProjectedEventValueKind.Timestamp => value.Timestamp,
             ProjectedEventValueKind.Array => value.Values?.Select(ToObject).ToArray() ?? [],
             ProjectedEventValueKind.Object => ToDictionary(value.Fields),
             _ => null,
