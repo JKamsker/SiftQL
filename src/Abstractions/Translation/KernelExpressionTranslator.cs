@@ -197,6 +197,24 @@ internal static class KernelExpressionTranslator
         return expression;
     }
 
+    internal static bool TryTranslateMethodCall(
+        MethodCallExpression expression,
+        ParameterExpression parameter,
+        ref int parameterIndex,
+        out FilterExpression filter)
+    {
+        try
+        {
+            filter = TranslateMethodCall(expression, parameter, ref parameterIndex);
+            return true;
+        }
+        catch (KernelExpressionException)
+        {
+            filter = FilterExpression.Any;
+            return false;
+        }
+    }
+
     private static FilterExpression TranslateMethodCall(
         MethodCallExpression expression,
         ParameterExpression parameter,

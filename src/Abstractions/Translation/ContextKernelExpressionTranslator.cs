@@ -143,6 +143,15 @@ internal static class ContextKernelExpressionTranslator
             if (KernelElementAnyTranslator.TryTranslate(expression, _subject, ref _parameterIndex, out var anyFilter))
                 return ProjectSourceFilter(anyFilter);
 
+            if (KernelExpressionTranslator.TryTranslateMethodCall(
+                    expression,
+                    _subject,
+                    ref _parameterIndex,
+                    out FilterExpression sourceMethod))
+            {
+                return ProjectSourceFilter(sourceMethod);
+            }
+
             if (IsKernelIn(expression.Method))
             {
                 string field = RequireProjectedPath(expression.Arguments[0]);
