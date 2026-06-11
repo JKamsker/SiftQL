@@ -41,6 +41,7 @@ internal static class ContextProjectionPipeline
                     : AppendMissingIncludes(previous.Includes, includes),
             },
         };
+        CarrySourceFields(stages, projectionIndex, sourceFields);
 
         return pipeline with { Stages = stages };
     }
@@ -163,6 +164,60 @@ internal static class ContextProjectionPipeline
         }
 
         return merged.ToArray();
+    }
+
+    private static void CarrySourceFields(
+        EventPipelineStage[] stages,
+        int projectionIndex,
+        IReadOnlyList<EventProjectionField>? sourceFields)
+    {
+        if (sourceFields is not { Count: > 0 })
+            return;
+
+        for (int i = projectionIndex + 1; i < stages.Length; i++)
+        {
+            if (stages[i].Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            EventProjectionExpression projection = stages[i].Projection;
+            EventProjectionField[] carried = MissingCarriedFields(projection.Fields, sourceFields);
+            if (carried.Length == 0)
+                continue;
+
+            stages[i] = new EventPipelineStage
+            {
+                Kind = EventPipelineStageKind.Projection,
+                Projection = projection with { Fields = [.. projection.Fields, .. carried] },
+            };
+        }
+    }
+
+    private static EventProjectionField[] MissingCarriedFields(
+        IReadOnlyList<EventProjectionField> existing,
+        IReadOnlyList<EventProjectionField> sourceFields)
+    {
+        var carried = new List<EventProjectionField>();
+        for (int i = 0; i < sourceFields.Count; i++)
+        {
+            EventProjectionField sourceField = sourceFields[i];
+            if (!ContainsFieldName(existing, sourceField.Name))
+                carried.Add(new EventProjectionField(ProjectedPath(sourceField.Name), sourceField.Name));
+        }
+
+        return carried.ToArray();
+    }
+
+    private static bool ContainsFieldName(
+        IReadOnlyList<EventProjectionField> fields,
+        string name)
+    {
+        for (int i = 0; i < fields.Count; i++)
+        {
+            if (string.Equals(fields[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool ContainsInclude(
