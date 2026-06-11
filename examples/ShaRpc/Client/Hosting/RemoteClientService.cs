@@ -34,6 +34,7 @@ public sealed class RemoteClientService : IRemoteClient
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dispatch);
+        cancellationToken.ThrowIfCancellationRequested();
         if (!dispatch.Payload.TryGetField("Session", out ProjectedEventValue session) ||
             session.Kind != ProjectedEventValueKind.Integer)
         {
@@ -43,9 +44,18 @@ public sealed class RemoteClientService : IRemoteClient
 
         long clientId = session.Integer;
         await Server.SendToClientAsync(
-            new ClientDelivery(clientId, "inventory.notice", dispatch.Payload),
+            new ClientDelivery(clientId, ChannelFor(dispatch.SubscriptionId), dispatch.Payload),
             cancellationToken).ConfigureAwait(false);
     }
+
+    private static string ChannelFor(string subscriptionId) =>
+        subscriptionId switch
+        {
+            "inventory-feed" => "inventory.notice",
+            "premium-inventory-feed" => "inventory.premium",
+            _ => throw new InvalidOperationException(
+                $"Unknown subscription dispatch '{subscriptionId}'."),
+        };
 
     private static async Task QueryOffersAsync(
         IRemoteServer server,

@@ -37,6 +37,7 @@ public sealed class RemoteServerService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
         Type subjectType = ResolveSubject(request.Subject);
         CompiledEventPipeline<ServerLookupContext> pipeline = Compile(subjectType, request.Pipeline);
         var results = new List<ProjectedEvent>();
@@ -99,6 +100,7 @@ public sealed class RemoteServerService(
         where TRecord : IServerRecord
     {
         ArgumentNullException.ThrowIfNull(record);
+        cancellationToken.ThrowIfCancellationRequested();
         IRemoteClient? client = null;
 
         foreach (Subscription subscription in SubscriptionsFor(record))
