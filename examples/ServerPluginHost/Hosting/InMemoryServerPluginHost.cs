@@ -99,6 +99,7 @@ public sealed class InMemoryServerPluginHost
         where TEvent : IFilterSubject
     {
         ArgumentNullException.ThrowIfNull(ev);
+        cancellationToken.ThrowIfCancellationRequested();
         ThrowIfStartupFailed();
         ISubscription[] subscriptions = SubscriptionsFor(ev);
         for (int i = 0; i < subscriptions.Length; i++)
@@ -125,6 +126,10 @@ public sealed class InMemoryServerPluginHost
 
             _started = true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
             _startupFailed = true;
@@ -145,6 +150,7 @@ public sealed class InMemoryServerPluginHost
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
         ThrowIfStartupFailed();
         var pipeline = EventPipelineCompiler.Compile<PluginContext>(
             typeof(TModel),
