@@ -55,6 +55,21 @@ public sealed class ShaRpcCancellationRoutingRegressionTests
             sink.Deliveries.Select(static delivery => delivery.Channel).ToArray());
     }
 
+    [Fact]
+    public async Task ClientStartAsyncCanRetryAfterSubscriptionCancellation()
+    {
+        var server = new RemoteServerService(new ServerDataStore(), new ClientMessageSink());
+        var client = new RemoteClientService();
+        using var cancel = new CancellationTokenSource();
+        client.Attach(new CancelAfterInventorySubscribeServer(server, cancel));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            client.StartAsync(cancel.Token));
+
+        client.Attach(server);
+        await client.StartAsync(CancellationToken.None);
+    }
+
     private static SubscriptionDispatch Dispatch(string subscriptionId) =>
         new(
             subscriptionId,
@@ -68,4 +83,39 @@ public sealed class ShaRpcCancellationRoutingRegressionTests
                     new ProjectedEventField("Session", ProjectedEventValue.FromScalar(1001L)),
                 ],
             });
+
+    private sealed class CancelAfterInventorySubscribeServer(
+        IRemoteServer inner,
+        CancellationTokenSource cancel) : IRemoteServer
+    {
+        private bool _canceled;
+
+        public Task<ServerHello> HelloAsync(
+            ClientHello hello,
+            CancellationToken cancellationToken = default) =>
+            inner.HelloAsync(hello, cancellationToken);
+
+        public Task<IReadOnlyList<ProjectedEvent>> QueryAsync(
+            ServerQueryRequest request,
+            CancellationToken cancellationToken = default) =>
+            inner.QueryAsync(request, cancellationToken);
+
+        public async Task SubscribeAsync(
+            SubscriptionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            await inner.SubscribeAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!_canceled &&
+                string.Equals(request.SubscriptionId, "inventory-feed", StringComparison.Ordinal))
+            {
+                _canceled = true;
+                cancel.Cancel();
+            }
+        }
+
+        public Task SendToClientAsync(
+            ClientDelivery delivery,
+            CancellationToken cancellationToken = default) =>
+            inner.SendToClientAsync(delivery, cancellationToken);
+    }
 }
