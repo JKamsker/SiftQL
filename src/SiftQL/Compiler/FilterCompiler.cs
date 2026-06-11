@@ -254,5 +254,6 @@ public static class FilterCompiler
     {
         s_kernelCache.Clear();
         Volatile.Write(ref s_kernelCacheCount, 0);
+        ParameterizedFilterPlanCache.Clear();
     }
 }

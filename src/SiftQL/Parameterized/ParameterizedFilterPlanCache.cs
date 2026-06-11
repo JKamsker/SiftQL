@@ -62,6 +62,9 @@ internal static class ParameterizedFilterPlanCache
         Interlocked.Exchange(ref s_misses, 0);
     }
 
+    internal static void Clear() =>
+        ClearPlans();
+
     private static void ClearPlans()
     {
         s_plans.Clear();
