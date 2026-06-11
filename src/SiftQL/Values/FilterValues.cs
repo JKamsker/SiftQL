@@ -71,10 +71,11 @@ public static class FilterValues
             return;
         }
 
-        if (IsTemporal(field.ValueType) && value.Kind == FilterValueKind.Timestamp)
+        Type valueType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        if (IsTemporal(valueType) && value.Kind == FilterValueKind.Timestamp)
             return;
 
-        if (!FilterNumeric.IsNumeric(field.ValueType))
+        if (!FilterNumeric.IsNumeric(valueType))
         {
             throw Error(
                 errorFactory,
