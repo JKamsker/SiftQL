@@ -231,7 +231,7 @@ internal sealed class ContextExpressionIncludes
             .Append(':')
             .Append(value.Guid.ToString("D"))
             .Append(':')
-            .Append(value.Timestamp.UtcTicks.ToString(CultureInfo.InvariantCulture));
+            .Append(FilterValueIdentity.TimestampText(value.Timestamp));
     private static StringBuilder AppendText(StringBuilder builder, string? value) =>
         builder.Append(value is null
             ? "-1:"

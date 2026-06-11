@@ -195,7 +195,7 @@ internal static class ContextProjectionPipeline
             if (!string.Equals(left[i].Name, right[i].Name, StringComparison.OrdinalIgnoreCase) ||
                 left[i].Kind != right[i].Kind ||
                 !string.Equals(left[i].SourcePath, right[i].SourcePath, StringComparison.OrdinalIgnoreCase) ||
-                !EqualityComparer<FilterValue>.Default.Equals(left[i].Value, right[i].Value))
+                !FilterValueIdentity.Equals(left[i].Value, right[i].Value))
             {
                 return false;
             }
