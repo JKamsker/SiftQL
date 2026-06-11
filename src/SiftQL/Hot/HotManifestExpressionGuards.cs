@@ -13,6 +13,8 @@ internal static class HotManifestExpressionGuards
 
         if (!IsSupportedFilterNode(expression.Kind))
             return true;
+        if (!IsValidFilterShape(expression))
+            return true;
 
         for (int i = 0; i < expression.Children.Length; i++)
         {
@@ -85,4 +87,24 @@ internal static class HotManifestExpressionGuards
             FilterExpressionKind.In or
             FilterExpressionKind.Exists or
             FilterExpressionKind.Contains;
+
+    private static bool IsValidFilterShape(FilterExpression expression) =>
+        expression.Kind switch
+        {
+            FilterExpressionKind.Any => expression.Children.Length == 0,
+            FilterExpressionKind.And or FilterExpressionKind.Or => expression.Children.Length > 0,
+            FilterExpressionKind.Not => expression.Children.Length == 1,
+            FilterExpressionKind.Compare or FilterExpressionKind.Contains =>
+                expression.Children.Length == 0 &&
+                expression.Value is not null &&
+                !string.IsNullOrWhiteSpace(expression.Field),
+            FilterExpressionKind.In =>
+                expression.Children.Length == 0 &&
+                expression.Values.Length > 0 &&
+                !string.IsNullOrWhiteSpace(expression.Field),
+            FilterExpressionKind.Exists =>
+                expression.Children.Length == 0 &&
+                !string.IsNullOrWhiteSpace(expression.Field),
+            _ => false,
+        };
 }
