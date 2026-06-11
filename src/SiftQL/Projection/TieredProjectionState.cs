@@ -79,7 +79,7 @@ internal sealed class TieredProjectionState<TContext>
 
     private void CompileAndPromote()
     {
-        int providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
+        int providerVersion = PrecompiledTieredProviderRegistry.ProviderViewVersion;
         try
         {
             Func<object, ProjectedEventField[]>? compiled = _compileProjectFields();
@@ -114,7 +114,7 @@ internal sealed class TieredProjectionState<TContext>
             return true;
 
         int failedProviderVersion = Volatile.Read(ref _failedProviderVersion);
-        bool providerChanged = PrecompiledTieredProviderRegistry.GlobalVersion != failedProviderVersion;
+        bool providerChanged = PrecompiledTieredProviderRegistry.ProviderViewVersion != failedProviderVersion;
         bool retryElapsed = Stopwatch.GetElapsedTime(Volatile.Read(ref _failedTimestamp)) >= s_failedRetryDelay;
         if (!providerChanged && !retryElapsed)
             return false;

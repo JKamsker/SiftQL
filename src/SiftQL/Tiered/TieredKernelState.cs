@@ -77,7 +77,7 @@ internal sealed class TieredKernelState
 
     private void CompileAndPromote()
     {
-        int providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
+        int providerVersion = PrecompiledTieredProviderRegistry.ProviderViewVersion;
         try
         {
             KernelPredicate? compiled = _compilePromoted();
@@ -105,7 +105,7 @@ internal sealed class TieredKernelState
 
     private bool TryResetFailedPromotion()
     {
-        if (PrecompiledTieredProviderRegistry.GlobalVersion == Volatile.Read(ref _failedProviderVersion) &&
+        if (PrecompiledTieredProviderRegistry.ProviderViewVersion == Volatile.Read(ref _failedProviderVersion) &&
             Stopwatch.GetElapsedTime(Volatile.Read(ref _failedTimestamp)) < s_failedRetryDelay)
         {
             return false;
