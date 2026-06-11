@@ -37,6 +37,27 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
         Assert.Equal(Fingerprint(valid), entry.Fingerprint);
     }
 
+    [Fact]
+    public void ManifestWriterDropsExistingFilterEntriesWithNullArrays()
+    {
+        string path = TempManifestPath();
+        FilterExpression valid = FilterExpression.Compare(
+            nameof(ItemUsedEvent.ItemId),
+            FilterOperator.Equal,
+            FilterValue.From(100L));
+        SeedRawManifest(path, NullArrayEntry(valid));
+        var writer = new HotCompilationManifestWriter(
+            path,
+            new HotCompilationManifestWriterOptions { CoalesceDelay = TimeSpan.Zero });
+
+        writer.RecordHotFilter(typeof(ItemUsedEvent), valid, evaluations: 1, matches: 1);
+        writer.Flush();
+
+        HotCompilationManifest manifest = ReadManifest(path);
+        HotCompilationManifestEntry entry = Assert.Single(manifest.Entries);
+        Assert.Equal(Fingerprint(valid), entry.Fingerprint);
+    }
+
     private static void SeedManifest(
         string path,
         FilterExpression unsupported,
@@ -55,6 +76,31 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
             }));
     }
 
+    private static void SeedRawManifest(
+        string path,
+        HotCompilationManifestEntry entry)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(new HotCompilationManifest { Entries = [entry] }));
+    }
+
+    private static HotCompilationManifestEntry NullArrayEntry(FilterExpression definition)
+    {
+        using JsonDocument document = JsonDocument.Parse($$"""
+            {
+              "Kind": 4,
+              "Field": "{{nameof(ItemUsedEvent.ItemId)}}",
+              "Operator": 0,
+              "Value": { "Kind": 2, "Integer": 100 },
+              "Values": null,
+              "Children": null
+            }
+            """);
+        return Entry("null-arrays", Fingerprint(definition), document.RootElement.Clone());
+    }
+
     private static HotCompilationManifestEntry Entry(
         string key,
         string fingerprint,
@@ -66,6 +112,24 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
             SubjectType = typeof(ItemUsedEvent).AssemblyQualifiedName!,
             Fingerprint = fingerprint,
             Definition = JsonSerializer.SerializeToElement(definition),
+            Observed = new HotCompilationObserved
+            {
+                FirstSeenUtc = DateTimeOffset.UtcNow,
+                LastSeenUtc = DateTimeOffset.UtcNow,
+            },
+        };
+
+    private static HotCompilationManifestEntry Entry(
+        string key,
+        string fingerprint,
+        JsonElement definition) =>
+        new()
+        {
+            Key = key,
+            Kind = "filter",
+            SubjectType = typeof(ItemUsedEvent).AssemblyQualifiedName!,
+            Fingerprint = fingerprint,
+            Definition = definition,
             Observed = new HotCompilationObserved
             {
                 FirstSeenUtc = DateTimeOffset.UtcNow,
