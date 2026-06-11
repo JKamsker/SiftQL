@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SiftQL.Examples.ShaRpc.SharedContracts.Contracts;
 using SiftQL.Examples.ShaRpc.SharedContracts.Domain;
 using SiftQL.Expressions;
@@ -12,7 +13,7 @@ public sealed class RemoteServerService(
     ServerLookupContext? queryContext = null) : IRemoteServer
 {
     private readonly Dictionary<Type, List<Subscription>> _subscriptions = [];
-    private readonly HashSet<string> _subscriptionIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Subscription> _subscriptionsById = new(StringComparer.Ordinal);
     private readonly object _subscriptionGate = new();
     private readonly ServerLookupContext _queryContext = queryContext ?? new ServerLookupContext();
     private IRemoteClient? _client;
@@ -62,16 +63,23 @@ public sealed class RemoteServerService(
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SubscriptionId);
         Type subjectType = ResolveSubject(request.Subject);
+        string pipelineSignature = PipelineSignature(request.Pipeline);
         var subscription = new Subscription(
             request.SubscriptionId,
             subjectType.Name,
+            pipelineSignature,
             Compile(subjectType, request.Pipeline));
 
         lock (_subscriptionGate)
         {
-            if (!_subscriptionIds.Add(request.SubscriptionId))
+            if (_subscriptionsById.TryGetValue(request.SubscriptionId, out Subscription? existing))
+            {
+                if (existing.Matches(subjectType.Name, pipelineSignature))
+                    return Task.CompletedTask;
+
                 throw new InvalidOperationException(
                     $"Subscription id '{request.SubscriptionId}' is already registered.");
+            }
 
             if (!_subscriptions.TryGetValue(subjectType, out List<Subscription>? subscriptions))
             {
@@ -79,6 +87,7 @@ public sealed class RemoteServerService(
                 _subscriptions.Add(subjectType, subscriptions);
             }
 
+            _subscriptionsById.Add(request.SubscriptionId, subscription);
             subscriptions.Add(subscription);
         }
 
@@ -161,8 +170,20 @@ public sealed class RemoteServerService(
             EventPipelineCompilerOptions.Immediate,
             message => new InvalidOperationException(message));
 
+    private static string PipelineSignature(EventPipelineExpression pipeline)
+    {
+        ArgumentNullException.ThrowIfNull(pipeline);
+        return JsonSerializer.Serialize(pipeline);
+    }
+
     private sealed record Subscription(
         string Id,
         string Subject,
-        CompiledEventPipeline<ServerLookupContext> Pipeline);
+        string PipelineSignature,
+        CompiledEventPipeline<ServerLookupContext> Pipeline)
+    {
+        public bool Matches(string subject, string pipelineSignature) =>
+            string.Equals(Subject, subject, StringComparison.Ordinal) &&
+            string.Equals(PipelineSignature, pipelineSignature, StringComparison.Ordinal);
+    }
 }
