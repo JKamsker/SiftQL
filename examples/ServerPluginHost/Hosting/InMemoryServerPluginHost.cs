@@ -109,6 +109,7 @@ public sealed class InMemoryServerPluginHost
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         await _startupGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _starting = true;
         try
         {
             if (_started)
@@ -116,7 +117,6 @@ public sealed class InMemoryServerPluginHost
             if (_startupFailed)
                 throw new InvalidOperationException("Plugin host startup failed.");
 
-            _starting = true;
             for (int i = 0; i < _startupHandlers.Count; i++)
             {
                 StartupHandler startup = _startupHandlers[i];
