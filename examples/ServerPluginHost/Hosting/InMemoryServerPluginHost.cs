@@ -99,6 +99,7 @@ public sealed class InMemoryServerPluginHost
         where TEvent : IFilterSubject
     {
         ArgumentNullException.ThrowIfNull(ev);
+        ThrowIfStartupFailed();
         ISubscription[] subscriptions = SubscriptionsFor(ev);
         for (int i = 0; i < subscriptions.Length; i++)
             await subscriptions[i].DispatchAsync(ev, cancellationToken).ConfigureAwait(false);
@@ -144,6 +145,7 @@ public sealed class InMemoryServerPluginHost
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(query);
+        ThrowIfStartupFailed();
         var pipeline = EventPipelineCompiler.Compile<PluginContext>(
             typeof(TModel),
             query.Pipeline,
@@ -171,6 +173,12 @@ public sealed class InMemoryServerPluginHost
     {
         if (_started || _starting || _startupFailed)
             throw new InvalidOperationException("Plugins cannot be registered after the host has started.");
+    }
+
+    private void ThrowIfStartupFailed()
+    {
+        if (_startupFailed)
+            throw new InvalidOperationException("Plugin host startup failed.");
     }
 
     private ISubscription[] SubscriptionsFor(object ev)
