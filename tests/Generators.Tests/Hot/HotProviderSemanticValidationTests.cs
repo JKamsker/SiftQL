@@ -68,6 +68,28 @@ public sealed class HotProviderSemanticValidationTests
     }
 
     [Fact]
+    public void RejectsFilterLeafWithChildrenPayload()
+    {
+        var filter = FilterExpression.Compare(
+            "CharacterId",
+            FilterOperator.Equal,
+            FilterValue.From(7L));
+        string fingerprint = Fingerprint(filter);
+
+        AssertRejected(RawDefinitionManifest("filter", fingerprint, """
+            {
+              "Kind": 4,
+              "Field": "CharacterId",
+              "Operator": 0,
+              "Value": { "Kind": 2, "Integer": 7 },
+              "Children": [
+                { "Kind": 6, "Field": "EventId" }
+              ]
+            }
+            """), "leaf filter children diagnostic");
+    }
+
+    [Fact]
     public void RejectsDuplicateProjectionNames()
     {
         var projection = new EventProjectionExpression
