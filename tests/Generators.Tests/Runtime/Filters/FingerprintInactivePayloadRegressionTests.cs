@@ -38,6 +38,19 @@ public sealed class FingerprintInactivePayloadRegressionTests
         Assert.Equal(first.GetHashCode(), second.GetHashCode());
     }
 
+    [Fact]
+    public void ValueProjectionKeysIgnoreInactiveLiteralPayloads()
+    {
+        ProjectionExpressionKey first = ProjectionExpressionFingerprint.CreateKey(
+            ProjectionWithValueArgument(FilterValue.From(7L) with { String = "inactive-a" }));
+        ProjectionExpressionKey second = ProjectionExpressionFingerprint.CreateKey(
+            ProjectionWithValueArgument(FilterValue.From(7L) with { String = "inactive-b" }));
+
+        Assert.Equal(first.ToString(), second.ToString());
+        Assert.Equal(first, second);
+        Assert.Equal(first.GetHashCode(), second.GetHashCode());
+    }
+
     private static EventProjectionExpression ProjectionWithSourceArgument(FilterValue inactiveValue) =>
         EventProjectionExpression.Default.WithIncludes(
         [
@@ -51,5 +64,14 @@ public sealed class FingerprintInactivePayloadRegressionTests
                     SourcePath = "ItemId",
                     Value = inactiveValue,
                 }),
+        ]);
+
+    private static EventProjectionExpression ProjectionWithValueArgument(FilterValue value) =>
+        EventProjectionExpression.Default.WithIncludes(
+        [
+            new EventProjectionInclude(
+                "test.include",
+                "result",
+                new EventProjectionArgument("threshold", value)),
         ]);
 }
