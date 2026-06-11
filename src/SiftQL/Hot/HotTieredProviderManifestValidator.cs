@@ -165,6 +165,7 @@ internal static partial class HotTieredProviderManifestValidator
         string subjectType,
         [NotNullWhen(true)] out Type? type)
     {
+        bool assemblyQualified = HasTopLevelAssemblyName(subjectType);
         type = Type.GetType(
             subjectType,
             assemblyName =>
@@ -172,12 +173,16 @@ internal static partial class HotTieredProviderManifestValidator
                 ResolveLoadedAssembly(AppDomain.CurrentDomain.GetAssemblies(), assemblyName),
             (assembly, typeName, ignoreCase) =>
                 assembly is null
-                    ? FindLoadedType(loadContext.Assemblies, typeName, ignoreCase) ??
-                        FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), typeName, ignoreCase)
+                    ? assemblyQualified
+                        ? null
+                        : FindLoadedType(loadContext.Assemblies, typeName, ignoreCase) ??
+                            FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), typeName, ignoreCase)
                     : assembly.GetType(typeName, throwOnError: false, ignoreCase: ignoreCase),
             throwOnError: false);
         if (type is not null)
             return true;
+        if (assemblyQualified)
+            return false;
 
         string fullName = TypeNameWithoutAssembly(subjectType);
         type = FindLoadedType(loadContext.Assemblies, fullName) ??
@@ -213,6 +218,9 @@ internal static partial class HotTieredProviderManifestValidator
 
         return null;
     }
+
+    private static bool HasTopLevelAssemblyName(string typeName) =>
+        !string.Equals(TypeNameWithoutAssembly(typeName), typeName.Trim(), StringComparison.Ordinal);
 
     private static string TypeNameWithoutAssembly(string typeName)
     {
