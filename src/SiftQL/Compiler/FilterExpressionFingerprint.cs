@@ -61,6 +61,7 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
     private static string FieldForKey(FilterExpression expression) =>
         expression.Kind is FilterExpressionKind.Compare or
             FilterExpressionKind.In or
+            FilterExpressionKind.Between or
             FilterExpressionKind.Exists or
             FilterExpressionKind.Contains or
             FilterExpressionKind.Count or
