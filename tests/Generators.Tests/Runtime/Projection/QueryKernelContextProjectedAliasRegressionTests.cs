@@ -109,6 +109,48 @@ public sealed class QueryKernelContextProjectedAliasRegressionTests
 
         Assert.NotNull(projected);
         Assert.Equal(7, projected!.Field(nameof(MetricEvent.Id)).Integer);
+        string[] includeNames = query.Pipeline.Stages
+            .Where(static stage => stage.Kind == EventPipelineStageKind.Projection)
+            .SelectMany(static stage => stage.Projection.Includes)
+            .Select(static include => include.ResultName)
+            .ToArray();
+        Assert.Equal(2, includeNames.Length);
+        Assert.False(string.Equals(includeNames[0], includeNames[1], StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, projected.Context
+            .Select(static field => field.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count());
+    }
+
+    [Fact]
+    public async Task ContextWhereAfterLaterProjectionCarriesRequiredSourceFields()
+    {
+        QueryKernel<MetricEvent> query = QueryKernel
+            .For<MetricEvent>()
+            .Select(
+                new EventProjectionField(nameof(MetricEvent.Id), nameof(MetricEvent.Id)),
+                new EventProjectionField(nameof(MetricEvent.Quantity), "Amount"))
+            .WhereProjected(static projected => projected.Field("Amount").Integer >= 0)
+            .Select(new EventProjectionField(nameof(MetricEvent.Id), "VisibleId"))
+            .WithContext<MetricEvent, MetricContext>()
+            .Where(static (ev, ctx) => ev.Quantity == 2 || ctx.Score(ev.Id) > 0);
+        CompiledEventPipeline<MetricContext> compiled = EventPipelineCompiler.Compile<MetricContext>(
+            typeof(MetricEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? sourceBranchOnly = await compiled.ProjectAsync(
+            new MetricEvent(10, 2),
+            new MetricContext(),
+            CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(
+            new MetricEvent(10, 1),
+            new MetricContext(),
+            CancellationToken.None);
+
+        Assert.NotNull(sourceBranchOnly);
+        Assert.Equal(10, sourceBranchOnly!.Field("VisibleId").Integer);
+        Assert.Null(rejected);
     }
 
     private sealed record PlayerNestedEvent(PlayerDetails Player, int Quantity) : IFilterSubject;
@@ -129,11 +171,11 @@ public sealed class QueryKernelContextProjectedAliasRegressionTests
             _players.TryGetValue(id, out PlayerRecord? player) ? player : null!;
     }
 
-    private sealed record MetricEvent(long Id) : IFilterSubject;
+    private sealed record MetricEvent(long Id, int Quantity = 1) : IFilterSubject;
 
     private sealed class MetricContext
     {
-        public long Score(long id) => id;
+        public long Score(long id) => id == 10 ? 0 : id;
 
         public long Rank(long id) => id;
     }
