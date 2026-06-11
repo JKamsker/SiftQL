@@ -62,9 +62,15 @@ internal static partial class HotManifestParser
         out bool valid)
     {
         valid = true;
-        if (!element.TryGetProperty("Children", out JsonElement items) ||
-            items.ValueKind != JsonValueKind.Array)
+        if (!element.TryGetProperty("Children", out JsonElement items))
         {
+            return EquatableArray<HotFilterNode>.Empty;
+        }
+
+        if (items.ValueKind != JsonValueKind.Array)
+        {
+            Add(diagnostics, "FSFHOT009", path, "Hot filter children must be an array.");
+            valid = false;
             return EquatableArray<HotFilterNode>.Empty;
         }
 
@@ -97,9 +103,15 @@ internal static partial class HotManifestParser
         out bool valid)
     {
         valid = true;
-        if (!element.TryGetProperty("Values", out JsonElement items) ||
-            items.ValueKind != JsonValueKind.Array)
+        if (!element.TryGetProperty("Values", out JsonElement items))
         {
+            return EquatableArray<HotFilterValue>.Empty;
+        }
+
+        if (items.ValueKind != JsonValueKind.Array)
+        {
+            Add(diagnostics, "FSFHOT009", path, "Hot filter values must be an array.");
+            valid = false;
             return EquatableArray<HotFilterValue>.Empty;
         }
 
