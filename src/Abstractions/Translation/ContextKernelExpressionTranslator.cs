@@ -53,7 +53,8 @@ internal static class ContextKernelExpressionTranslator
             _pipeline = pipeline;
             _projectSubjectFields = projectSubjectFields;
             _parameterIndex = parameterOffset;
-            Includes = new ContextExpressionIncludes(subject, context, bindings, NextParameterKey);
+            Includes = new ContextExpressionIncludes(
+                subject, context, bindings, NextParameterKey, ContextProjectionGeneratedNames.NextIndex(pipeline));
         }
 
         public ContextExpressionIncludes Includes { get; }

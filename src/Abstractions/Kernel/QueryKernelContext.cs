@@ -63,6 +63,7 @@ public sealed record QueryKernel<TSubject, TContext>
     {
         ContextSelectorTranslation translated = ContextProjectionSelectorTranslator.Translate(
             selector,
+            Pipeline,
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
         EventPipelineExpression pipeline = BuildSelectPipeline(translated);

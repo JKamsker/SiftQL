@@ -7,11 +7,17 @@ internal static class ContextProjectionSelectorTranslator
 {
     public static ContextSelectorTranslation Translate<TSubject, TContext, TProjection>(
         Expression<Func<TSubject, TContext, TProjection>> selector,
+        EventPipelineExpression pipeline,
         IReadOnlyList<ContextProjectionBinding> bindings,
         int parameterOffset)
     {
         ArgumentNullException.ThrowIfNull(selector);
-        var translator = new Translator(selector.Parameters[0], selector.Parameters[1], bindings, parameterOffset);
+        var translator = new Translator(
+            selector.Parameters[0],
+            selector.Parameters[1],
+            pipeline,
+            bindings,
+            parameterOffset);
         translator.TranslateValue(StripConvert(selector.Body), name: null);
         if (translator.Outputs.Count == 0)
             throw new KernelExpressionException("Projection selector must include at least one field.");
@@ -30,12 +36,18 @@ internal static class ContextProjectionSelectorTranslator
         public Translator(
             ParameterExpression subject,
             ParameterExpression context,
+            EventPipelineExpression pipeline,
             IReadOnlyList<ContextProjectionBinding> bindings,
             int parameterOffset)
         {
             _subject = subject;
             _parameterIndex = parameterOffset;
-            Includes = new ContextExpressionIncludes(subject, context, bindings, NextParameterKey);
+            Includes = new ContextExpressionIncludes(
+                subject,
+                context,
+                bindings,
+                NextParameterKey,
+                ContextProjectionGeneratedNames.NextIndex(pipeline));
             Constants = new ProjectionSelectorConstantTranslator(subject, context, NextParameterKey);
         }
 

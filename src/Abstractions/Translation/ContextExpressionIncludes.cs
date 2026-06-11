@@ -17,17 +17,20 @@ internal sealed class ContextExpressionIncludes
     private readonly List<ContextProjectionBinding> _bindings = [];
     private readonly Func<string> _nextParameterKey;
     private int _parameterIndex;
+    private int _resultIndex;
 
     public ContextExpressionIncludes(
         ParameterExpression subject,
         ParameterExpression context,
         IReadOnlyList<ContextProjectionBinding> bindings,
-        int parameterOffset)
+        int parameterOffset,
+        int resultOffset = 0)
     {
         _subject = subject;
         _context = context;
         _contextDescriptor = ResolveDescriptor(context.Type);
         _parameterIndex = parameterOffset;
+        _resultIndex = resultOffset;
         _nextParameterKey = NextLocalParameterKey;
         LoadBindings(bindings);
     }
@@ -36,11 +39,13 @@ internal sealed class ContextExpressionIncludes
         ParameterExpression subject,
         ParameterExpression context,
         IReadOnlyList<ContextProjectionBinding> bindings,
-        Func<string> nextParameterKey)
+        Func<string> nextParameterKey,
+        int resultOffset = 0)
     {
         _subject = subject;
         _context = context;
         _contextDescriptor = ResolveDescriptor(context.Type);
+        _resultIndex = resultOffset;
         _nextParameterKey = nextParameterKey ?? throw new ArgumentNullException(nameof(nextParameterKey));
         LoadBindings(bindings);
     }
@@ -52,6 +57,7 @@ internal sealed class ContextExpressionIncludes
             static item => item.Include,
             StringComparer.Ordinal);
         _bindings.AddRange(bindings);
+        _resultIndex = ContextProjectionGeneratedNames.NextIndex(bindings, _resultIndex);
     }
 
     public EventProjectionInclude[] NewIncludes => _newIncludes.ToArray();
@@ -185,7 +191,7 @@ internal sealed class ContextExpressionIncludes
 
     private string ContextResultName(string? preferredName) =>
         string.IsNullOrWhiteSpace(preferredName)
-            ? "__ctx" + _bindings.Count.ToString(CultureInfo.InvariantCulture)
+            ? ContextProjectionGeneratedNames.Format(_resultIndex++)
             : preferredName;
 
     private static string IncludeKey(string intrinsic, IReadOnlyList<EventProjectionArgument> arguments)
