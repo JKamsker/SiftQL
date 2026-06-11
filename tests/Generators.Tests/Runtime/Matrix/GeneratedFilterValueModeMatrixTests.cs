@@ -21,10 +21,11 @@ public sealed class GeneratedFilterValueModeMatrixTests
             "Score",
             FilterOperator.GreaterThan,
             FilterValue.Null);
-        using var context = LoadContext(
-            mode,
-            assemblyName,
-            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), filter));
+        // Hot manifest validation rejects this entry before runtime compilation.
+        GeneratedExecutionMode contextMode = mode == GeneratedExecutionMode.GeneratedHot
+            ? GeneratedExecutionMode.Interpreted
+            : mode;
+        using var context = LoadContext(contextMode, assemblyName);
 
         Assert.Throws<FilterValidationException>(() => FilterCompiler.Compile(
             context.EventType,
