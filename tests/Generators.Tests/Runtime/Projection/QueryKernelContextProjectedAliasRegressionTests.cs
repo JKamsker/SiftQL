@@ -69,6 +69,30 @@ public sealed class QueryKernelContextProjectedAliasRegressionTests
         Assert.Equal("Ari", projected!.Field("Name").String);
     }
 
+    [Fact]
+    public async Task ReenteredContextWhereAllocatesDistinctGeneratedIncludeNames()
+    {
+        var query = QueryKernel
+            .For<MetricEvent, MetricContext>()
+            .Where(static (ev, ctx) => ctx.Score(ev.Id) > 0)
+            .ToQueryKernel()
+            .WithContext<MetricEvent, MetricContext>()
+            .Where(static (ev, ctx) => ctx.Rank(ev.Id) > 0)
+            .Select(nameof(MetricEvent.Id));
+        CompiledEventPipeline<MetricContext> compiled = EventPipelineCompiler.Compile<MetricContext>(
+            typeof(MetricEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new MetricEvent(7),
+            new MetricContext(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(7, projected!.Field(nameof(MetricEvent.Id)).Integer);
+    }
+
     private sealed record PlayerNestedEvent(PlayerDetails Player, int Quantity) : IFilterSubject;
 
     private sealed record PlayerDetails(int Id);
@@ -85,5 +109,14 @@ public sealed class QueryKernelContextProjectedAliasRegressionTests
 
         public PlayerRecord GetPlayer(Guid id) =>
             _players.TryGetValue(id, out PlayerRecord? player) ? player : null!;
+    }
+
+    private sealed record MetricEvent(long Id) : IFilterSubject;
+
+    private sealed class MetricContext
+    {
+        public long Score(long id) => id;
+
+        public long Rank(long id) => id;
     }
 }
