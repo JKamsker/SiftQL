@@ -47,6 +47,7 @@ internal static class FilterSchemaFallbackBuilder
                 FilterSchemaCollectionFieldBuilder.AddRegisteredFieldsUnderGeneratedCollection(
                     fields,
                     field.Name,
+                    subjectType,
                     field.ValueType,
                     Depth(field.Name),
                     isValueObject);

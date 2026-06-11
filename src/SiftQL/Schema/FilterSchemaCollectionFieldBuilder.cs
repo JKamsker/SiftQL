@@ -30,6 +30,7 @@ internal static class FilterSchemaCollectionFieldBuilder
     public static void AddRegisteredFieldsUnderGeneratedCollection(
         List<FilterField> fields,
         string path,
+        Type subjectType,
         Type elementType,
         int depth,
         Func<Type, bool> isValueObject)
@@ -37,7 +38,13 @@ internal static class FilterSchemaCollectionFieldBuilder
         if (FilterSchemaFallbackBuilder.IsScalar(elementType))
             return;
 
-        AddProperties(fields, path, elementType, memberPath: null, depth, isValueObject);
+        AddProperties(
+            fields,
+            path,
+            elementType,
+            ResolveMemberPath(subjectType, path),
+            depth,
+            isValueObject);
     }
 
     private static void AddProperties(
@@ -102,6 +109,45 @@ internal static class FilterSchemaCollectionFieldBuilder
 
     private static MemberInfo[]? AppendMember(MemberInfo[]? memberPath, MemberInfo member) =>
         memberPath is null ? null : [.. memberPath, member];
+
+    private static MemberInfo[]? ResolveMemberPath(Type subjectType, string path)
+    {
+        string[] segments = path.Split('.');
+        var members = new MemberInfo[segments.Length];
+        Type ownerType = subjectType;
+        for (int i = 0; i < segments.Length; i++)
+        {
+            PropertyInfo? property = FindProperty(ownerType, segments[i]);
+            if (property is null)
+                return null;
+
+            members[i] = property;
+            ownerType = NextOwnerType(property.PropertyType);
+        }
+
+        return members;
+    }
+
+    private static PropertyInfo? FindProperty(Type ownerType, string name)
+    {
+        foreach (PropertyInfo property in FilterSchemaFallbackBuilder.EnumeratePublicProperties(ownerType))
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) &&
+                property.GetMethod is not null &&
+                property.GetMethod.GetParameters().Length == 0)
+            {
+                return property;
+            }
+        }
+
+        return null;
+    }
+
+    private static Type NextOwnerType(Type memberType)
+    {
+        Type type = Nullable.GetUnderlyingType(memberType) ?? memberType;
+        return GetElementType(type) ?? type;
+    }
 
     private static FilterField BuildArrayField(string name, Type valueType, MemberInfo[]? memberPath) =>
         new(
