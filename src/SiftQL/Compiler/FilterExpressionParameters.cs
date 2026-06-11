@@ -7,21 +7,9 @@ internal static class FilterExpressionParameters
 {
     public static bool HasParameters(FilterExpression expression)
     {
-        if (HasParameter(expression.Value))
-            return true;
-        for (int i = 0; i < expression.Values.Length; i++)
-        {
-            if (HasParameter(expression.Values[i]))
-                return true;
-        }
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (HasParameters(expression.Children[i]))
-                return true;
-        }
-
-        return false;
+        bool hasParameters = false;
+        VisitValues(expression, value => hasParameters |= HasParameter(value));
+        return hasParameters;
     }
 
     public static string[] Keys(FilterExpression expression)
@@ -82,12 +70,27 @@ internal static class FilterExpressionParameters
         FilterExpression expression,
         Action<FilterValue> visit)
     {
-        if (expression.Value is not null)
-            visit(expression.Value);
-        for (int i = 0; i < expression.Values.Length; i++)
-            visit(expression.Values[i]);
-        for (int i = 0; i < expression.Children.Length; i++)
-            VisitValues(expression.Children[i], visit);
+        switch (expression.Kind)
+        {
+            case FilterExpressionKind.Compare:
+            case FilterExpressionKind.Contains:
+            case FilterExpressionKind.Count:
+                if (expression.Value is not null)
+                    visit(expression.Value);
+                break;
+            case FilterExpressionKind.In:
+            case FilterExpressionKind.Between:
+                for (int i = 0; i < expression.Values.Length; i++)
+                    visit(expression.Values[i]);
+                break;
+            case FilterExpressionKind.ElemMatch:
+            case FilterExpressionKind.And:
+            case FilterExpressionKind.Or:
+            case FilterExpressionKind.Not:
+                for (int i = 0; i < expression.Children.Length; i++)
+                    VisitValues(expression.Children[i], visit);
+                break;
+        }
     }
 
     private static bool HasParameter(FilterValue? value) =>

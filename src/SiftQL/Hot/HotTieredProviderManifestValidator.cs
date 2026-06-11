@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
+using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Projected;
 
@@ -122,24 +123,7 @@ internal static partial class HotTieredProviderManifestValidator
     }
 
     private static bool HasParameters(FilterExpression expression)
-    {
-        if (HasParameter(expression.Value))
-            return true;
-
-        for (int i = 0; i < expression.Values.Length; i++)
-        {
-            if (HasParameter(expression.Values[i]))
-                return true;
-        }
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (HasParameters(expression.Children[i]))
-                return true;
-        }
-
-        return false;
-    }
+        => FilterExpressionParameters.HasParameters(expression);
 
     private static bool HasParameters(EventProjectionExpression projection)
     {
