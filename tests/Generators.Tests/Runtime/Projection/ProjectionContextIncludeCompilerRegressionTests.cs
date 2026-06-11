@@ -1,3 +1,4 @@
+using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Projected;
 using SiftQL.Projection;
@@ -85,6 +86,24 @@ public sealed class ProjectionContextIncludeCompilerRegressionTests
         Assert.Equal(42, projected.ContextValue("echo").Integer);
     }
 
+    [Fact]
+    public void SingleContextIncludeOverloadValidatesSourceArgumentType()
+    {
+        var include = new EventProjectionInclude(
+            EventProjectionContextIntrinsics.Method(nameof(SingleSourceContext.Echo), ""),
+            "echo",
+            EventProjectionArgument.FromSourceField("id", nameof(SingleSourceEvent.Code)));
+        EventProjectionExpression projection = EventProjectionExpression.Default
+            .WithIncludes([include]);
+
+        Assert.Throws<FilterValidationException>(() =>
+            ProjectionCompiler.Compile<SingleSourceContext>(
+                typeof(SingleSourceEvent),
+                projection,
+                ProjectionContextIncludeCompiler.Compile<SingleSourceContext>,
+                ProjectionCompilerOptions.Immediate));
+    }
+
     private sealed record PairEvent(string Left, string Right) : IFilterSubject;
 
     private sealed class PairContext
@@ -109,5 +128,12 @@ public sealed class ProjectionContextIncludeCompilerRegressionTests
     private sealed class ProjectedSourceContext
     {
         public long Echo(long itemId) => itemId;
+    }
+
+    private sealed record SingleSourceEvent(string Code) : IFilterSubject;
+
+    private sealed class SingleSourceContext
+    {
+        public long Echo(long id) => id;
     }
 }
