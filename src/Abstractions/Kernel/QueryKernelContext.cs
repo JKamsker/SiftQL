@@ -45,14 +45,15 @@ public sealed record QueryKernel<TSubject, TContext>
             Pipeline,
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
+        RequiredSourceProjection sourceProjection = ContextProjectionPipeline.HasProjection(Pipeline)
+            ? RequiredSourceFields(Pipeline, translated.SourceFields)
+            : RequiredInitialSourceFields(translated.SourceFields);
         EventPipelineExpression pipeline = ContextProjectionPipeline
             .AddIncludes(
                 Pipeline,
                 translated.NewIncludes,
-                ContextProjectionPipeline.HasProjection(Pipeline)
-                    ? RequiredSourceFields(Pipeline, translated.SourceFields)
-                    : RequiredInitialSourceFields(translated.SourceFields))
-            .AppendFilter(translated.Filter);
+                sourceProjection.Fields)
+            .AppendFilter(RewriteProjectedSourceFields(translated.Filter, sourceProjection.ProjectedPaths));
         return new QueryKernel<TSubject, TContext>(
             Kernel with { Pipeline = pipeline },
             translated.Bindings);
@@ -117,35 +118,47 @@ public sealed record QueryKernel<TSubject, TContext>
         return pipeline.AppendProjection(finalProjection);
     }
 
-    private static EventProjectionField[] RequiredSourceFields(
+    private static RequiredSourceProjection RequiredSourceFields(
         EventPipelineExpression pipeline,
         IReadOnlyList<string> sourceFields)
     {
         if (sourceFields.Count == 0)
-            return [];
+            return RequiredSourceProjection.Empty;
 
         var fields = new List<EventProjectionField>();
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sourcePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fieldNames = ProjectedFieldNames(pipeline);
+        var projectedPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < sourceFields.Count; i++)
         {
             string sourcePath = sourceFields[i];
             if (ContextProjectionPipeline.TryProjectedFieldName(pipeline, sourcePath, out _))
                 continue;
-            if (names.Add(sourcePath))
-                fields.Add(RequiredSourceField(sourcePath));
+            if (!sourcePaths.Add(sourcePath))
+                continue;
+
+            string fieldName = RequiredSourceFieldName(sourcePath);
+            if (!fieldNames.Add(fieldName))
+                fieldName = NextSourceFieldName(fieldNames);
+
+            fields.Add(new EventProjectionField(sourcePath, fieldName));
+            string defaultPath = ContextProjectionPipeline.ProjectedPath(pipeline, sourcePath);
+            string projectedPath = ProjectedEventPaths.Field(fieldName);
+            if (!string.Equals(defaultPath, projectedPath, StringComparison.OrdinalIgnoreCase))
+                projectedPaths.Add(defaultPath, projectedPath);
         }
 
-        return fields.ToArray();
+        return new RequiredSourceProjection(fields.ToArray(), projectedPaths);
     }
 
-    private static EventProjectionField[] RequiredInitialSourceFields(
+    private static RequiredSourceProjection RequiredInitialSourceFields(
         IReadOnlyList<string> sourceFields)
     {
         string[] required = sourceFields
             .Where(RequiresInitialProjection)
             .ToArray();
         return required.Length == 0
-            ? []
+            ? RequiredSourceProjection.Empty
             : RequiredSourceFields(EventPipelineExpression.Default, required);
     }
 
@@ -156,10 +169,55 @@ public sealed record QueryKernel<TSubject, TContext>
         string.Equals(path, "subjectTypes", StringComparison.OrdinalIgnoreCase) ||
         path.EndsWith(".subjectTypes", StringComparison.OrdinalIgnoreCase);
 
-    private static EventProjectionField RequiredSourceField(string sourcePath) =>
+    private static string RequiredSourceFieldName(string sourcePath) =>
         ProjectedEventPaths.TrySplit(sourcePath, out bool context, out string name) && !context
-            ? new EventProjectionField(sourcePath, name)
-            : new EventProjectionField(sourcePath);
+            ? name
+            : sourcePath;
+
+    private static HashSet<string> ProjectedFieldNames(EventPipelineExpression pipeline)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            if (pipeline.Stages[i].Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            EventProjectionField[] fields = pipeline.Stages[i].Projection.Fields;
+            for (int j = 0; j < fields.Length; j++)
+                names.Add(fields[j].Name);
+            break;
+        }
+
+        return names;
+    }
+
+    private static string NextSourceFieldName(HashSet<string> names)
+    {
+        for (int i = 0; ; i++)
+        {
+            string name = "__siftqlSource" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (names.Add(name))
+                return name;
+        }
+    }
+
+    private static FilterExpression RewriteProjectedSourceFields(
+        FilterExpression expression,
+        IReadOnlyDictionary<string, string> projectedPaths)
+    {
+        if (projectedPaths.Count == 0)
+            return expression;
+
+        return expression with
+        {
+            Field = projectedPaths.TryGetValue(expression.Field, out string? projectedPath)
+                ? projectedPath
+                : expression.Field,
+            Children = expression.Children
+                .Select(child => RewriteProjectedSourceFields(child, projectedPaths))
+                .ToArray(),
+        };
+    }
 
     private EventProjectionField FinalField(ContextSelectorOutput output, bool projected)
     {
@@ -199,6 +257,14 @@ public sealed record QueryKernel<TSubject, TContext>
         }
 
         return false;
+    }
+
+    private sealed record RequiredSourceProjection(
+        EventProjectionField[] Fields,
+        IReadOnlyDictionary<string, string> ProjectedPaths)
+    {
+        public static RequiredSourceProjection Empty { get; } =
+            new([], new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 }
 
