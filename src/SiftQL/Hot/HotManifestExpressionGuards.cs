@@ -6,6 +6,9 @@ internal static class HotManifestExpressionGuards
 {
     public static bool ContainsUnsupportedFilterNode(FilterExpression expression)
     {
+        if (expression.Children is null || expression.Values is null)
+            return true;
+
         if (!IsSupportedFilterNode(expression.Kind))
             return true;
 
@@ -20,6 +23,9 @@ internal static class HotManifestExpressionGuards
 
     public static bool ContainsNonFiniteNumber(FilterExpression expression)
     {
+        if (expression.Children is null || expression.Values is null)
+            return false;
+
         if (IsNonFiniteNumber(expression.Value))
             return true;
 
