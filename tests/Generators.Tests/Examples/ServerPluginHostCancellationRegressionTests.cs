@@ -63,6 +63,25 @@ public sealed class ServerPluginHostCancellationRegressionTests
     }
 
     [Fact]
+    public async Task StartAsyncCancellationBeforeFirstHandlerCompletionDoesNotReopenRegistration()
+    {
+        var host = new InMemoryServerPluginHost(new ClientGateway());
+        using var canceled = new CancellationTokenSource();
+        host.RegisterStartup(
+            "cancel-before-complete",
+            (_, token) =>
+            {
+                canceled.Cancel();
+                token.ThrowIfCancellationRequested();
+                return ValueTask.CompletedTask;
+            });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => host.StartAsync(canceled.Token).AsTask());
+
+        Assert.Throws<InvalidOperationException>(() => host.Register(new NoOpPlugin()));
+    }
+
+    [Fact]
     public async Task PublishAsyncHonorsPreCanceledTokenWithoutSubscriptions()
     {
         var host = new InMemoryServerPluginHost(new ClientGateway());
@@ -87,5 +106,15 @@ public sealed class ServerPluginHostCancellationRegressionTests
                 "region-query",
                 QueryKernel.For<IRegionEvent>().Select(nameof(IRegionEvent.Region)),
                 canceled.Token).AsTask());
+    }
+
+    private sealed class NoOpPlugin : IServerPlugin
+    {
+        public string Id => "noop";
+
+        public void Configure(PluginRegistration registration)
+        {
+            _ = registration;
+        }
     }
 }
