@@ -206,8 +206,12 @@ internal static class FilterSchemaFallbackBuilder
         Type baseType,
         Expression ownerExpression,
         ParameterExpression parameter,
-        Func<Type, bool> isValueObject)
+        Func<Type, bool> isValueObject,
+        int depth = 0)
     {
+        if (depth > 3)
+            return;
+
         foreach (Type subtype in FilterSchema.RegisteredValueObjectSubtypes(baseType))
         {
             string segment = SubtypeProjection.Segment(subtype);
@@ -255,6 +259,14 @@ internal static class FilterSchemaFallbackBuilder
                             parameter,
                             Depth(name),
                             isValueObject);
+                        AddSubtypeProjectedFields(
+                            fields,
+                            name,
+                            scalarType,
+                            access,
+                            parameter,
+                            isValueObject,
+                            Depth(name));
                     }
                 }
             }
