@@ -118,17 +118,37 @@ public static class EventPipelineCompiler
         for (int i = 0; i < normalized.Stages.Length; i++)
         {
             EventPipelineStage stage = normalized.Stages[i];
-            if (i < projectionIndex &&
-                stage.Kind == EventPipelineStageKind.Filter &&
-                !ReferencesProjectedFields(stage.Filter))
+            if (i < projectionIndex && stage.Kind == EventPipelineStageKind.Filter)
             {
-                continue;
+                FilterExpression? dispatchFilter = ProjectionDispatchFilter(stage.Filter);
+                if (dispatchFilter is null)
+                    continue;
+
+                stage = stage with { Filter = dispatchFilter };
             }
 
             stages.Add(stage);
         }
 
         return normalized with { Stages = stages.ToArray() };
+    }
+
+    private static FilterExpression? ProjectionDispatchFilter(FilterExpression filter)
+    {
+        if (!ReferencesProjectedFields(filter))
+            return null;
+        if (filter.Kind != FilterExpressionKind.And)
+            return filter;
+
+        FilterExpression[] projected = filter.Children
+            .Where(ReferencesProjectedFields)
+            .ToArray();
+        return projected.Length switch
+        {
+            0 => null,
+            1 => projected[0],
+            _ => filter with { Children = projected },
+        };
     }
 
     private static bool ReferencesProjectedFields(EventPipelineExpression? pipeline)
