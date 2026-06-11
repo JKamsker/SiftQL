@@ -34,6 +34,10 @@ public static class HotTieredProviderLoader
             if (manifest is null)
                 return Result(HotTieredProviderLoadStatus.InvalidManifest, "Hot provider manifest did not deserialize.");
 
+            var shape = ValidateManifestShape(manifest);
+            if (shape is not null)
+                return shape;
+
             var version = ValidateManifest(manifest, options.RequireExactRuntimeVersion);
             if (version is not null)
                 return version;
@@ -114,6 +118,30 @@ public static class HotTieredProviderLoader
             ? JsonSerializer.Deserialize<HotCompilationManifest>(manifestJson)
             : null;
 
+    private static HotTieredProviderLoadResult? ValidateManifestShape(HotCompilationManifest manifest)
+    {
+        if (manifest.Entries is null)
+            return Result(HotTieredProviderLoadStatus.InvalidManifest, "Hot provider manifest has no entries.");
+
+        for (int i = 0; i < manifest.Entries.Length; i++)
+        {
+            HotCompilationManifestEntry? entry = manifest.Entries[i];
+            if (entry is null ||
+                string.IsNullOrWhiteSpace(entry.Key) ||
+                !IsSupportedKind(entry.Kind) ||
+                string.IsNullOrWhiteSpace(entry.SubjectType) ||
+                string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                entry.Definition.ValueKind != JsonValueKind.Object)
+            {
+                return Result(
+                    HotTieredProviderLoadStatus.InvalidManifest,
+                    "Hot provider manifest contains an invalid entry.");
+            }
+        }
+
+        return null;
+    }
+
     private static HotTieredProviderLoadResult? ValidateManifest(
         HotCompilationManifest manifest,
         bool requireExactRuntimeVersion)
@@ -134,6 +162,10 @@ public static class HotTieredProviderLoader
 
         return null;
     }
+
+    private static bool IsSupportedKind(string kind) =>
+        string.Equals(kind, "filter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(kind, "projection", StringComparison.OrdinalIgnoreCase);
 
     private static HotTieredProviderLoadResult? ValidateAssemblyMetadata(
         IReadOnlyDictionary<string, string> metadata,
