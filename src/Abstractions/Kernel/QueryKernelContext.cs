@@ -46,9 +46,12 @@ public sealed record QueryKernel<TSubject, TContext>
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
         SourceFilterSplit split = SplitSourceConjuncts(translated.Filter);
+        FilterExpression sourceFilter = typeof(TSubject) == typeof(ProjectedEvent)
+            ? split.SourceFilter
+            : ToSourceFilter(split.SourceFilter);
         EventPipelineExpression basePipeline = split.SourceFilter.Kind == FilterExpressionKind.Any
             ? Pipeline
-            : Pipeline.AppendSourceFilter(ToSourceFilter(split.SourceFilter));
+            : Pipeline.AppendSourceFilter(sourceFilter);
         RequiredSourceProjection sourceProjection = ContextProjectionPipeline.HasProjection(basePipeline)
             ? RequiredSourceFields(basePipeline, translated.SourceFields)
             : RequiredInitialSourceFields(translated.SourceFields);
