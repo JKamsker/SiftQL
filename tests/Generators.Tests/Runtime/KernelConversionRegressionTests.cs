@@ -35,6 +35,20 @@ public sealed class KernelConversionRegressionTests
     }
 
     [Fact]
+    public void ExactFieldSideIntegralWideningToDecimalIsSupported()
+    {
+        QueryKernel<NumericConversionEvent> query = QueryKernel.For<NumericConversionEvent>()
+            .Where(ev => ev.Count == 42m && ev.LongCount == 42m);
+        var kernel = FilterCompiler.Compile(
+            typeof(NumericConversionEvent),
+            query.Filter,
+            FilterCompilerOptions.Immediate);
+
+        Assert.True(kernel.Matches(new NumericConversionEvent(1.5F, 42, 42)));
+        Assert.False(kernel.Matches(new NumericConversionEvent(1.5F, 42, 41)));
+    }
+
+    [Fact]
     public void LossyFieldSideNumericWideningToDoubleIsRejected()
     {
         Assert.Throws<KernelExpressionException>(() =>
