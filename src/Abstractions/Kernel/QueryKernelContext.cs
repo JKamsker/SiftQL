@@ -140,7 +140,7 @@ public sealed record QueryKernel<TSubject, TContext>
 
     private static EventProjectionField[] RequiredInitialSourceFields(
         IReadOnlyList<string> sourceFields) =>
-        sourceFields.Any(static path => ProjectedEventPaths.TrySplit(path, out _, out _))
+        sourceFields.Count != 0
             ? RequiredSourceFields(EventPipelineExpression.Default, sourceFields)
             : [];
 
