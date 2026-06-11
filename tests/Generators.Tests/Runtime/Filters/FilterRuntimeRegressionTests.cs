@@ -189,6 +189,21 @@ public sealed class FilterRuntimeRegressionTests
     }
 
     [Fact]
+    public void HotProviderRegistrationScopeRejectsNullFactoryProvider()
+    {
+        using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using var manifestScope = HotProviderRegistrationContext.AllowManifest("manifest-hash");
+
+        HotProviderRegistrationContext.RegisterFactory(static () => null!, "manifest-hash");
+
+        ArgumentNullException exception = Assert.Throws<ArgumentNullException>(() =>
+            manifestScope.Commit());
+
+        Assert.Equal("providerFactory", exception.ParamName);
+        Assert.Empty(manifestScope.CommittedProviders());
+    }
+
+    [Fact]
     public void OversizedFilterValidatesBeforeHotProviderLookup()
     {
         using var providerScope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
