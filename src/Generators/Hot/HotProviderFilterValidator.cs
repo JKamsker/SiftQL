@@ -38,11 +38,19 @@ internal static class HotProviderFilterValidator
 
         return node.Kind switch
         {
-            HotFilterNodeKind.Any => true,
-            HotFilterNodeKind.Compare => ValidateCompare(node, fields, projectedEvent, diagnostics, path),
-            HotFilterNodeKind.In => ValidateIn(node, fields, projectedEvent, diagnostics, path),
-            HotFilterNodeKind.Exists => RequireField(fields, projectedEvent, node.Field, scalar: null, path, diagnostics),
-            HotFilterNodeKind.Contains => ValidateContains(node, fields, projectedEvent, diagnostics, path),
+            HotFilterNodeKind.Any => RequireNoChildren(node, diagnostics, path),
+            HotFilterNodeKind.Compare =>
+                RequireNoChildren(node, diagnostics, path) &&
+                ValidateCompare(node, fields, projectedEvent, diagnostics, path),
+            HotFilterNodeKind.In =>
+                RequireNoChildren(node, diagnostics, path) &&
+                ValidateIn(node, fields, projectedEvent, diagnostics, path),
+            HotFilterNodeKind.Exists =>
+                RequireNoChildren(node, diagnostics, path) &&
+                RequireField(fields, projectedEvent, node.Field, scalar: null, path, diagnostics),
+            HotFilterNodeKind.Contains =>
+                RequireNoChildren(node, diagnostics, path) &&
+                ValidateContains(node, fields, projectedEvent, diagnostics, path),
             HotFilterNodeKind.Not => ValidateNot(node, fields, projectedEvent, diagnostics, path, ref nodes, depth),
             HotFilterNodeKind.And or HotFilterNodeKind.Or =>
                 ValidateChildren(node, fields, projectedEvent, diagnostics, path, ref nodes, depth),
@@ -139,6 +147,13 @@ internal static class HotProviderFilterValidator
 
         return ValidateValue(scalarKind, projectedDynamic, node.Value, diagnostics, path);
     }
+
+    private static bool RequireNoChildren(
+        HotFilterNode node,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        string path) =>
+        node.Children.Count == 0 ||
+        Unsupported(diagnostics, path, "Hot filter leaf nodes cannot have children.");
 
     private static bool ValidateNot(
         HotFilterNode node,
