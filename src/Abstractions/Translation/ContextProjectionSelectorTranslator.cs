@@ -47,7 +47,8 @@ internal static class ContextProjectionSelectorTranslator
                 context,
                 bindings,
                 NextParameterKey,
-                ContextProjectionGeneratedNames.NextIndex(pipeline));
+                ContextProjectionGeneratedNames.NextIndex(pipeline),
+                pipeline);
             Constants = new ProjectionSelectorConstantTranslator(subject, context, NextParameterKey);
         }
 

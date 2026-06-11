@@ -24,7 +24,8 @@ internal sealed class ContextExpressionIncludes
         ParameterExpression context,
         IReadOnlyList<ContextProjectionBinding> bindings,
         int parameterOffset,
-        int resultOffset = 0)
+        int resultOffset = 0,
+        EventPipelineExpression? pipeline = null)
     {
         _subject = subject;
         _context = context;
@@ -33,6 +34,7 @@ internal sealed class ContextExpressionIncludes
         _resultIndex = resultOffset;
         _nextParameterKey = NextLocalParameterKey;
         LoadBindings(bindings);
+        LoadPipelineIncludes(pipeline);
     }
 
     public ContextExpressionIncludes(
@@ -40,7 +42,8 @@ internal sealed class ContextExpressionIncludes
         ParameterExpression context,
         IReadOnlyList<ContextProjectionBinding> bindings,
         Func<string> nextParameterKey,
-        int resultOffset = 0)
+        int resultOffset = 0,
+        EventPipelineExpression? pipeline = null)
     {
         _subject = subject;
         _context = context;
@@ -48,6 +51,7 @@ internal sealed class ContextExpressionIncludes
         _resultIndex = resultOffset;
         _nextParameterKey = nextParameterKey ?? throw new ArgumentNullException(nameof(nextParameterKey));
         LoadBindings(bindings);
+        LoadPipelineIncludes(pipeline);
     }
 
     private void LoadBindings(IReadOnlyList<ContextProjectionBinding> bindings)
@@ -58,6 +62,26 @@ internal sealed class ContextExpressionIncludes
             StringComparer.Ordinal);
         _bindings.AddRange(bindings);
         _resultIndex = ContextProjectionGeneratedNames.NextIndex(bindings, _resultIndex);
+    }
+
+    private void LoadPipelineIncludes(EventPipelineExpression? pipeline)
+    {
+        if (pipeline is null)
+            return;
+
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            if (pipeline.Stages[i].Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            EventProjectionInclude[] includes = pipeline.Stages[i].Projection.Includes;
+            for (int j = 0; j < includes.Length; j++)
+            {
+                string key = IncludeKey(includes[j].Intrinsic, includes[j].Arguments);
+                if (_known.TryAdd(key, includes[j]))
+                    _bindings.Add(new ContextProjectionBinding(key, includes[j]));
+            }
+        }
     }
 
     public EventProjectionInclude[] NewIncludes => _newIncludes.ToArray();
