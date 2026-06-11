@@ -24,6 +24,7 @@ internal static partial class HotTieredProviderManifestValidator
                 return false;
 
             if (string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                !EntryFingerprintMatchesDefinition(entry, subjectType) ||
                 !EntrySatisfied(entry, subjectType, providers))
             {
                 return false;

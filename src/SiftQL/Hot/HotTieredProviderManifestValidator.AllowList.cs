@@ -17,6 +17,7 @@ internal static partial class HotTieredProviderManifestValidator
             HotCompilationManifestEntry entry = manifest.Entries[i];
             if (!TryResolveSubjectType(loadContext, entry.SubjectType, out Type? subjectType) ||
                 string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                !EntryFingerprintMatchesDefinition(entry, subjectType) ||
                 !TryEntryKind(entry.Kind, out HotTieredProviderAllowedEntryKind kind) ||
                 !TryEntryHasParameters(entry, out bool hasParameters))
             {
