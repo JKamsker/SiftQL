@@ -24,7 +24,8 @@ internal static class ProjectedPayloadWriter
         MessagePackSerializerOptions options)
     {
         ArrayBufferWriter<byte> buffer = RentBuffer(
-            EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0));
+            EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0),
+            out int rentedCapacity);
         var writer = new MessagePackWriter(buffer);
         writer.WriteMapHeader(ProjectedEventPropertyCount);
         writer.Write(nameof(ProjectedEvent.EventType));
@@ -36,7 +37,7 @@ internal static class ProjectedPayloadWriter
         writer.Write(nameof(ProjectedEvent.Context));
         WriteContext(ref writer, context, options);
         writer.Flush();
-        return CopyWrittenPayload(buffer);
+        return CopyWrittenPayload(buffer, rentedCapacity);
     }
 
     public static ReadOnlyMemory<byte> Write(
@@ -47,7 +48,8 @@ internal static class ProjectedPayloadWriter
         MessagePackSerializerOptions options)
     {
         ArrayBufferWriter<byte> buffer = RentBuffer(
-            EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0));
+            EstimateCapacity(eventType, eventName, fields.Count, context?.Count ?? 0),
+            out int rentedCapacity);
         var writer = new MessagePackWriter(buffer);
         writer.WriteMapHeader(ProjectedEventPropertyCount);
         writer.Write(nameof(ProjectedEvent.EventType));
@@ -59,7 +61,7 @@ internal static class ProjectedPayloadWriter
         writer.Write(nameof(ProjectedEvent.Context));
         WriteContext(ref writer, context, options);
         writer.Flush();
-        return CopyWrittenPayload(buffer);
+        return CopyWrittenPayload(buffer, rentedCapacity);
     }
 
     private static void WriteFields<TContext>(
@@ -268,30 +270,42 @@ internal static class ProjectedPayloadWriter
         return Math.Max(256, estimate);
     }
 
-    private static ArrayBufferWriter<byte> RentBuffer(int capacity)
+    private static ArrayBufferWriter<byte> RentBuffer(int capacity, out int rentedCapacity)
     {
         ArrayBufferWriter<byte>? buffer = t_buffer;
         if (buffer is null)
         {
             buffer = new ArrayBufferWriter<byte>(capacity);
             t_buffer = buffer;
+            rentedCapacity = buffer.Capacity;
             return buffer;
         }
 
         buffer.Clear();
         if (buffer.Capacity >= capacity)
+        {
+            rentedCapacity = buffer.Capacity;
             return buffer;
+        }
 
         buffer = new ArrayBufferWriter<byte>(capacity);
         t_buffer = buffer;
+        rentedCapacity = buffer.Capacity;
         return buffer;
     }
 
-    private static ReadOnlyMemory<byte> CopyWrittenPayload(ArrayBufferWriter<byte> buffer)
+    private static ReadOnlyMemory<byte> CopyWrittenPayload(ArrayBufferWriter<byte> buffer, int rentedCapacity)
     {
         byte[] payload = buffer.WrittenSpan.ToArray();
         if (buffer.Capacity > MaxRetainedBufferBytes)
+        {
             t_buffer = null;
+        }
+        else if (buffer.Capacity > rentedCapacity)
+        {
+            t_buffer = new ArrayBufferWriter<byte>(buffer.Capacity);
+        }
+
         return payload;
     }
 }
