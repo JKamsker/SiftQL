@@ -38,9 +38,10 @@ internal static class ContextProjectionPipeline
                     : previous.Fields,
                 Includes = includes.Count == 0
                     ? previous.Includes
-                    : [.. previous.Includes, .. includes],
+                    : AppendMissingIncludes(previous.Includes, includes),
             },
         };
+        CarrySourceFields(stages, projectionIndex, sourceFields);
 
         return pipeline with { Stages = stages };
     }
@@ -90,7 +91,7 @@ internal static class ContextProjectionPipeline
 
             EventProjectionExpression projection = pipeline.Stages[i].Projection;
             string currentPath = projected
-                ? ProjectedEventPaths.Field(currentName)
+                ? ProjectedPath(currentName)
                 : sourcePath;
             if (TryProjectedFieldName(projection, currentPath, out string nextName))
             {
@@ -110,7 +111,7 @@ internal static class ContextProjectionPipeline
     }
 
     public static string ProjectedPath(EventPipelineExpression pipeline, string sourcePath) =>
-        ProjectedEventPaths.Field(ProjectedFieldName(pipeline, sourcePath));
+        ProjectedPath(ProjectedFieldName(pipeline, sourcePath));
 
     private static bool TryProjectedFieldName(
         EventProjectionExpression projection,
@@ -151,10 +152,122 @@ internal static class ContextProjectionPipeline
         return false;
     }
 
+    private static EventProjectionInclude[] AppendMissingIncludes(
+        IReadOnlyList<EventProjectionInclude> existing,
+        IReadOnlyList<EventProjectionInclude> includes)
+    {
+        var merged = new List<EventProjectionInclude>(existing);
+        for (int i = 0; i < includes.Count; i++)
+        {
+            if (!ContainsInclude(existing, includes[i]))
+                merged.Add(includes[i]);
+        }
+
+        return merged.ToArray();
+    }
+
+    private static void CarrySourceFields(
+        EventPipelineStage[] stages,
+        int projectionIndex,
+        IReadOnlyList<EventProjectionField>? sourceFields)
+    {
+        if (sourceFields is not { Count: > 0 })
+            return;
+
+        for (int i = projectionIndex + 1; i < stages.Length; i++)
+        {
+            if (stages[i].Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            EventProjectionExpression projection = stages[i].Projection;
+            EventProjectionField[] carried = MissingCarriedFields(projection.Fields, sourceFields);
+            if (carried.Length == 0)
+                continue;
+
+            stages[i] = new EventPipelineStage
+            {
+                Kind = EventPipelineStageKind.Projection,
+                Projection = projection with { Fields = [.. projection.Fields, .. carried] },
+            };
+        }
+    }
+
+    private static EventProjectionField[] MissingCarriedFields(
+        IReadOnlyList<EventProjectionField> existing,
+        IReadOnlyList<EventProjectionField> sourceFields)
+    {
+        var carried = new List<EventProjectionField>();
+        for (int i = 0; i < sourceFields.Count; i++)
+        {
+            EventProjectionField sourceField = sourceFields[i];
+            if (!ContainsFieldName(existing, sourceField.Name))
+                carried.Add(new EventProjectionField(ProjectedPath(sourceField.Name), sourceField.Name));
+        }
+
+        return carried.ToArray();
+    }
+
+    private static bool ContainsFieldName(
+        IReadOnlyList<EventProjectionField> fields,
+        string name)
+    {
+        for (int i = 0; i < fields.Count; i++)
+        {
+            if (string.Equals(fields[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsInclude(
+        IReadOnlyList<EventProjectionInclude> existing,
+        EventProjectionInclude include)
+    {
+        for (int i = 0; i < existing.Count; i++)
+        {
+            if (IncludesMatch(existing[i], include))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IncludesMatch(EventProjectionInclude left, EventProjectionInclude right) =>
+        string.Equals(left.Intrinsic, right.Intrinsic, StringComparison.Ordinal) &&
+        string.Equals(left.ResultName, right.ResultName, StringComparison.OrdinalIgnoreCase) &&
+        ArgumentsMatch(left.Arguments, right.Arguments);
+
+    private static bool ArgumentsMatch(
+        IReadOnlyList<EventProjectionArgument> left,
+        IReadOnlyList<EventProjectionArgument> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!string.Equals(left[i].Name, right[i].Name, StringComparison.OrdinalIgnoreCase) ||
+                left[i].Kind != right[i].Kind ||
+                !string.Equals(left[i].SourcePath, right[i].SourcePath, StringComparison.OrdinalIgnoreCase) ||
+                !FilterValueIdentity.Equals(left[i].Value, right[i].Value))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static EventProjectionField FinalField(EventProjectionField field, bool projected) =>
         projected
             ? field
             : new EventProjectionField(ProjectedEventPaths.Field(field.Name), field.Name);
+
+    private static string ProjectedPath(string name) =>
+        ProjectedEventPaths.TrySplit(name, out _, out _)
+            ? name
+            : ProjectedEventPaths.Field(name);
 
     private static IReadOnlyList<EventProjectionField> SelectorSourceFields(
         EventProjectionExpression projection,

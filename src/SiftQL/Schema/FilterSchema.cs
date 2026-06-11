@@ -8,7 +8,7 @@ namespace SiftQL.Schema;
 public sealed class FilterSchema
 {
     private static readonly ConcurrentDictionary<SchemaCacheKey, FilterSchema> s_cache = new();
-    private static readonly ConcurrentDictionary<Assembly, GeneratedFilterSchemaProviderDelegate> s_generatedProviders = new();
+    private static readonly ConcurrentDictionary<Assembly, GeneratedFilterSchemaProviderDelegate[]> s_generatedProviders = new();
     private static readonly ConcurrentDictionary<Type, byte> s_valueObjects = new();
     private static int s_valueObjectVersion;
     private static int s_schemaVersion;
@@ -59,7 +59,11 @@ public sealed class FilterSchema
         Assembly assembly,
         GeneratedFilterSchemaProviderDelegate provider)
     {
-        s_generatedProviders[assembly] = provider;
+        s_generatedProviders.AddOrUpdate(
+            assembly,
+            static (_, item) => [item],
+            static (_, providers, item) => [.. providers, item],
+            provider);
         IncrementSchemaVersion();
         s_cache.Clear();
     }
@@ -106,11 +110,16 @@ public sealed class FilterSchema
 
     private static bool TryCreateRegisteredCore(Type subjectType, out FilterSchema? schema)
     {
-        if (s_generatedProviders.TryGetValue(subjectType.Assembly, out var provider) &&
-            provider(subjectType, out schema))
+        if (s_generatedProviders.TryGetValue(subjectType.Assembly, out var providers))
         {
-            schema = ValidateProviderSchema(subjectType, schema);
-            return true;
+            for (int i = providers.Length - 1; i >= 0; i--)
+            {
+                if (!providers[i](subjectType, out schema))
+                    continue;
+
+                schema = ValidateProviderSchema(subjectType, schema);
+                return true;
+            }
         }
 
         schema = null;

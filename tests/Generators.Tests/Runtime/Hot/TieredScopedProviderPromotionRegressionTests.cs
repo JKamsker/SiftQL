@@ -62,6 +62,25 @@ public sealed class TieredScopedProviderPromotionRegressionTests
         }
     }
 
+    [Fact]
+    public void DisposedNestedProviderScopeFallsBackToActiveParentInCapturedExecutionContext()
+    {
+        using IDisposable outer = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new ParameterizedRejectingProvider(typeof(ItemUsedEvent), "unused"));
+        IDisposable inner = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        ExecutionContext? captured = ExecutionContext.Capture();
+        inner.Dispose();
+
+        bool hasProviders = false;
+        ExecutionContext.Run(captured!, _ =>
+        {
+            hasProviders = PrecompiledTieredProviderRegistry.HasProviders;
+        }, null);
+
+        Assert.True(hasProviders);
+    }
+
     private static async Task<bool> WaitForFalseAsync(
         CompiledKernel kernel,
         object subject)

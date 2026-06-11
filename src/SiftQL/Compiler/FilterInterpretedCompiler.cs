@@ -202,7 +202,8 @@ internal static class FilterInterpretedCompiler
         FilterValue upper = expression.Values[1];
         FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, lower, errorFactory);
         FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
-        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+        if (string.IsNullOrWhiteSpace(lower.ParameterKey) &&
+            string.IsNullOrWhiteSpace(upper.ParameterKey) &&
             FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
         {
             throw Error(errorFactory, $"Between filters on '{field.Name}' require the lower bound to be <= the upper bound.");
@@ -261,7 +262,7 @@ internal static class FilterInterpretedCompiler
         Func<string, Exception>? errorFactory)
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
-        if (field.Kind != FilterFieldKind.Array)
+        if (field.Kind != FilterFieldKind.Array && field.ValueType != typeof(ProjectedEventValue))
             throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
 
         FilterValue value = expression.Value ??
@@ -270,8 +271,19 @@ internal static class FilterInterpretedCompiler
             throw Error(errorFactory, $"Count comparisons on '{field.Name}' require an integer value.");
 
         FilterOperator op = expression.Operator;
+        if (!IsCountOperator(op))
+            throw Error(errorFactory, $"Count comparisons on '{field.Name}' require a comparison operator.");
+
         return subject => FilterValues.Compare(FilterValues.Count(field.Getter(subject)), value, op);
     }
+
+    private static bool IsCountOperator(FilterOperator op) =>
+        op is FilterOperator.Equal or
+            FilterOperator.NotEqual or
+            FilterOperator.GreaterThan or
+            FilterOperator.GreaterThanOrEqual or
+            FilterOperator.LessThan or
+            FilterOperator.LessThanOrEqual;
 
     private static FilterField RequireField(
         FilterSchema schema,

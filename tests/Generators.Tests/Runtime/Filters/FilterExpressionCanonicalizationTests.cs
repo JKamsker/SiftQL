@@ -57,6 +57,41 @@ public sealed class FilterExpressionCanonicalizationTests
     }
 
     [Fact]
+    public void CanonicalSignatureNormalizesDecimalScale()
+    {
+        var a = FilterExpression.Compare("amount", FilterOperator.Equal, FilterValue.From(1.10m));
+        var b = FilterExpression.Compare("amount", FilterOperator.Equal, FilterValue.From(1.1m));
+
+        Assert.Equal(FilterExpression.ContentSignature(a), FilterExpression.ContentSignature(b));
+        Assert.True(FilterExpression.StructuralComparer.Equals(a, b));
+    }
+
+    [Fact]
+    public void CanonicalSignatureNormalizesNegativeZero()
+    {
+        var a = FilterExpression.Compare("score", FilterOperator.Equal, FilterValue.From(-0.0D));
+        var b = FilterExpression.Compare("score", FilterOperator.Equal, FilterValue.From(0.0D));
+
+        Assert.Equal(FilterExpression.ContentSignature(a), FilterExpression.ContentSignature(b));
+        Assert.True(FilterExpression.StructuralComparer.Equals(a, b));
+    }
+
+    [Fact]
+    public void CanonicalSignatureIgnoresBlankParameterKeys()
+    {
+        var literal = FilterExpression.Compare("score", FilterOperator.Equal, FilterValue.From(7L));
+        var blankParameter = FilterExpression.Compare(
+            "score",
+            FilterOperator.Equal,
+            FilterValue.From(7L) with { ParameterKey = " " });
+
+        Assert.Equal(
+            FilterExpression.ContentSignature(literal),
+            FilterExpression.ContentSignature(blankParameter));
+        Assert.True(FilterExpression.StructuralComparer.Equals(literal, blankParameter));
+    }
+
+    [Fact]
     public void CanonicalizeDropsRedundantAnyInAnd()
     {
         var p = FilterExpression.Compare("a", FilterOperator.Equal, FilterValue.From(1L));

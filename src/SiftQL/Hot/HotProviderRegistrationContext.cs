@@ -15,7 +15,7 @@ public static class HotProviderRegistrationContext
         HotProviderRegistrationScope? scope = s_scope.Value;
         return scope is null
             ? PrecompiledTieredProviderRegistry.Register(provider)
-            : scope.Add(provider, manifestHash);
+            : scope.Add(provider);
     }
 
     public static IDisposable RegisterFactory(
@@ -29,7 +29,7 @@ public static class HotProviderRegistrationContext
 
         HotProviderRegistrationScope? scope = s_scope.Value;
         if (scope is not null)
-            return scope.AddFactory(providerFactory, manifestHash);
+            return scope.AddFactory(providerFactory);
 
         return Register(providerFactory(), manifestHash);
     }
@@ -57,13 +57,12 @@ public static class HotProviderRegistrationContext
     {
         private readonly List<PendingRegistration> _pending = [];
         private readonly List<IPrecompiledTieredProvider> _providers = [];
-        private readonly HashSet<string> _acceptedManifestHashes = new(StringComparer.OrdinalIgnoreCase);
         private bool _committed;
         private bool _disposed;
 
-        public IDisposable Add(IPrecompiledTieredProvider provider, string manifestHash)
+        public IDisposable Add(IPrecompiledTieredProvider provider)
         {
-            if (_disposed || !AcceptManifestHash(manifestHash))
+            if (_disposed)
                 return NullRegistration.Instance;
 
             var registration = new PendingRegistration(this, provider);
@@ -71,11 +70,9 @@ public static class HotProviderRegistrationContext
             return registration;
         }
 
-        public IDisposable AddFactory(
-            Func<IPrecompiledTieredProvider> providerFactory,
-            string manifestHash)
+        public IDisposable AddFactory(Func<IPrecompiledTieredProvider> providerFactory)
         {
-            if (_disposed || !AcceptManifestHash(manifestHash))
+            if (_disposed)
                 return NullRegistration.Instance;
 
             var registration = new PendingRegistration(this, providerFactory);
@@ -99,7 +96,8 @@ public static class HotProviderRegistrationContext
         internal IPrecompiledTieredProvider[] CommittedProviders() =>
             _providers.ToArray();
 
-        internal IDisposable ClaimCommittedRegistrations()
+        internal IDisposable ClaimCommittedRegistrations(
+            Func<IPrecompiledTieredProvider, IPrecompiledTieredProvider>? wrapProvider = null)
         {
             if (!_committed || _providers.Count == 0)
                 return NullRegistration.Instance;
@@ -109,8 +107,16 @@ public static class HotProviderRegistrationContext
             try
             {
                 for (; registered < _providers.Count; registered++)
+                {
+                    IPrecompiledTieredProvider sourceProvider = _providers[registered];
+                    IPrecompiledTieredProvider provider = wrapProvider is null
+                        ? sourceProvider
+                        : wrapProvider(sourceProvider) ?? throw new ArgumentNullException(
+                            nameof(wrapProvider),
+                            "wrapProvider returned a null IPrecompiledTieredProvider.");
                     registrations[registered] =
-                        PrecompiledTieredProviderRegistry.RegisterManifestProvider(_providers[registered]);
+                        PrecompiledTieredProviderRegistry.RegisterManifestProvider(provider);
+                }
             }
             catch
             {
@@ -143,9 +149,6 @@ public static class HotProviderRegistrationContext
         private void AddCommitted(IPrecompiledTieredProvider provider) =>
             _providers.Add(provider);
 
-        private bool AcceptManifestHash(string manifestHash) =>
-            _acceptedManifestHashes.Add(manifestHash);
-
         private sealed class PendingRegistration(
             HotProviderRegistrationScope owner,
             IPrecompiledTieredProvider? provider,
@@ -173,7 +176,11 @@ public static class HotProviderRegistrationContext
                 if (_disposed || _committed)
                     return false;
 
-                IPrecompiledTieredProvider item = provider ?? providerFactory!();
+                IPrecompiledTieredProvider item = provider ??
+                    providerFactory!() ??
+                    throw new ArgumentNullException(
+                        nameof(providerFactory),
+                        "providerFactory returned a null IPrecompiledTieredProvider.");
                 _committed = true;
                 owner.AddCommitted(item);
                 return true;

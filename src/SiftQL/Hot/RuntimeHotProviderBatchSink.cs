@@ -36,10 +36,15 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
         long evaluations,
         long matches)
     {
+        ArgumentNullException.ThrowIfNull(subjectType);
+        ArgumentNullException.ThrowIfNull(expression);
         if (Volatile.Read(ref _disposed) != 0)
             return;
-        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        if (HotManifestExpressionGuards.ContainsUnsupportedFilterNode(expression) ||
+            HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        {
             return;
+        }
 
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
         Record(
@@ -60,6 +65,8 @@ public sealed class RuntimeHotProviderBatchSink : ITieredHotManifestSink, IDispo
         long materializations,
         long payloadWrites)
     {
+        ArgumentNullException.ThrowIfNull(subjectType);
+        ArgumentNullException.ThrowIfNull(projection);
         if (Volatile.Read(ref _disposed) != 0)
             return;
         if (HotManifestExpressionGuards.ContainsNonFiniteNumber(projection))

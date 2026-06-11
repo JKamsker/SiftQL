@@ -1,4 +1,5 @@
 using SiftQL.Expressions;
+using SiftQL.Projected;
 using SiftQL.Schema;
 using SiftQL.Values;
 
@@ -230,7 +231,7 @@ public static class FilterValidator
     {
         if (!RequireField(schema, node.Field, path, errors, out FilterField? field))
             return;
-        if (field!.Kind != FilterFieldKind.Array)
+        if (field!.Kind != FilterFieldKind.Array && field.ValueType != typeof(ProjectedEventValue))
         {
             errors.Add(new FilterValidationError(path, $"Filter field '{node.Field}' is not a collection."));
             return;
@@ -270,13 +271,17 @@ public static class FilterValidator
         for (int i = 0; i < node.Values.Length; i++)
         {
             int index = i;
+            FilterOperator boundOperator = index == 0
+                ? FilterOperator.GreaterThanOrEqual
+                : FilterOperator.LessThanOrEqual;
             Capture($"{path}.values[{index}]", errors, () =>
-                FilterValues.ValidateValue(field!, node.Values[index], Signal));
+                FilterValues.ValidateComparison(field!, boundOperator, node.Values[index], Signal));
         }
 
         FilterValue lower = node.Values[0];
         FilterValue upper = node.Values[1];
-        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+        if (string.IsNullOrWhiteSpace(lower.ParameterKey) &&
+            string.IsNullOrWhiteSpace(upper.ParameterKey) &&
             FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
         {
             errors.Add(new FilterValidationError(

@@ -2,14 +2,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
+using SiftQL.Compiler;
 using SiftQL.Expressions;
 using SiftQL.Projected;
-using SiftQL.Projection;
-using SiftQL.Schema;
 
 namespace SiftQL.Hot;
 
-internal static class HotTieredProviderManifestValidator
+internal static partial class HotTieredProviderManifestValidator
 {
     public static bool EntriesSatisfied(
         HotCompilationManifest manifest,
@@ -26,6 +25,7 @@ internal static class HotTieredProviderManifestValidator
                 return false;
 
             if (string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                !EntryFingerprintMatchesDefinition(entry, subjectType) ||
                 !EntrySatisfied(entry, subjectType, providers))
             {
                 return false;
@@ -123,24 +123,7 @@ internal static class HotTieredProviderManifestValidator
     }
 
     private static bool HasParameters(FilterExpression expression)
-    {
-        if (HasParameter(expression.Value))
-            return true;
-
-        for (int i = 0; i < expression.Values.Length; i++)
-        {
-            if (HasParameter(expression.Values[i]))
-                return true;
-        }
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (HasParameters(expression.Children[i]))
-                return true;
-        }
-
-        return false;
-    }
+        => FilterExpressionParameters.HasParameters(expression);
 
     private static bool HasParameters(EventProjectionExpression projection)
     {
@@ -163,78 +146,12 @@ internal static class HotTieredProviderManifestValidator
     private static bool HasParameter(FilterValue? value) =>
         !string.IsNullOrWhiteSpace(value?.ParameterKey);
 
-    private static string[] CandidateFingerprints(
-        HotCompilationManifestEntry entry,
-        Type subjectType)
-    {
-        if (!string.Equals(entry.Kind, "projection", StringComparison.OrdinalIgnoreCase) ||
-            !TryEffectiveProjectionFingerprint(entry, subjectType, out string? fingerprint) ||
-            string.Equals(entry.Fingerprint, fingerprint, StringComparison.Ordinal))
-        {
-            return [entry.Fingerprint];
-        }
-
-        return [entry.Fingerprint, fingerprint];
-    }
-
-    private static bool TryEffectiveProjectionFingerprint(
-        HotCompilationManifestEntry entry,
-        Type subjectType,
-        [NotNullWhen(true)] out string? fingerprint)
-    {
-        try
-        {
-            EventProjectionExpression? projection =
-                entry.Definition.Deserialize<EventProjectionExpression>();
-            if (projection is null)
-            {
-                fingerprint = null;
-                return false;
-            }
-
-            EventProjectionExpression effective = projection.Fields.Length == 0
-                ? projection with { Fields = DefaultProjectionFields(subjectType) }
-                : projection;
-            fingerprint = ProjectionExpressionFingerprint.Create(effective);
-            return true;
-        }
-        catch
-        {
-            fingerprint = null;
-            return false;
-        }
-    }
-
-    private static EventProjectionField[] DefaultProjectionFields(Type subjectType)
-    {
-        FilterSchema schema = subjectType == typeof(ProjectedEvent)
-            ? ProjectedEventFilterSchema.ForProjection(EventProjectionExpression.Default)
-            : FilterSchema.For(subjectType);
-        return schema.FieldNames
-            .Where(name => IsDefaultProjectionField(schema, name))
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .Select(static name => new EventProjectionField(name))
-            .ToArray();
-    }
-
-    private static bool IsDefaultProjectionField(FilterSchema schema, string name) =>
-        !IsVirtualMetadataField(schema.SubjectType, name) &&
-        schema.TryGetField(name, out FilterField field) &&
-        field.Kind != FilterFieldKind.Object;
-
-    private static bool IsVirtualMetadataField(Type subjectType, string name) =>
-        string.Equals(name, "subjectType", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "subjectName", StringComparison.OrdinalIgnoreCase) ||
-        SubjectTypeMetadata.IsDiscriminatorPath(name) ||
-        subjectType == typeof(ProjectedEvent) &&
-        (string.Equals(name, "eventType", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(name, "eventName", StringComparison.OrdinalIgnoreCase));
-
     private static bool TryResolveSubjectType(
         AssemblyLoadContext loadContext,
         string subjectType,
         [NotNullWhen(true)] out Type? type)
     {
+        bool assemblyQualified = HasTopLevelAssemblyName(subjectType);
         type = Type.GetType(
             subjectType,
             assemblyName =>
@@ -242,14 +159,18 @@ internal static class HotTieredProviderManifestValidator
                 ResolveLoadedAssembly(AppDomain.CurrentDomain.GetAssemblies(), assemblyName),
             (assembly, typeName, ignoreCase) =>
                 assembly is null
-                    ? FindLoadedType(loadContext.Assemblies, typeName, ignoreCase) ??
-                        FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), typeName, ignoreCase)
+                    ? assemblyQualified
+                        ? null
+                        : FindLoadedType(loadContext.Assemblies, typeName, ignoreCase) ??
+                            FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), typeName, ignoreCase)
                     : assembly.GetType(typeName, throwOnError: false, ignoreCase: ignoreCase),
             throwOnError: false);
         if (type is not null)
             return true;
-
         string fullName = TypeNameWithoutAssembly(subjectType);
+        if (assemblyQualified && !IsSharedRuntimeSubject(fullName))
+            return false;
+
         type = FindLoadedType(loadContext.Assemblies, fullName) ??
             FindLoadedType(AppDomain.CurrentDomain.GetAssemblies(), fullName);
         return type is not null;
@@ -283,6 +204,12 @@ internal static class HotTieredProviderManifestValidator
 
         return null;
     }
+
+    private static bool HasTopLevelAssemblyName(string typeName) =>
+        !string.Equals(TypeNameWithoutAssembly(typeName), typeName.Trim(), StringComparison.Ordinal);
+
+    private static bool IsSharedRuntimeSubject(string fullName) =>
+        string.Equals(fullName, typeof(ProjectedEvent).FullName, StringComparison.Ordinal);
 
     private static string TypeNameWithoutAssembly(string typeName)
     {

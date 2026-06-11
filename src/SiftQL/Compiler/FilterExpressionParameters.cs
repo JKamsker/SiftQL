@@ -1,3 +1,4 @@
+using System.Globalization;
 using SiftQL;
 using SiftQL.Expressions;
 
@@ -7,21 +8,9 @@ internal static class FilterExpressionParameters
 {
     public static bool HasParameters(FilterExpression expression)
     {
-        if (HasParameter(expression.Value))
-            return true;
-        for (int i = 0; i < expression.Values.Length; i++)
-        {
-            if (HasParameter(expression.Values[i]))
-                return true;
-        }
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (HasParameters(expression.Children[i]))
-                return true;
-        }
-
-        return false;
+        bool hasParameters = false;
+        VisitValues(expression, value => hasParameters |= HasParameter(value));
+        return hasParameters;
     }
 
     public static string[] Keys(FilterExpression expression)
@@ -71,23 +60,62 @@ internal static class FilterExpressionParameters
             return;
         }
 
-        if (!existing.Equals(value))
+        if (!ValuesMatch(existing, value))
         {
             throw new FilterValidationException(
                 $"{label} parameter '{key}' is used with conflicting values.");
         }
     }
 
+    private static bool ValuesMatch(FilterValue left, FilterValue right)
+    {
+        if (left.Kind != right.Kind)
+            return false;
+
+        return left.Kind switch
+        {
+            FilterValueKind.Null => true,
+            FilterValueKind.Boolean => left.Boolean == right.Boolean,
+            FilterValueKind.Integer => left.Integer == right.Integer,
+            FilterValueKind.UnsignedInteger => left.UnsignedInteger == right.UnsignedInteger,
+            FilterValueKind.Number => BitConverter.DoubleToInt64Bits(left.Number) ==
+                BitConverter.DoubleToInt64Bits(right.Number),
+            FilterValueKind.Decimal => left.Decimal == right.Decimal,
+            FilterValueKind.String => string.Equals(left.String, right.String, StringComparison.Ordinal),
+            FilterValueKind.Guid => left.Guid == right.Guid,
+            FilterValueKind.Timestamp => TimestampText(left.Timestamp) == TimestampText(right.Timestamp),
+            _ => false,
+        };
+    }
+
+    private static string TimestampText(DateTimeOffset value) =>
+        value.ToString("o", CultureInfo.InvariantCulture);
+
     private static void VisitValues(
         FilterExpression expression,
         Action<FilterValue> visit)
     {
-        if (expression.Value is not null)
-            visit(expression.Value);
-        for (int i = 0; i < expression.Values.Length; i++)
-            visit(expression.Values[i]);
-        for (int i = 0; i < expression.Children.Length; i++)
-            VisitValues(expression.Children[i], visit);
+        switch (expression.Kind)
+        {
+            case FilterExpressionKind.Compare:
+            case FilterExpressionKind.Contains:
+            case FilterExpressionKind.Count:
+                if (expression.Value is not null)
+                    visit(expression.Value);
+                break;
+            case FilterExpressionKind.In:
+            case FilterExpressionKind.Between:
+                for (int i = 0; i < expression.Values.Length; i++)
+                    visit(expression.Values[i]);
+                break;
+            case FilterExpressionKind.ElemMatch:
+            case FilterExpressionKind.And:
+            case FilterExpressionKind.Or:
+            case FilterExpressionKind.Not:
+                for (int i = 0; i < expression.Children.Length; i++)
+                    VisitValues(expression.Children[i], visit);
+                break;
+        }
     }
 
     private static bool HasParameter(FilterValue? value) =>

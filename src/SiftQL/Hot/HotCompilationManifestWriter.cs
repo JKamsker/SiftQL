@@ -41,8 +41,11 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
     {
         ArgumentNullException.ThrowIfNull(subjectType);
         ArgumentNullException.ThrowIfNull(expression);
-        if (HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        if (HotManifestExpressionGuards.ContainsUnsupportedFilterNode(expression) ||
+            HotManifestExpressionGuards.ContainsNonFiniteNumber(expression))
+        {
             return;
+        }
 
         string fingerprint = FilterExpressionFingerprint.CreateKey(expression).ToString();
         var observed = new HotCompilationObserved { Evaluations = evaluations, Matches = matches };
@@ -242,12 +245,54 @@ public sealed class HotCompilationManifestWriter : ITieredHotManifestSink, IDisp
             string.Equals(manifest.GeneratorVersion, current.GeneratorVersion, StringComparison.Ordinal);
     }
 
-    private static bool IsValidExistingEntry(HotCompilationManifestEntry entry) =>
-        !string.IsNullOrWhiteSpace(entry.Key) &&
-        IsSupportedKind(entry.Kind) &&
-        !string.IsNullOrWhiteSpace(entry.SubjectType) &&
-        !string.IsNullOrWhiteSpace(entry.Fingerprint) &&
-        entry.Definition.ValueKind == JsonValueKind.Object;
+    private static bool IsValidExistingEntry(HotCompilationManifestEntry entry)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(entry.Key) ||
+                !IsSupportedKind(entry.Kind) ||
+                string.IsNullOrWhiteSpace(entry.SubjectType) ||
+                string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                entry.Definition.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (string.Equals(entry.Kind, "filter", StringComparison.OrdinalIgnoreCase))
+                return IsValidExistingFilter(entry);
+            if (string.Equals(entry.Kind, "projection", StringComparison.OrdinalIgnoreCase))
+                return IsValidExistingProjection(entry);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static bool IsValidExistingFilter(HotCompilationManifestEntry entry)
+    {
+        FilterExpression? expression = entry.Definition.Deserialize<FilterExpression>(s_json);
+        return expression is not null &&
+            !HotManifestExpressionGuards.ContainsUnsupportedFilterNode(expression) &&
+            !HotManifestExpressionGuards.ContainsNonFiniteNumber(expression) &&
+            string.Equals(
+                FilterExpressionFingerprint.CreateKey(expression).ToString(),
+                entry.Fingerprint,
+                StringComparison.Ordinal);
+    }
+
+    private static bool IsValidExistingProjection(HotCompilationManifestEntry entry)
+    {
+        EventProjectionExpression? projection = entry.Definition.Deserialize<EventProjectionExpression>(s_json);
+        return projection is not null &&
+            !HotManifestExpressionGuards.ContainsNonFiniteNumber(projection) &&
+            string.Equals(
+                ProjectionExpressionFingerprint.CreateKey(projection).ToString(),
+                entry.Fingerprint,
+                StringComparison.Ordinal);
+    }
 
     private static bool IsSupportedKind(string kind) =>
         string.Equals(kind, "filter", StringComparison.OrdinalIgnoreCase) ||

@@ -46,6 +46,13 @@ public static class FilterValues
         if (op is FilterOperator.Equal or FilterOperator.NotEqual)
             return;
 
+        if (value.Kind == FilterValueKind.Null)
+        {
+            throw Error(
+                errorFactory,
+                $"Filter field '{field.Name}' does not support ordered comparisons against null.");
+        }
+
         if (op is not FilterOperator.GreaterThan and
             not FilterOperator.GreaterThanOrEqual and
             not FilterOperator.LessThan and
@@ -58,15 +65,17 @@ public static class FilterValues
             value.Kind is (FilterValueKind.Integer or
                 FilterValueKind.UnsignedInteger or
                 FilterValueKind.Number or
-                FilterValueKind.Decimal))
+                FilterValueKind.Decimal or
+                FilterValueKind.Timestamp))
         {
             return;
         }
 
-        if (IsTemporal(field.ValueType) && value.Kind == FilterValueKind.Timestamp)
+        Type valueType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        if (IsTemporal(valueType) && value.Kind == FilterValueKind.Timestamp)
             return;
 
-        if (!FilterNumeric.IsNumeric(field.ValueType))
+        if (!FilterNumeric.IsNumeric(valueType))
         {
             throw Error(
                 errorFactory,

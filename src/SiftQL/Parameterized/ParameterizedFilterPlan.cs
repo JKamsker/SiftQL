@@ -137,6 +137,14 @@ internal sealed class BetweenFilterPlanNode(
     {
         FilterValue boundLower = lower.Get(parameters);
         FilterValue boundUpper = upper.Get(parameters);
+        FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, boundLower);
+        FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, boundUpper);
+        if (FilterValues.TryCompareValues(boundLower, boundUpper, out int order) && order > 0)
+        {
+            throw new FilterValidationException(
+                $"Between filters on '{field.Name}' require the lower bound to be <= the upper bound.");
+        }
+
         return subject =>
         {
             object? actual = field.Getter(subject);

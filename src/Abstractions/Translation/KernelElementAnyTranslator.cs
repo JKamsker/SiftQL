@@ -71,22 +71,35 @@ internal static class KernelElementAnyTranslator
             throw KernelExpressionTranslator.Unsupported(expression);
         }
 
-        // A correlated conjunction (e.g. i.Name == "X" && i.Equipped) cannot be
-        // decorrelated soundly -- splitting it would match different elements per
-        // condition. Lower it to an ElemMatch evaluated per element instead.
+        Expression body = StripConvert(predicate.Body);
+        // Element-local predicates that are not simple equality/contains shapes
+        // need ElemMatch. Otherwise decorrelation either is impossible
+        // (i.Power > 10) or would lose correlation across nested Any clauses.
         if (string.IsNullOrEmpty(fieldPrefix) &&
-            StripConvert(predicate.Body).NodeType == ExpressionType.AndAlso)
+            ShouldUseElemMatch(body))
         {
             filter = FilterExpression.ElemMatch(
                 sourceField,
-                KernelExpressionTranslator.TranslateElement(predicate.Body, predicate.Parameters[0]));
+                KernelExpressionTranslator.TranslateElement(body, predicate.Parameters[0]));
             return true;
         }
 
         string nextPrefix = CombinePath(fieldPrefix, sourceField);
-        filter = TranslatePredicate(predicate.Body, predicate.Parameters[0], nextPrefix, ref parameterIndex);
+        filter = TranslatePredicate(body, predicate.Parameters[0], nextPrefix, ref parameterIndex);
         return true;
     }
+
+    private static bool ShouldUseElemMatch(Expression body) =>
+        body.NodeType is
+            ExpressionType.AndAlso or
+            ExpressionType.NotEqual or
+            ExpressionType.GreaterThan or
+            ExpressionType.GreaterThanOrEqual or
+            ExpressionType.LessThan or
+            ExpressionType.LessThanOrEqual or
+            ExpressionType.TypeIs ||
+        body is MethodCallExpression call && IsAny(call.Method);
+
     private static FilterExpression TranslatePredicate(
         Expression expression,
         ParameterExpression parameter,

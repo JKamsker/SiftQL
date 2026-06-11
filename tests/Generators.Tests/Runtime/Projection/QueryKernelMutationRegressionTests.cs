@@ -47,6 +47,63 @@ public sealed class QueryKernelMutationRegressionTests
         Assert.Equal(3, value.Integer);
     }
 
+    [Fact]
+    public void AssigningDefaultPipelineClearsCopiedKernelState()
+    {
+        QueryKernel<ItemUsedEvent> kernel = QueryKernel.For<ItemUsedEvent>()
+            .Where(static ev => ev.ItemId == 100)
+            .Select(nameof(ItemUsedEvent.ItemId));
+
+        QueryKernel<ItemUsedEvent> cleared = kernel with
+        {
+            Pipeline = EventPipelineExpression.Default,
+        };
+
+        Assert.Equal(FilterExpressionKind.Any, cleared.Filter.Kind);
+        Assert.True(cleared.Projection.IsDefault);
+        Assert.Empty(cleared.Pipeline.Stages);
+    }
+
+    [Fact]
+    public void ExplicitDefaultPipelinePreservesInitializerFilterAndProjection()
+    {
+        var kernel = new QueryKernel<ItemUsedEvent>
+        {
+            Filter = FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.Equal,
+                FilterValue.From(100L)),
+            Projection = EventProjectionExpression.Select(nameof(ItemUsedEvent.Quantity)),
+            Pipeline = EventPipelineExpression.Default,
+        };
+
+        Assert.Equal(FilterExpressionKind.Compare, kernel.Filter.Kind);
+        Assert.False(kernel.Projection.IsDefault);
+        Assert.Equal(2, kernel.Pipeline.Stages.Length);
+    }
+
+    [Fact]
+    public void AssigningDefaultPipelineClearsLegacyInitializedCopiedKernelState()
+    {
+        var kernel = new QueryKernel<ItemUsedEvent>
+        {
+            Filter = FilterExpression.Compare(
+                nameof(ItemUsedEvent.ItemId),
+                FilterOperator.Equal,
+                FilterValue.From(100L)),
+            Projection = EventProjectionExpression.Select(nameof(ItemUsedEvent.Quantity)),
+        };
+
+        QueryKernel<ItemUsedEvent> cleared = kernel with
+        {
+            Pipeline = EventPipelineExpression.Default,
+        };
+
+        Assert.Equal(FilterExpressionKind.Any, cleared.Filter.Kind);
+        Assert.True(cleared.Projection.IsDefault);
+        Assert.Empty(cleared.Pipeline.Stages);
+    }
+
     private static CompiledEventPipeline<object> Compile(EventPipelineExpression pipeline) =>
         EventPipelineCompiler.Compile<object>(
             typeof(ItemUsedEvent),

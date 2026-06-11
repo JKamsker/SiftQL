@@ -15,7 +15,11 @@ public sealed class InMemoryServerPluginHost
     private readonly List<StartupHandler> _startupHandlers = [];
     private readonly Dictionary<Type, List<ISubscription>> _subscriptions = [];
     private readonly SemaphoreSlim _startupGate = new(1, 1);
-    private bool _started;
+    private int _completedStartupHandlers;
+    private volatile bool _startupAttempted;
+    private volatile bool _started;
+    private volatile bool _starting;
+    private volatile bool _startupFailed;
 
     public InMemoryServerPluginHost(ClientGateway clients)
         : this(clients, new ServerDataStore())
@@ -97,6 +101,8 @@ public sealed class InMemoryServerPluginHost
         where TEvent : IFilterSubject
     {
         ArgumentNullException.ThrowIfNull(ev);
+        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfStartupFailed();
         ISubscription[] subscriptions = SubscriptionsFor(ev);
         for (int i = 0; i < subscriptions.Length; i++)
             await subscriptions[i].DispatchAsync(ev, cancellationToken).ConfigureAwait(false);
@@ -105,22 +111,37 @@ public sealed class InMemoryServerPluginHost
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         await _startupGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _startupAttempted = true;
+        _starting = true;
         try
         {
             if (_started)
                 return;
+            if (_startupFailed)
+                throw new InvalidOperationException("Plugin host startup failed.");
 
-            for (int i = 0; i < _startupHandlers.Count; i++)
+            for (int i = _completedStartupHandlers; i < _startupHandlers.Count; i++)
             {
                 StartupHandler startup = _startupHandlers[i];
                 await startup.Handler(CreateContext(startup.PluginId), cancellationToken)
                     .ConfigureAwait(false);
+                _completedStartupHandlers = i + 1;
             }
 
             _started = true;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            _startupFailed = true;
+            throw;
+        }
         finally
         {
+            _starting = false;
             _startupGate.Release();
         }
     }
@@ -133,6 +154,8 @@ public sealed class InMemoryServerPluginHost
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfStartupFailed();
         var pipeline = EventPipelineCompiler.Compile<PluginContext>(
             typeof(TModel),
             query.Pipeline,
@@ -158,8 +181,14 @@ public sealed class InMemoryServerPluginHost
 
     private void ThrowIfStarted()
     {
-        if (_started)
+        if (_started || _starting || _startupFailed || _startupAttempted || _completedStartupHandlers != 0)
             throw new InvalidOperationException("Plugins cannot be registered after the host has started.");
+    }
+
+    private void ThrowIfStartupFailed()
+    {
+        if (_startupFailed)
+            throw new InvalidOperationException("Plugin host startup failed.");
     }
 
     private ISubscription[] SubscriptionsFor(object ev)

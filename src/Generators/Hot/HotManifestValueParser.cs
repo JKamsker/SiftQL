@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text.Json;
 
 namespace SiftQL.Generators.Hot;
@@ -23,6 +24,8 @@ internal static partial class HotManifestParser
         decimal exactDecimal = 0;
         string? text = null;
         string guid = "00000000-0000-0000-0000-000000000000";
+        long timestampTicks = 0;
+        string timestampText = string.Empty;
         if (!TryReadValuePayload(
             element,
             kind,
@@ -34,21 +37,28 @@ internal static partial class HotManifestParser
             ref number,
             ref exactDecimal,
             ref text,
-            ref guid))
+            ref guid,
+            ref timestampTicks,
+            ref timestampText))
         {
             return null;
         }
 
+        if (!TryReadParameterKey(element, path, diagnostics, out string? parameterKey))
+            return null;
+
         return new(
             kind,
-            ReadNullableString(element, "ParameterKey"),
+            parameterKey,
             boolean,
             integer,
             unsignedInteger,
             number,
             exactDecimal,
             text,
-            guid);
+            guid,
+            timestampTicks,
+            timestampText);
     }
 
     private static bool TryReadValuePayload(
@@ -62,7 +72,9 @@ internal static partial class HotManifestParser
         ref double number,
         ref decimal exactDecimal,
         ref string? text,
-        ref string guid)
+        ref string guid,
+        ref long timestampTicks,
+        ref string timestampText)
     {
         switch (kind)
         {
@@ -101,6 +113,10 @@ internal static partial class HotManifestParser
                 if (TryReadGuid(element, out guid))
                     return true;
                 return Invalid("Hot filter GUID value is missing or invalid.");
+            case HotFilterValueKind.Timestamp:
+                if (TryReadTimestamp(element, "Timestamp", out timestampTicks, out timestampText))
+                    return true;
+                return Invalid("Hot filter timestamp value is missing or invalid.");
             default:
                 return Invalid("Hot filter value kind is missing or invalid.");
         }
@@ -181,6 +197,48 @@ internal static partial class HotManifestParser
         }
 
         value = parsed.ToString("D");
+        return true;
+    }
+
+    private static bool TryReadParameterKey(
+        JsonElement element,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        out string? parameterKey)
+    {
+        parameterKey = null;
+        if (!element.TryGetProperty("ParameterKey", out JsonElement value) ||
+            value.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            parameterKey = value.GetString();
+            return true;
+        }
+
+        Add(diagnostics, "FSFHOT009", path, "Hot filter parameter key must be a string.");
+        return false;
+    }
+
+    private static bool TryReadTimestamp(
+        JsonElement element,
+        string name,
+        out long utcTicks,
+        out string text)
+    {
+        utcTicks = 0;
+        text = string.Empty;
+        if (!element.TryGetProperty(name, out JsonElement item) ||
+            !item.TryGetDateTimeOffset(out DateTimeOffset timestamp))
+        {
+            return false;
+        }
+
+        utcTicks = timestamp.UtcTicks;
+        text = timestamp.ToString("o", CultureInfo.InvariantCulture);
         return true;
     }
 }

@@ -27,12 +27,24 @@ internal sealed class HotFilterParameterMap
 
     private static void Visit(HotFilterNode node, Dictionary<string, int> indexes)
     {
-        if (node.Value is not null)
-            Add(node.Value, indexes);
-        for (int i = 0; i < node.Values.Count; i++)
-            Add(node.Values[i], indexes);
-        for (int i = 0; i < node.Children.Count; i++)
-            Visit(node.Children[i], indexes);
+        switch (node.Kind)
+        {
+            case HotFilterNodeKind.Compare:
+            case HotFilterNodeKind.Contains:
+                if (node.Value is not null)
+                    Add(node.Value, indexes);
+                break;
+            case HotFilterNodeKind.In:
+                for (int i = 0; i < node.Values.Count; i++)
+                    Add(node.Values[i], indexes);
+                break;
+            case HotFilterNodeKind.And:
+            case HotFilterNodeKind.Or:
+            case HotFilterNodeKind.Not:
+                for (int i = 0; i < node.Children.Count; i++)
+                    Visit(node.Children[i], indexes);
+                break;
+        }
     }
 
     private static void Add(HotFilterValue value, Dictionary<string, int> indexes)

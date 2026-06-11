@@ -1,6 +1,7 @@
 using System.Reflection;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Projected;
 using SiftQL.Schema;
 
 namespace SiftQL.Projection;
@@ -69,8 +70,11 @@ internal static class ProjectionContextMethodResolver
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Where(method => method.Name == methodName && method.GetParameters().Length == include.Arguments.Length)
             .ToArray();
-        if (matches.Length <= 1)
-            return ResolveMethod(contextType, methodName, include.Arguments.Length);
+        if (matches.Length == 0)
+        {
+            throw new FilterValidationException(
+                $"Context type '{contextType.FullName}' does not define method '{methodName}' with {include.Arguments.Length} argument(s).");
+        }
 
         MethodInfo[] compatible = matches
             .Where(method => ArgumentsMatch(method.GetParameters(), include, schema))
@@ -174,7 +178,9 @@ internal static class ProjectionContextMethodResolver
         if (argument.Kind == EventProjectionArgumentKind.SourceField)
         {
             return schema.TryGetField(argument.SourcePath, out FilterField field) &&
-                TypesMatch(field.ValueType, parameterType);
+                (TypesMatch(field.ValueType, parameterType) ||
+                    TimestampTypesMatch(field.ValueType, parameterType) ||
+                    ProjectedValueTypesMatch(field.ValueType, parameterType));
         }
 
         return ValueMatches(argument.Value, parameterType);
@@ -185,6 +191,43 @@ internal static class ProjectionContextMethodResolver
         Type source = Nullable.GetUnderlyingType(sourceType) ?? sourceType;
         Type target = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
         return target.IsAssignableFrom(source);
+    }
+
+    private static bool TimestampTypesMatch(Type sourceType, Type parameterType)
+    {
+        Type source = Nullable.GetUnderlyingType(sourceType) ?? sourceType;
+        Type target = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+        return source == typeof(DateTimeOffset) &&
+            (target == typeof(DateTime) || target == typeof(DateOnly));
+    }
+
+    private static bool ProjectedValueTypesMatch(Type sourceType, Type parameterType)
+    {
+        Type source = Nullable.GetUnderlyingType(sourceType) ?? sourceType;
+        if (source != typeof(ProjectedEventValue))
+            return false;
+
+        Type target = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+        return target == typeof(ProjectedEventValue) ||
+            target == typeof(object) ||
+            target == typeof(bool) ||
+            target == typeof(string) ||
+            target == typeof(Guid) ||
+            target == typeof(DateTimeOffset) ||
+            target == typeof(DateTime) ||
+            target == typeof(DateOnly) ||
+            target == typeof(float) ||
+            target == typeof(double) ||
+            target == typeof(decimal) ||
+            target.IsEnum ||
+            target == typeof(byte) ||
+            target == typeof(sbyte) ||
+            target == typeof(short) ||
+            target == typeof(ushort) ||
+            target == typeof(int) ||
+            target == typeof(uint) ||
+            target == typeof(long) ||
+            target == typeof(ulong);
     }
 
     private static bool ValueMatches(FilterValue value, Type parameterType)
@@ -209,6 +252,9 @@ internal static class ProjectionContextMethodResolver
                 target == typeof(Guid) ||
                 target.IsEnum,
             FilterValueKind.Guid => target == typeof(Guid),
+            FilterValueKind.Timestamp => target == typeof(DateTimeOffset) ||
+                target == typeof(DateTime) ||
+                target == typeof(DateOnly),
             _ => false,
         };
     }

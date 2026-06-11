@@ -1,6 +1,7 @@
 using System.Reflection;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
+using SiftQL.Hot;
 using SiftQL.Index;
 using SiftQL.Projected;
 using SiftQL.Schema;
@@ -40,8 +41,10 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
             schema = GeneratedFilterSchemaRegistry.Create(
                 type,
                 [
-                    ReservedField("subjectType", static subject => subject.GetType().FullName ?? subject.GetType().Name),
-                    ReservedField("subjectName", static subject => subject.GetType().Name),
+                    TestFilterHelpers.ReservedField(
+                        "subjectType",
+                        static subject => subject.GetType().FullName ?? subject.GetType().Name),
+                    TestFilterHelpers.ReservedField("subjectName", static subject => subject.GetType().Name),
                     new FilterField(
                         "Flag",
                         typeof(bool),
@@ -56,13 +59,73 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         }
     }
 
-    private static FilterField ReservedField(string name, Func<object, string> value) =>
-        new(
-            name,
-            typeof(string),
-            FilterFieldKind.Scalar,
-            value,
-            new FilterScalarAccessor(FilterScalarKind.String, text: value));
+    [Fact]
+    public void IndexRebuildsUnindexedKernelsAfterHotProviderChanges()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), TestFilterHelpers.Fingerprint(filter)));
+        var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
+
+        index.Add("sub", filter);
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+
+        registration.Dispose();
+
+        Assert.Empty(index.SnapshotMatches(new HotIndexedSubject("north")));
+    }
+
+    [Fact]
+    public void IndexRebuildsWhenEnteringNestedIsolatedHotProviderScope()
+    {
+        using var outer = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), TestFilterHelpers.Fingerprint(filter)));
+        var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
+        index.Add("sub", filter);
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+
+        using (PrecompiledTieredProviderRegistry.CreateIsolatedScope())
+        {
+            Assert.False(PrecompiledTieredProviderRegistry.HasProviders);
+            Assert.Empty(index.SnapshotMatches(new HotIndexedSubject("north")));
+        }
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+    }
+
+    [Fact]
+    public async Task IndexRebuildsWhenExecutionContextDropsIsolatedHotProviderScope()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(HotIndexedSubject), TestFilterHelpers.Fingerprint(filter)));
+        var index = new FilterSubscriptionIndex<string>(typeof(HotIndexedSubject));
+        index.Add("sub", filter);
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+
+        string[] matches = await RunWithoutExecutionContextAsync(
+            () => index.SnapshotMatches(new HotIndexedSubject("north")));
+
+        Assert.Empty(matches);
+        Assert.Equal(["sub"], index.SnapshotMatches(new HotIndexedSubject("north")));
+    }
+
+    private static FilterExpression RegionMissingFilter() =>
+        FilterExpression.Not(FilterExpression.Exists(nameof(HotIndexedSubject.Region)));
+
+    private static async Task<T> RunWithoutExecutionContextAsync<T>(Func<T> action)
+    {
+        Task<T> task;
+        using (ExecutionContext.SuppressFlow())
+            task = Task.Run(action);
+        return await task;
+    }
 
     private static Type EmitSubjectType()
     {
@@ -84,4 +147,6 @@ public sealed class FilterSubscriptionIndexSchemaRegressionTests
         Assembly assembly = Assembly.Load(pe.ToArray());
         return assembly.GetType("Plugin.Events.IndexedEvent", throwOnError: true)!;
     }
+
+    private sealed record HotIndexedSubject(string Region) : IFilterSubject;
 }

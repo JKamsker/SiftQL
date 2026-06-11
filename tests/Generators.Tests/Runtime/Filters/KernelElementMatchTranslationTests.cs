@@ -59,6 +59,66 @@ public sealed class KernelElementMatchTranslationTests
         Assert.Equal(FilterExpressionKind.Contains, query.Filter.Kind);
     }
 
+    [Fact]
+    public void SingleOrderingAnyLowersToElemMatch()
+    {
+        FilterSchema.RegisterValueObject(typeof(LootItem));
+
+        QueryKernel<LootBag> query = QueryKernel.For<LootBag>()
+            .Where(static e => e.Items.Any(i => i.Power > 10));
+
+        Assert.Equal(FilterExpressionKind.ElemMatch, query.Filter.Kind);
+
+        var kernel = FilterCompiler.Compile(typeof(LootBag), query.Filter, FilterCompilerOptions.Immediate);
+        var tiered = FilterCompiler.Compile(typeof(LootBag), query.Filter, FilterCompilerOptions.Tiered);
+
+        Assert.True(kernel.Matches(new LootBag([new("Axe", false, 11)])));
+        Assert.False(kernel.Matches(new LootBag([new("Axe", false, 10)])));
+        Assert.True(tiered.Matches(new LootBag([new("Axe", false, 11)])));
+        Assert.False(tiered.Matches(new LootBag([new("Axe", false, 10)])));
+    }
+
+    [Fact]
+    public void NestedCorrelatedAnyLowersToNestedElemMatch()
+    {
+        FilterSchema.RegisterValueObject(typeof(LootGroup));
+        FilterSchema.RegisterValueObject(typeof(LootItem));
+
+        QueryKernel<GroupedLootBag> query = QueryKernel.For<GroupedLootBag>()
+            .Where(static e => e.Groups.Any(g =>
+                g.Items.Any(i => i.Name == "Sword" && i.Power > 10)));
+
+        Assert.Equal(FilterExpressionKind.ElemMatch, query.Filter.Kind);
+
+        var kernel = FilterCompiler.Compile(
+            typeof(GroupedLootBag),
+            query.Filter,
+            FilterCompilerOptions.Immediate);
+        var tiered = FilterCompiler.Compile(
+            typeof(GroupedLootBag),
+            query.Filter,
+            FilterCompilerOptions.Tiered);
+
+        Assert.True(kernel.Matches(new GroupedLootBag(
+        [
+            new LootGroup([new("Sword", false, 11)]),
+        ])));
+        Assert.False(kernel.Matches(new GroupedLootBag(
+        [
+            new LootGroup([new("Sword", false, 5), new("Axe", false, 99)]),
+        ])));
+        Assert.True(tiered.Matches(new GroupedLootBag(
+        [
+            new LootGroup([new("Sword", false, 11)]),
+        ])));
+        Assert.False(tiered.Matches(new GroupedLootBag(
+        [
+            new LootGroup([new("Sword", false, 5), new("Axe", false, 99)]),
+        ])));
+    }
+
     private sealed record LootBag(LootItem[] Items) : IFilterSubject;
+    private sealed record GroupedLootBag(LootGroup[] Groups) : IFilterSubject;
+    private sealed record LootGroup(LootItem[] Items);
     private sealed record LootItem(string? Name, bool Equipped, int Power);
 }

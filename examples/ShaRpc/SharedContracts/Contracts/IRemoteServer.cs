@@ -45,4 +45,5 @@ public sealed record SubscriptionRequest(
 public sealed record ClientDelivery(
     long ClientId,
     string Channel,
-    ProjectedEvent Payload);
+    ProjectedEvent Payload,
+    string? DeliveryId = null);

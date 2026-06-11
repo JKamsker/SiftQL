@@ -9,6 +9,7 @@ using SiftQL.Expressions;
 using SiftQL.Generators;
 using SiftQL.Generators.Schema;
 using SiftQL.Hot;
+using SiftQL.Index;
 using SiftQL.Schema;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -31,6 +32,14 @@ public sealed class HotProviderSchemaUnloadRegressionTests
     public void FailedHotProviderLoadReleasesGeneratedSchemaProviderAssembly()
     {
         WeakReference loadContext = LoadFailedSchemaProviderAndRelease();
+
+        AssertCollected(loadContext);
+    }
+
+    [Fact]
+    public void DisposingHotProviderReleasesGeneratedSchemaProviderAfterParameterizedIndexCompile()
+    {
+        WeakReference loadContext = LoadSchemaProviderWithParameterizedPlanAndRelease();
 
         AssertCollected(loadContext);
     }
@@ -67,6 +76,54 @@ public sealed class HotProviderSchemaUnloadRegressionTests
         {
             Type eventType = loaded.Assembly.GetType(eventTypeName, throwOnError: true)!;
             _ = FilterSchema.For(eventType);
+            weak = new WeakReference(AssemblyLoadContext.GetLoadContext(loaded.Assembly)!);
+        }
+
+        return weak;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference LoadSchemaProviderWithParameterizedPlanAndRelease()
+    {
+        using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        const string assemblyName = "Plugin.Hot.SchemaUnloadParameterized";
+        const string eventTypeName = "Plugin.Events.SchemaUnloadParameterizedEvent";
+        var filter = FilterExpression.Compare("Value", FilterOperator.Equal, FilterValue.From(1L));
+        string subject = eventTypeName + ", " + assemblyName;
+        string manifestJson = ManifestJson(subject, filter);
+        (Compilation output, ImmutableArray<Diagnostic> diagnostics) = RunGenerator(
+            assemblyName,
+            Source("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record SchemaUnloadParameterizedEvent(Guid EventId, int Value) : IFilterSubject;
+                """),
+            manifestJson);
+        Assert.Empty(diagnostics);
+        AssertNoCompilationErrors(output);
+
+        WeakReference weak;
+        using (LoadedHotProvider loaded = HotProviderTestLoader.Load(
+            output,
+            assemblyName,
+            manifestJson,
+            "schema unload parameterized hot provider"))
+        {
+            Type eventType = loaded.Assembly.GetType(eventTypeName, throwOnError: true)!;
+            var index = new FilterSubscriptionIndex<string>(eventType);
+            index.Add(
+                "sub",
+                FilterExpression.Compare(
+                    "Value",
+                    FilterOperator.GreaterThan,
+                    FilterValue.From(0L) with { ParameterKey = "min" }));
+            _ = index.SnapshotMatches(Activator.CreateInstance(
+                eventType,
+                Guid.NewGuid(),
+                7)!);
             weak = new WeakReference(AssemblyLoadContext.GetLoadContext(loaded.Assembly)!);
         }
 

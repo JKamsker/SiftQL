@@ -38,9 +38,8 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
                 """));
 
         using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        using HotTieredProviderLoadResult result = Load(output, assemblyName, manifestJson);
-
-        Assert.True(result.Loaded, result.Message);
+        WithLoadedProvider(output, assemblyName, manifestJson, static result =>
+            Assert.True(result.Loaded, result.Message));
     }
 
     [Fact]
@@ -70,9 +69,8 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
                 """));
 
         using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        using HotTieredProviderLoadResult result = Load(output, assemblyName, manifestJson);
-
-        Assert.True(result.Loaded, result.Message);
+        WithLoadedProvider(output, assemblyName, manifestJson, static result =>
+            Assert.True(result.Loaded, result.Message));
     }
 
     [Fact]
@@ -108,9 +106,71 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
                 """));
 
         using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
-        using HotTieredProviderLoadResult result = Load(output, assemblyName, runtimeManifest);
+        WithLoadedProvider(output, assemblyName, runtimeManifest, static result =>
+            Assert.True(result.Loaded, result.Message));
+    }
 
-        Assert.True(result.Loaded, result.Message);
+    [Fact]
+    public void LoaderRejectsAssemblyQualifiedSubjectFromDifferentAssembly()
+    {
+        const string assemblyName = "Plugin.Hot.Current";
+        FilterExpression filter = FilterExpression.Compare("Value", FilterOperator.Equal, FilterValue.From(7L));
+        string subjectType = "Plugin.Events.AssemblySkewEvent, Plugin.Hot.Old";
+        string manifestJson = ManifestJson(
+            assemblyName,
+            "filter",
+            subjectType,
+            FilterExpressionFingerprint.Create(filter),
+            filter);
+        Compilation output = RunGenerator(
+            assemblyName,
+            new InMemoryAdditionalText("assembly-skew.siftql-hot.json", manifestJson),
+            Source("""
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record AssemblySkewEvent(long Value) : IFilterSubject;
+                """));
+
+        using IDisposable scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        WithLoadedProvider(output, assemblyName, manifestJson, static result =>
+            Assert.False(result.Loaded, result.Message));
+    }
+
+    [Fact]
+    public void LoaderRejectsUnsupportedHotFilterDefinitionEvenWhenProviderSatisfiesFingerprint()
+    {
+        const string assemblyName = "Plugin.Hot.UnsupportedClaim";
+        const string eventTypeName = "Plugin.Events.UnsupportedClaimEvent";
+        FilterExpression filter = FilterExpression.Count(
+            "Values",
+            FilterOperator.GreaterThan,
+            FilterValue.From(0L));
+        string subjectType = eventTypeName + ", " + assemblyName;
+        string fingerprint = FilterExpressionFingerprint.Create(filter);
+        string manifestJson = ManifestJson(
+            assemblyName,
+            "filter",
+            subjectType,
+            fingerprint,
+            filter);
+        string manifestHash = HotManifestSemanticHash.Compute(manifestJson);
+        Compilation output = GeneratorTestCompilation.Create(
+            assemblyName,
+            Source(ClaimingProviderSource(manifestHash, fingerprint)));
+        AssertNoCompilationErrors(output);
+
+        (HotTieredProviderLoadResult result, string directory) = Load(output, assemblyName, manifestJson);
+        try
+        {
+            using (result)
+                Assert.Equal(HotTieredProviderLoadStatus.InvalidAssembly, result.Status);
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
+        }
     }
 
     private static Compilation RunGenerator(
@@ -132,7 +192,25 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         return output;
     }
 
-    private static HotTieredProviderLoadResult Load(
+    private static void WithLoadedProvider(
+        Compilation output,
+        string assemblyName,
+        string manifestJson,
+        Action<HotTieredProviderLoadResult> assert)
+    {
+        (HotTieredProviderLoadResult result, string directory) = Load(output, assemblyName, manifestJson);
+        try
+        {
+            using (result)
+                assert(result);
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    private static (HotTieredProviderLoadResult Result, string Directory) Load(
         Compilation output,
         string assemblyName,
         string manifestJson)
@@ -144,12 +222,14 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         EmitResult emit = output.Emit(assemblyPath);
         Assert.True(emit.Success, string.Join(" | ", emit.Diagnostics));
         File.WriteAllText(manifestPath, manifestJson);
-        return HotTieredProviderLoader.TryLoad(new()
-        {
-            AssemblyPath = assemblyPath,
-            ManifestPath = manifestPath,
-            RequireExactRuntimeVersion = false,
-        });
+        return (
+            HotTieredProviderLoader.TryLoad(new()
+            {
+                AssemblyPath = assemblyPath,
+                ManifestPath = manifestPath,
+                RequireExactRuntimeVersion = false,
+            }),
+            directory);
     }
 
     private static string ManifestJson(
@@ -178,6 +258,63 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
         });
     }
 
+    private static string ClaimingProviderSource(string manifestHash, string fingerprint) =>
+        $$"""
+        using System;
+        using System.Reflection;
+        using System.Runtime.CompilerServices;
+        using SiftQL;
+        using SiftQL.Expressions;
+        using SiftQL.Hot;
+        using SiftQL.Projected;
+
+        [assembly: AssemblyMetadata("SiftQLHotManifestHash", "{{manifestHash}}")]
+        [assembly: AssemblyMetadata("SiftQLHotManifestSchema", "{{HotCompilationManifestCompatibility.Schema}}")]
+        [assembly: AssemblyMetadata("SiftQLHotFilterEngine", "{{HotCompilationManifestCompatibility.Engine}}")]
+        [assembly: AssemblyMetadata("SiftQLHotGenerator", "{{HotCompilationManifestCompatibility.Generator}}")]
+
+        namespace Plugin.Events;
+
+        public sealed record UnsupportedClaimEvent(long[] Values) : IFilterSubject;
+
+        internal sealed class ClaimingProvider : IPrecompiledTieredProvider
+        {
+            public bool TryGetFilter(
+                Type subjectType,
+                string fingerprint,
+                out Func<object, bool>? predicate)
+            {
+                if (subjectType == typeof(UnsupportedClaimEvent) &&
+                    string.Equals(fingerprint, "{{fingerprint}}", StringComparison.Ordinal))
+                {
+                    predicate = static _ => true;
+                    return true;
+                }
+
+                predicate = null;
+                return false;
+            }
+
+            public bool TryGetProjection(
+                Type subjectType,
+                string fingerprint,
+                out Func<object, ProjectedEventField[]>? projectFields)
+            {
+                _ = subjectType;
+                _ = fingerprint;
+                projectFields = null;
+                return false;
+            }
+        }
+
+        internal static class ProviderRegistration
+        {
+            [ModuleInitializer]
+            internal static void Register() =>
+                HotProviderRegistrationContext.Register(new ClaimingProvider(), "{{manifestHash}}");
+        }
+        """;
+
     private static SyntaxTree Source(string source) =>
         CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview));
 
@@ -187,6 +324,18 @@ public sealed class HotProviderManifestLoadValidationRegressionTests
             .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
             .ToArray();
         Assert.Empty(errors);
+    }
+
+    private static void TryDeleteDirectory(string? directory)
+    {
+        if (string.IsNullOrEmpty(directory))
+            return;
+
+        try { Directory.Delete(directory, recursive: true); }
+        catch
+        {
+            // Best-effort cleanup; loaded assemblies can briefly keep files open on Windows.
+        }
     }
 
     private sealed class InMemoryAdditionalText(string path, string text) : AdditionalText

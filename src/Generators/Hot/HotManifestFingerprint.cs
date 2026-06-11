@@ -39,6 +39,8 @@ internal static class HotManifestFingerprint
             case HotFilterNodeKind.Compare:
                 AppendText(builder, expression.Field);
                 builder.Append(':').Append(expression.Operator);
+                if (expression.IgnoreCase)
+                    builder.Append('i');
                 AppendValue(builder, expression.Value);
                 break;
             case HotFilterNodeKind.In:
@@ -148,6 +150,11 @@ internal static class HotManifestFingerprint
                 break;
             case HotFilterValueKind.Guid:
                 builder.Append(value.Guid);
+                break;
+            case HotFilterValueKind.Timestamp:
+                builder.Append(mode == ValueMode.ProjectionArgument
+                    ? value.TimestampText
+                    : value.TimestampTicks.ToString(CultureInfo.InvariantCulture));
                 break;
         }
     }

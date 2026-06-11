@@ -45,14 +45,26 @@ public sealed record QueryKernel<TSubject, TContext>
             Pipeline,
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
+        SourceFilterSplit split = SplitSourceConjuncts(translated.Filter);
+        FilterExpression sourceFilter = typeof(TSubject) == typeof(ProjectedEvent)
+            ? split.SourceFilter
+            : ToSourceFilter(split.SourceFilter);
+        EventPipelineExpression basePipeline = split.SourceFilter.Kind == FilterExpressionKind.Any
+            ? Pipeline
+            : Pipeline.AppendSourceFilter(sourceFilter);
+        string[] contextSourceFields = ReferencedSourceFields(
+            Pipeline,
+            split.ContextFilter,
+            translated.SourceFields);
+        RequiredSourceProjection sourceProjection = ContextProjectionPipeline.HasProjection(basePipeline)
+            ? RequiredSourceFields(basePipeline, contextSourceFields)
+            : RequiredInitialSourceFields(contextSourceFields);
         EventPipelineExpression pipeline = ContextProjectionPipeline
             .AddIncludes(
-                Pipeline,
+                basePipeline,
                 translated.NewIncludes,
-                ContextProjectionPipeline.HasProjection(Pipeline)
-                    ? RequiredSourceFields(Pipeline, translated.SourceFields)
-                    : [])
-            .AppendFilter(translated.Filter);
+                sourceProjection.Fields)
+            .AppendFilter(RewriteProjectedSourceFields(split.ContextFilter, sourceProjection.ProjectedPaths));
         return new QueryKernel<TSubject, TContext>(
             Kernel with { Pipeline = pipeline },
             translated.Bindings);
@@ -63,6 +75,7 @@ public sealed record QueryKernel<TSubject, TContext>
     {
         ContextSelectorTranslation translated = ContextProjectionSelectorTranslator.Translate(
             selector,
+            Pipeline,
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
         EventPipelineExpression pipeline = BuildSelectPipeline(translated);
@@ -104,6 +117,9 @@ public sealed record QueryKernel<TSubject, TContext>
                 .Where(static output => !output.IsContext)
                 .Select(static output => new EventProjectionField(output.SourcePath, output.Name))
                 .ToArray();
+        if (!projected && sourceFields.Length == 0 && translated.NewIncludes.Length != 0)
+            sourceFields = [new EventProjectionField("subjectType", "__siftqlSelectorSource")];
+
         EventPipelineExpression pipeline = ContextProjectionPipeline.AddIncludes(
             Pipeline,
             translated.NewIncludes,
@@ -113,31 +129,143 @@ public sealed record QueryKernel<TSubject, TContext>
         return pipeline.AppendProjection(finalProjection);
     }
 
-    private static EventProjectionField[] RequiredSourceFields(
+    private static RequiredSourceProjection RequiredSourceFields(
         EventPipelineExpression pipeline,
         IReadOnlyList<string> sourceFields)
     {
         if (sourceFields.Count == 0)
-            return [];
+            return RequiredSourceProjection.Empty;
 
         var fields = new List<EventProjectionField>();
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sourcePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fieldNames = ProjectedFieldNames(pipeline);
+        var projectedPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < sourceFields.Count; i++)
         {
             string sourcePath = sourceFields[i];
             if (ContextProjectionPipeline.TryProjectedFieldName(pipeline, sourcePath, out _))
                 continue;
-            if (names.Add(sourcePath))
-                fields.Add(new EventProjectionField(sourcePath));
+            if (!sourcePaths.Add(sourcePath))
+                continue;
+
+            string fieldName = RequiredSourceFieldName(sourcePath);
+            if (!fieldNames.Add(fieldName))
+                fieldName = NextSourceFieldName(fieldNames);
+
+            fields.Add(new EventProjectionField(sourcePath, fieldName));
+            string defaultPath = ContextProjectionPipeline.ProjectedPath(pipeline, sourcePath);
+            string projectedPath = ProjectedEventPaths.Field(fieldName);
+            if (!string.Equals(defaultPath, projectedPath, StringComparison.OrdinalIgnoreCase))
+                projectedPaths.Add(defaultPath, projectedPath);
         }
 
-        return fields.ToArray();
+        return new RequiredSourceProjection(fields.ToArray(), projectedPaths);
+    }
+
+    private static RequiredSourceProjection RequiredInitialSourceFields(
+        IReadOnlyList<string> sourceFields)
+    {
+        string[] required = sourceFields
+            .Where(RequiresInitialProjection)
+            .ToArray();
+        return required.Length == 0
+            ? RequiredSourceProjection.Empty
+            : RequiredSourceFields(EventPipelineExpression.Default, required);
+    }
+
+    private static string[] ReferencedSourceFields(
+        EventPipelineExpression pipeline,
+        FilterExpression filter,
+        IReadOnlyList<string> sourceFields)
+        => sourceFields.Count == 0 || filter.Kind == FilterExpressionKind.Any
+            ? []
+            : sourceFields
+                .Where(sourcePath => ReferencesField(
+                    filter,
+                    ContextProjectionPipeline.ProjectedPath(pipeline, sourcePath)))
+                .ToArray();
+
+    private static bool ReferencesField(FilterExpression expression, string field)
+    {
+        if (string.Equals(expression.Field, field, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (ReferencesField(expression.Children[i], field))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool RequiresInitialProjection(string path) =>
+        ProjectedEventPaths.TrySplit(path, out _, out _) ||
+        string.Equals(path, "subjectType", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path, "subjectName", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(path, "subjectTypes", StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith(".subjectTypes", StringComparison.OrdinalIgnoreCase);
+
+    private static string RequiredSourceFieldName(string sourcePath) =>
+        ProjectedEventPaths.TrySplit(sourcePath, out bool context, out string name) && !context
+            ? name
+            : sourcePath;
+
+    private static HashSet<string> ProjectedFieldNames(EventPipelineExpression pipeline)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            if (pipeline.Stages[i].Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            EventProjectionField[] fields = pipeline.Stages[i].Projection.Fields;
+            for (int j = 0; j < fields.Length; j++)
+                names.Add(fields[j].Name);
+            break;
+        }
+
+        return names;
+    }
+
+    private static string NextSourceFieldName(HashSet<string> names)
+    {
+        for (int i = 0; ; i++)
+        {
+            string name = "__siftqlSource" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (names.Add(name))
+                return name;
+        }
+    }
+
+    private static FilterExpression RewriteProjectedSourceFields(
+        FilterExpression expression,
+        IReadOnlyDictionary<string, string> projectedPaths)
+    {
+        if (projectedPaths.Count == 0)
+            return expression;
+
+        return expression with
+        {
+            Field = projectedPaths.TryGetValue(expression.Field, out string? projectedPath)
+                ? projectedPath
+                : expression.Field,
+            Children = expression.Children
+                .Select(child => RewriteProjectedSourceFields(child, projectedPaths))
+                .ToArray(),
+        };
     }
 
     private EventProjectionField FinalField(ContextSelectorOutput output, bool projected)
     {
         if (output.IsContext)
-            return new EventProjectionField(output.ProjectedPath, output.Name);
+        {
+            string path = projected &&
+                ContextProjectionPipeline.TryProjectedFieldName(Pipeline, output.ProjectedPath, out string contextFieldName)
+                ? ProjectedEventPaths.Field(contextFieldName)
+                : output.ProjectedPath;
+            return new EventProjectionField(path, output.Name);
+        }
 
         string fieldName = projected
             ? ContextProjectionPipeline.ProjectedFieldName(Pipeline, output.SourcePath)
@@ -154,6 +282,35 @@ public sealed record QueryKernel<TSubject, TContext>
             Children = expression.Children.Select(ToSourceFilter).ToArray(),
         };
 
+    private static SourceFilterSplit SplitSourceConjuncts(FilterExpression expression)
+    {
+        if (expression.Kind != FilterExpressionKind.And)
+            return new(FilterExpression.Any, expression);
+
+        var source = new List<FilterExpression>();
+        var context = new List<FilterExpression>();
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            FilterExpression child = expression.Children[i];
+            if (ReferencesContextPath(child))
+                context.Add(child);
+            else
+                source.Add(child);
+        }
+
+        return source.Count == 0
+            ? new(FilterExpression.Any, expression)
+            : new(CombineAnd(source), CombineAnd(context));
+    }
+
+    private static FilterExpression CombineAnd(IReadOnlyList<FilterExpression> filters) =>
+        filters.Count switch
+        {
+            0 => FilterExpression.Any,
+            1 => filters[0],
+            _ => FilterExpression.And(filters.ToArray()),
+        };
+
     private static bool ReferencesContextPath(FilterExpression expression)
     {
         if (ProjectedEventPaths.TrySplit(expression.Field, out bool context, out _) && context)
@@ -167,6 +324,18 @@ public sealed record QueryKernel<TSubject, TContext>
 
         return false;
     }
+
+    private sealed record RequiredSourceProjection(
+        EventProjectionField[] Fields,
+        IReadOnlyDictionary<string, string> ProjectedPaths)
+    {
+        public static RequiredSourceProjection Empty { get; } =
+            new([], new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private sealed record SourceFilterSplit(
+        FilterExpression SourceFilter,
+        FilterExpression ContextFilter);
 }
 
 public static class QueryKernelContextExtensions

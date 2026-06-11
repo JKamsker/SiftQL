@@ -12,7 +12,7 @@ public sealed class RemoteServerService(
     ServerLookupContext? queryContext = null) : IRemoteServer
 {
     private readonly Dictionary<Type, List<Subscription>> _subscriptions = [];
-    private readonly HashSet<string> _subscriptionIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Subscription> _subscriptionsById = new(StringComparer.Ordinal);
     private readonly object _subscriptionGate = new();
     private readonly ServerLookupContext _queryContext = queryContext ?? new ServerLookupContext();
     private IRemoteClient? _client;
@@ -37,6 +37,7 @@ public sealed class RemoteServerService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
         Type subjectType = ResolveSubject(request.Subject);
         CompiledEventPipeline<ServerLookupContext> pipeline = Compile(subjectType, request.Pipeline);
         var results = new List<ProjectedEvent>();
@@ -61,16 +62,24 @@ public sealed class RemoteServerService(
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SubscriptionId);
         Type subjectType = ResolveSubject(request.Subject);
+        CompiledEventPipeline<ServerLookupContext> pipeline = Compile(subjectType, request.Pipeline);
+        string pipelineSignature = pipeline.Key;
         var subscription = new Subscription(
             request.SubscriptionId,
             subjectType.Name,
-            Compile(subjectType, request.Pipeline));
+            pipelineSignature,
+            pipeline);
 
         lock (_subscriptionGate)
         {
-            if (!_subscriptionIds.Add(request.SubscriptionId))
+            if (_subscriptionsById.TryGetValue(request.SubscriptionId, out Subscription? existing))
+            {
+                if (existing.Matches(subjectType.Name, pipelineSignature))
+                    return Task.CompletedTask;
+
                 throw new InvalidOperationException(
                     $"Subscription id '{request.SubscriptionId}' is already registered.");
+            }
 
             if (!_subscriptions.TryGetValue(subjectType, out List<Subscription>? subscriptions))
             {
@@ -78,6 +87,7 @@ public sealed class RemoteServerService(
                 _subscriptions.Add(subjectType, subscriptions);
             }
 
+            _subscriptionsById.Add(request.SubscriptionId, subscription);
             subscriptions.Add(subscription);
         }
 
@@ -99,8 +109,8 @@ public sealed class RemoteServerService(
         where TRecord : IServerRecord
     {
         ArgumentNullException.ThrowIfNull(record);
-        IRemoteClient client = _client ??
-            throw new InvalidOperationException("No remote client is attached.");
+        cancellationToken.ThrowIfCancellationRequested();
+        IRemoteClient? client = null;
 
         foreach (Subscription subscription in SubscriptionsFor(record))
         {
@@ -110,6 +120,8 @@ public sealed class RemoteServerService(
             if (projected is null)
                 continue;
 
+            client ??= _client ??
+                throw new InvalidOperationException("No remote client is attached.");
             await client.DispatchAsync(
                 new SubscriptionDispatch(subscription.Id, subscription.Subject, projected),
                 cancellationToken).ConfigureAwait(false);
@@ -161,5 +173,11 @@ public sealed class RemoteServerService(
     private sealed record Subscription(
         string Id,
         string Subject,
-        CompiledEventPipeline<ServerLookupContext> Pipeline);
+        string PipelineSignature,
+        CompiledEventPipeline<ServerLookupContext> Pipeline)
+    {
+        public bool Matches(string subject, string pipelineSignature) =>
+            string.Equals(Subject, subject, StringComparison.Ordinal) &&
+            string.Equals(PipelineSignature, pipelineSignature, StringComparison.Ordinal);
+    }
 }

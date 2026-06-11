@@ -2,6 +2,7 @@ using System.Runtime.Loader;
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using System.Text.Json;
+using SiftQL.Projected;
 using SiftQL.Schema;
 
 namespace SiftQL.Hot;
@@ -32,6 +33,10 @@ public static class HotTieredProviderLoader
             HotCompilationManifest? manifest = DeserializeManifest(manifestJson);
             if (manifest is null)
                 return Result(HotTieredProviderLoadStatus.InvalidManifest, "Hot provider manifest did not deserialize.");
+
+            var shape = ValidateManifestShape(manifest);
+            if (shape is not null)
+                return shape;
 
             var version = ValidateManifest(manifest, options.RequireExactRuntimeVersion);
             if (version is not null)
@@ -64,10 +69,13 @@ public static class HotTieredProviderLoader
                 }
 
                 trackedRegistrations.DisposeTrackedRegistrations();
-                if (!HotTieredProviderManifestValidator.EntriesSatisfied(
-                    manifest,
-                    loadContext,
-                    registrationScope.CommittedProviders()))
+                HotTieredProviderManifestAllowList? allowList =
+                    HotTieredProviderManifestValidator.CreateAllowList(manifest, loadContext);
+                if (allowList is null ||
+                    !HotTieredProviderManifestValidator.EntriesSatisfied(
+                        manifest,
+                        loadContext,
+                        registrationScope.CommittedProviders()))
                 {
                     UnloadFailedAssembly(loadContext, assembly);
                     return Result(
@@ -75,7 +83,8 @@ public static class HotTieredProviderLoader
                         "Hot provider DLL did not satisfy the manifest entries.");
                 }
 
-                registration = registrationScope.ClaimCommittedRegistrations();
+                registration = registrationScope.ClaimCommittedRegistrations(
+                    provider => new ManifestScopedPrecompiledTieredProvider(provider, allowList));
             }
             catch
             {
@@ -109,6 +118,30 @@ public static class HotTieredProviderLoader
             ? JsonSerializer.Deserialize<HotCompilationManifest>(manifestJson)
             : null;
 
+    private static HotTieredProviderLoadResult? ValidateManifestShape(HotCompilationManifest manifest)
+    {
+        if (manifest.Entries is null)
+            return Result(HotTieredProviderLoadStatus.InvalidManifest, "Hot provider manifest has no entries.");
+
+        for (int i = 0; i < manifest.Entries.Length; i++)
+        {
+            HotCompilationManifestEntry? entry = manifest.Entries[i];
+            if (entry is null ||
+                string.IsNullOrWhiteSpace(entry.Key) ||
+                !IsSupportedKind(entry.Kind) ||
+                string.IsNullOrWhiteSpace(entry.SubjectType) ||
+                string.IsNullOrWhiteSpace(entry.Fingerprint) ||
+                entry.Definition.ValueKind != JsonValueKind.Object)
+            {
+                return Result(
+                    HotTieredProviderLoadStatus.InvalidManifest,
+                    "Hot provider manifest contains an invalid entry.");
+            }
+        }
+
+        return null;
+    }
+
     private static HotTieredProviderLoadResult? ValidateManifest(
         HotCompilationManifest manifest,
         bool requireExactRuntimeVersion)
@@ -129,6 +162,10 @@ public static class HotTieredProviderLoader
 
         return null;
     }
+
+    private static bool IsSupportedKind(string kind) =>
+        string.Equals(kind, "filter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(kind, "projection", StringComparison.OrdinalIgnoreCase);
 
     private static HotTieredProviderLoadResult? ValidateAssemblyMetadata(
         IReadOnlyDictionary<string, string> metadata,
@@ -194,6 +231,67 @@ public static class HotTieredProviderLoader
         }
 
         loadContext.Unload();
+    }
+
+    private sealed class ManifestScopedPrecompiledTieredProvider(
+        IPrecompiledTieredProvider inner,
+        HotTieredProviderManifestAllowList allowList) : IPrecompiledTieredProvider
+    {
+        public bool TryGetFilter(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, bool>? predicate)
+        {
+            if (!allowList.AllowsFilter(subjectType, fingerprint, parameterized: false))
+            {
+                predicate = null;
+                return false;
+            }
+
+            return inner.TryGetFilter(subjectType, fingerprint, out predicate);
+        }
+
+        public bool TryGetParameterizedFilter(
+            Type subjectType,
+            string fingerprint,
+            out ParameterizedHotFilterPredicate? predicate)
+        {
+            if (!allowList.AllowsFilter(subjectType, fingerprint, parameterized: true))
+            {
+                predicate = null;
+                return false;
+            }
+
+            return inner.TryGetParameterizedFilter(subjectType, fingerprint, out predicate);
+        }
+
+        public bool TryGetProjection(
+            Type subjectType,
+            string fingerprint,
+            out Func<object, ProjectedEventField[]>? projectFields)
+        {
+            if (!allowList.AllowsProjection(subjectType, fingerprint, parameterized: false))
+            {
+                projectFields = null;
+                return false;
+            }
+
+            return inner.TryGetProjection(subjectType, fingerprint, out projectFields);
+        }
+
+        public bool TryGetParameterizedProjection(
+            Type subjectType,
+            string fingerprint,
+            out ParameterizedHotProjectionFields? projectFields)
+        {
+            if (!allowList.AllowsProjection(subjectType, fingerprint, parameterized: true))
+            {
+                projectFields = null;
+                return false;
+            }
+
+            return inner.TryGetParameterizedProjection(subjectType, fingerprint, out projectFields);
+        }
     }
 
     private sealed class HotTieredProviderLoadContext(string assemblyPath)

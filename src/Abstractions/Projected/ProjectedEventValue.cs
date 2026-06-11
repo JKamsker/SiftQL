@@ -18,6 +18,7 @@ public enum ProjectedEventValueKind
     Object = 7,
     UnsignedInteger = 8,
     Decimal = 9,
+    Timestamp = 10,
 }
 
 public sealed record ProjectedEventValue
@@ -36,6 +37,7 @@ public sealed record ProjectedEventValue
     public decimal Decimal { get; init; }
     public string? String { get; init; }
     public Guid Guid { get; init; }
+    public DateTimeOffset Timestamp { get; init; }
     public ProjectedEventValue[] Values { get; init; } = [];
     public ProjectedEventField[] Fields { get; init; } = [];
 
@@ -80,6 +82,9 @@ public sealed record ProjectedEventValue
             decimal item => FromDecimal(item),
             string item => FromString(item),
             Guid item => new() { Kind = ProjectedEventValueKind.Guid, Guid = item },
+            DateTimeOffset item => FromTimestamp(item),
+            DateTime item => FromTimestamp(ToTimestamp(item)),
+            DateOnly item => FromTimestamp(new DateTimeOffset(item.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)),
             IEnumerable items when value is not string => FromArray(items, depth + 1),
             _ => FromObjectValue(value, depth + 1),
         };
@@ -231,6 +236,17 @@ public sealed record ProjectedEventValue
 
     private static ProjectedEventValue FromString(string value) =>
         new() { Kind = ProjectedEventValueKind.String, String = value };
+
+    private static ProjectedEventValue FromTimestamp(DateTimeOffset value) =>
+        new() { Kind = ProjectedEventValueKind.Timestamp, Timestamp = value };
+
+    private static DateTimeOffset ToTimestamp(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => new DateTimeOffset(value, TimeSpan.Zero),
+            DateTimeKind.Local => new DateTimeOffset(value),
+            _ => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc), TimeSpan.Zero),
+        };
 
     private static bool IsIntegralInt64(decimal value) =>
         decimal.Truncate(value) == value &&

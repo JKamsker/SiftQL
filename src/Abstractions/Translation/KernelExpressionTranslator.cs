@@ -66,11 +66,14 @@ internal static class KernelExpressionTranslator
                 ref parameterIndex));
     }
 
-    private static string ResolveTypeTestField(TypeBinaryExpression expression, ParameterExpression parameter)
+    private static string ResolveTypeTestField(TypeBinaryExpression expression, ParameterExpression parameter) =>
+        ResolveTypeTestField(expression.Expression, parameter);
+
+    private static string ResolveTypeTestField(Expression expression, ParameterExpression parameter)
     {
-        if (StripConvert(expression.Expression) == parameter)
+        if (StripConvert(expression) == parameter)
             return "subjectTypes";
-        if (TryGetFieldPath(expression.Expression, parameter, out string field))
+        if (TryGetFieldPath(expression, parameter, out string field))
             return field + ".subjectTypes";
         throw Unsupported(expression);
     }
@@ -88,6 +91,16 @@ internal static class KernelExpressionTranslator
         ref int parameterIndex,
         FilterOperator op)
     {
+        if (TryTranslateTypeAsNullComparison(
+                expression,
+                parameter,
+                ref parameterIndex,
+                op,
+                out FilterExpression? typeAsFilter))
+        {
+            return typeAsFilter!;
+        }
+
         if (TryGetCountField(expression.Left, parameter, out string? leftCount))
             return FilterExpression.Count(
                 leftCount,
@@ -121,6 +134,85 @@ internal static class KernelExpressionTranslator
                     ComparisonType(expression.Right)));
 
         throw Unsupported(expression);
+    }
+
+    private static bool TryTranslateTypeAsNullComparison(
+        BinaryExpression expression,
+        ParameterExpression parameter,
+        ref int parameterIndex,
+        FilterOperator op,
+        out FilterExpression? filter)
+    {
+        filter = null;
+        if (op is not (FilterOperator.Equal or FilterOperator.NotEqual))
+            return false;
+
+        if (!TryGetTypeAsNullTest(expression.Left, expression.Right, parameter, out Type? targetType, out string? field) &&
+            !TryGetTypeAsNullTest(expression.Right, expression.Left, parameter, out targetType, out field))
+        {
+            return false;
+        }
+
+        string typeName = targetType.FullName ??
+            throw new KernelExpressionException(
+                $"'as {targetType.Name}' null checks are not supported: the type has no metadata full name.");
+        FilterExpression typeTest = FilterExpression.Contains(
+            field,
+            KernelExpressionValues.ToValue(
+                Expression.Constant(typeName, typeof(string)),
+                parameter,
+                ref parameterIndex));
+        filter = op == FilterOperator.NotEqual ? typeTest : FilterExpression.Not(typeTest);
+        return true;
+    }
+
+    private static bool TryGetTypeAsNullTest(
+        Expression candidate,
+        Expression other,
+        ParameterExpression parameter,
+        out Type targetType,
+        out string field)
+    {
+        targetType = null!;
+        field = string.Empty;
+        if (!IsNullConstant(other))
+            return false;
+
+        candidate = StripConvertExceptTypeAs(candidate);
+        if (candidate is not UnaryExpression { NodeType: ExpressionType.TypeAs } cast)
+            return false;
+
+        targetType = cast.Type;
+        field = ResolveTypeTestField(cast.Operand, parameter);
+        return true;
+    }
+
+    private static bool IsNullConstant(Expression expression) =>
+        StripConvert(expression) is ConstantExpression { Value: null };
+
+    private static Expression StripConvertExceptTypeAs(Expression expression)
+    {
+        while (expression.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked)
+            expression = ((UnaryExpression)expression).Operand;
+        return expression;
+    }
+
+    internal static bool TryTranslateMethodCall(
+        MethodCallExpression expression,
+        ParameterExpression parameter,
+        ref int parameterIndex,
+        out FilterExpression filter)
+    {
+        try
+        {
+            filter = TranslateMethodCall(expression, parameter, ref parameterIndex);
+            return true;
+        }
+        catch (KernelExpressionException)
+        {
+            filter = FilterExpression.Any;
+            return false;
+        }
     }
 
     private static FilterExpression TranslateMethodCall(
@@ -383,7 +475,7 @@ internal static class KernelExpressionTranslator
             names.Peek() is nameof(ProjectedEventValue.Boolean) or nameof(ProjectedEventValue.Integer) or
                 nameof(ProjectedEventValue.UnsignedInteger) or nameof(ProjectedEventValue.Number) or
                 nameof(ProjectedEventValue.Decimal) or nameof(ProjectedEventValue.String) or
-                nameof(ProjectedEventValue.Guid));
+                nameof(ProjectedEventValue.Guid) or nameof(ProjectedEventValue.Timestamp));
 
     private static bool TryGetProjectedFieldPath(
         MethodCallExpression call,

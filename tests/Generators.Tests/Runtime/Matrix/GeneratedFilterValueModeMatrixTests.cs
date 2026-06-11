@@ -14,25 +14,23 @@ public sealed class GeneratedFilterValueModeMatrixTests
 
     [Theory]
     [MemberData(nameof(GeneratedModeMatrixSupport.Modes), MemberType = typeof(GeneratedModeMatrixSupport))]
-    public void OrderedComparisonToNullReturnsFalse(GeneratedExecutionMode mode)
+    public void OrderedComparisonToNullThrowsValidationException(GeneratedExecutionMode mode)
     {
         string assemblyName = "Plugin.Matrix.ValueNullOrder." + mode;
         FilterExpression filter = FilterExpression.Compare(
             "Score",
             FilterOperator.GreaterThan,
             FilterValue.Null);
-        using var context = LoadContext(
-            mode,
-            assemblyName,
-            GeneratedModeMatrixSupport.FilterEntry(Subject(assemblyName), filter));
+        // Hot manifest validation rejects this entry before runtime compilation.
+        GeneratedExecutionMode contextMode = mode == GeneratedExecutionMode.GeneratedHot
+            ? GeneratedExecutionMode.Interpreted
+            : mode;
+        using var context = LoadContext(contextMode, assemblyName);
 
-        CompiledKernel kernel = FilterCompiler.Compile(
+        Assert.Throws<FilterValidationException>(() => FilterCompiler.Compile(
             context.EventType,
             filter,
-            GeneratedModeMatrixSupport.FilterOptions(mode));
-
-        Assert.False(kernel.Matches(Event(context.EventType, score: 1.0, name: "alpha")));
-        Assert.False(kernel.Matches(Event(context.EventType, score: null, name: "alpha")));
+            GeneratedModeMatrixSupport.FilterOptions(mode)));
     }
 
     [Theory]

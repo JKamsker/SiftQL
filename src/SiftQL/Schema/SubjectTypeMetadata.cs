@@ -55,9 +55,9 @@ internal static class SubjectTypeMetadata
 
     // Adds the reserved `subjectTypes` field for the subject itself plus a
     // `<member>.subjectTypes` field for every object-typed member already in the
-    // schema. Idempotent (skips names already present) so it is safe to run on
-    // every FilterSchema construction, including the merge of registered value
-    // objects into a generated schema.
+    // schema. Idempotent (reserved metadata wins over colliding user fields)
+    // so it is safe to run on every FilterSchema construction, including the
+    // merge of registered value objects into a generated schema.
     public static void Augment(
         Type subjectType,
         IReadOnlyList<FilterField> fields,
@@ -69,8 +69,7 @@ internal static class SubjectTypeMetadata
         if (subjectType == typeof(ProjectedEvent))
             return;
 
-        if (!map.ContainsKey(FieldName))
-            map[FieldName] = Field(FieldName, static subject => Of(subject));
+        map[FieldName] = Field(FieldName, static subject => Of(subject));
 
         for (int i = 0; i < fields.Count; i++)
         {
@@ -79,9 +78,6 @@ internal static class SubjectTypeMetadata
                 continue;
 
             string name = field.Name + "." + FieldName;
-            if (map.ContainsKey(name))
-                continue;
-
             Func<object, object?> objectGetter = field.Getter;
             map[name] = Field(name, subject => Of(objectGetter(subject)));
         }

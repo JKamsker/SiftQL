@@ -10,6 +10,19 @@ internal static class FilterSchemaEmitterAccess
         {
             var source = new StringBuilder("FilterCollectionFieldValues.Read(subject, ");
             AppendLiteral(source, field.Access);
+            if (field.CollectionDeclaringTypes.Count > 0)
+            {
+                source.Append(", new[] { ");
+                for (int i = 0; i < field.CollectionDeclaringTypes.Count; i++)
+                {
+                    if (i > 0)
+                        source.Append(", ");
+                    source.Append("typeof(").Append(field.CollectionDeclaringTypes[i]).Append(')');
+                }
+
+                source.Append(" }");
+            }
+
             return source.Append(')').ToString();
         }
 

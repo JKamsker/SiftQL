@@ -38,11 +38,19 @@ internal static class HotProviderFilterValidator
 
         return node.Kind switch
         {
-            HotFilterNodeKind.Any => true,
-            HotFilterNodeKind.Compare => ValidateCompare(node, fields, projectedEvent, diagnostics, path),
-            HotFilterNodeKind.In => ValidateIn(node, fields, projectedEvent, diagnostics, path),
-            HotFilterNodeKind.Exists => RequireField(fields, projectedEvent, node.Field, scalar: null, path, diagnostics),
-            HotFilterNodeKind.Contains => ValidateContains(node, fields, projectedEvent, diagnostics, path),
+            HotFilterNodeKind.Any => RequireNoChildren(node, diagnostics, path),
+            HotFilterNodeKind.Compare =>
+                RequireNoChildren(node, diagnostics, path) &&
+                ValidateCompare(node, fields, projectedEvent, diagnostics, path),
+            HotFilterNodeKind.In =>
+                RequireNoChildren(node, diagnostics, path) &&
+                ValidateIn(node, fields, projectedEvent, diagnostics, path),
+            HotFilterNodeKind.Exists =>
+                RequireNoChildren(node, diagnostics, path) &&
+                RequireField(fields, projectedEvent, node.Field, scalar: null, path, diagnostics),
+            HotFilterNodeKind.Contains =>
+                RequireNoChildren(node, diagnostics, path) &&
+                ValidateContains(node, fields, projectedEvent, diagnostics, path),
             HotFilterNodeKind.Not => ValidateNot(node, fields, projectedEvent, diagnostics, path, ref nodes, depth),
             HotFilterNodeKind.And or HotFilterNodeKind.Or =>
                 ValidateChildren(node, fields, projectedEvent, diagnostics, path, ref nodes, depth),
@@ -72,7 +80,14 @@ internal static class HotProviderFilterValidator
         if (node.Value is null)
             return Unsupported(diagnostics, path, "Hot compare filters require a value.");
 
-        return ValidateComparison(scalarKind, projectedDynamic, node.Operator, node.Value, diagnostics, path);
+        return ValidateComparison(
+            scalarKind,
+            projectedDynamic,
+            node.Operator,
+            node.IgnoreCase,
+            node.Value,
+            diagnostics,
+            path);
     }
 
     private static bool ValidateIn(
@@ -132,6 +147,13 @@ internal static class HotProviderFilterValidator
 
         return ValidateValue(scalarKind, projectedDynamic, node.Value, diagnostics, path);
     }
+
+    private static bool RequireNoChildren(
+        HotFilterNode node,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        string path) =>
+        node.Children.Count == 0 ||
+        Unsupported(diagnostics, path, "Hot filter leaf nodes cannot have children.");
 
     private static bool ValidateNot(
         HotFilterNode node,
@@ -213,12 +235,20 @@ internal static class HotProviderFilterValidator
         GeneratedScalarKind scalarKind,
         bool projectedDynamic,
         int op,
+        bool ignoreCase,
         HotFilterValue value,
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string path)
     {
         if (!ValidateValue(scalarKind, projectedDynamic, value, diagnostics, path))
             return false;
+        if (ignoreCase &&
+            !(value.Kind is HotFilterValueKind.String or HotFilterValueKind.Null &&
+                (projectedDynamic || scalarKind == GeneratedScalarKind.String)))
+        {
+            return Unsupported(diagnostics, path, "Hot case-insensitive filters require a string field and value.");
+        }
+
         if (op is StringContainsOperator or StringStartsWithOperator or StringEndsWithOperator)
         {
             return value.Kind == HotFilterValueKind.String &&
@@ -228,10 +258,13 @@ internal static class HotProviderFilterValidator
 
         if (op is 0 or 1)
             return true;
-        if (projectedDynamic && IsNumeric(value.Kind))
+        if (value.Kind == HotFilterValueKind.Null)
+            return Unsupported(diagnostics, path, "Hot ordered comparisons require a non-null value.");
+        if (projectedDynamic && (IsNumeric(value.Kind) || value.Kind == HotFilterValueKind.Timestamp))
             return true;
         return scalarKind == GeneratedScalarKind.Number ||
-            Unsupported(diagnostics, path, "Hot ordered comparisons require a numeric field.");
+            scalarKind == GeneratedScalarKind.Temporal && value.Kind == HotFilterValueKind.Timestamp ||
+            Unsupported(diagnostics, path, "Hot ordered comparisons require a numeric or temporal field.");
     }
 
     private static bool ValidateValue(
@@ -250,6 +283,7 @@ internal static class HotProviderFilterValidator
             GeneratedScalarKind.Number => IsNumeric(value.Kind),
             GeneratedScalarKind.String => value.Kind == HotFilterValueKind.String,
             GeneratedScalarKind.Guid => value.Kind == HotFilterValueKind.Guid,
+            GeneratedScalarKind.Temporal => value.Kind == HotFilterValueKind.Timestamp,
             GeneratedScalarKind.Enum => value.Kind is HotFilterValueKind.String or
                 HotFilterValueKind.Integer or
                 HotFilterValueKind.UnsignedInteger,

@@ -21,13 +21,16 @@ namespace SiftQL.Generators.Tests;
 public sealed class HotManifestIdentityRegressionTests
 {
     [Fact]
-    public void SameNamedManifestsWithSameContentEmitDistinctHints()
+    public void SameNamedManifestsWithDifferentContentEmitDistinctHints()
     {
-        string manifest = ManifestJson();
         GeneratorRun run = RunGenerator(
             "Plugin.Hot.ManifestIdentity",
-            new InMemoryAdditionalText(@"alpha\filters.siftql-hot.json", manifest),
-            new InMemoryAdditionalText(@"beta\filters.siftql-hot.json", manifest));
+            new InMemoryAdditionalText(
+                @"alpha\filters.siftql-hot.json",
+                ManifestJson(nameof(ItemUsedEvent.ItemId), 100L)),
+            new InMemoryAdditionalText(
+                @"beta\filters.siftql-hot.json",
+                ManifestJson(nameof(ItemUsedEvent.Quantity), 2L)));
 
         string[] hints = run.Result.Results[0].GeneratedSources
             .Select(static source => source.HintName)
@@ -53,12 +56,12 @@ public sealed class HotManifestIdentityRegressionTests
         return new(driver.GetRunResult(), outputCompilation, diagnostics);
     }
 
-    private static string ManifestJson()
+    private static string ManifestJson(string field, long value)
     {
         FilterExpression filter = FilterExpression.Compare(
-            nameof(ItemUsedEvent.ItemId),
+            field,
             FilterOperator.Equal,
-            FilterValue.From(100L));
+            FilterValue.From(value));
         string fingerprint = Fingerprint(filter);
         var manifest = new HotCompilationManifest
         {

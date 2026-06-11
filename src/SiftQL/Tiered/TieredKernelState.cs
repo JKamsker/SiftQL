@@ -21,7 +21,9 @@ internal sealed class TieredKernelState
     private long _evaluations;
     private long _matches;
     private int _compilationStatus;
-    private int _failedProviderVersion;
+    private int _failedProviderGlobalVersion;
+    private int _failedProviderScopeVersion;
+    private int _failedProviderScopeIdentity;
     private long _failedTimestamp;
 
     public TieredKernelState(
@@ -77,7 +79,8 @@ internal sealed class TieredKernelState
 
     private void CompileAndPromote()
     {
-        int providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion =
+            PrecompiledTieredProviderRegistry.ProviderViewVersion;
         try
         {
             KernelPredicate? compiled = _compilePromoted();
@@ -96,16 +99,20 @@ internal sealed class TieredKernelState
         }
     }
 
-    private void MarkFailed(int providerVersion)
+    private void MarkFailed((int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion)
     {
-        Volatile.Write(ref _failedProviderVersion, providerVersion);
+        Volatile.Write(ref _failedProviderGlobalVersion, providerVersion.GlobalVersion);
+        Volatile.Write(ref _failedProviderScopeVersion, providerVersion.ScopeVersion);
+        Volatile.Write(ref _failedProviderScopeIdentity, providerVersion.ScopeIdentity);
         Volatile.Write(ref _failedTimestamp, Stopwatch.GetTimestamp());
         Volatile.Write(ref _compilationStatus, Failed);
     }
 
     private bool TryResetFailedPromotion()
     {
-        if (PrecompiledTieredProviderRegistry.GlobalVersion == Volatile.Read(ref _failedProviderVersion) &&
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion =
+            PrecompiledTieredProviderRegistry.ProviderViewVersion;
+        if (FailedProviderVersionMatches(providerVersion) &&
             Stopwatch.GetElapsedTime(Volatile.Read(ref _failedTimestamp)) < s_failedRetryDelay)
         {
             return false;
@@ -113,6 +120,12 @@ internal sealed class TieredKernelState
 
         return Interlocked.CompareExchange(ref _compilationStatus, NotQueued, Failed) == Failed;
     }
+
+    private bool FailedProviderVersionMatches(
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion) =>
+        Volatile.Read(ref _failedProviderGlobalVersion) == providerVersion.GlobalVersion &&
+        Volatile.Read(ref _failedProviderScopeVersion) == providerVersion.ScopeVersion &&
+        Volatile.Read(ref _failedProviderScopeIdentity) == providerVersion.ScopeIdentity;
 
     public TieredKernelSnapshot Snapshot =>
         CreateSnapshot();

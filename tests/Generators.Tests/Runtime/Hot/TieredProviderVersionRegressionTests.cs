@@ -1,3 +1,4 @@
+using System.Reflection;
 using SiftQL.Hot;
 using SiftQL.Kernel;
 using SiftQL.Projected;
@@ -8,6 +9,19 @@ namespace SiftQL.Generators.Tests;
 
 public sealed class TieredProviderVersionRegressionTests
 {
+    [Fact]
+    public void ProviderViewVersionExposesUnhashedComponents()
+    {
+        Type registryType = typeof(PrecompiledTieredProviderRegistry);
+        Type versionType = registryType
+            .GetProperty(
+                "ProviderViewVersion",
+                BindingFlags.Static | BindingFlags.NonPublic)!
+            .PropertyType;
+
+        Assert.Equal(typeof((int GlobalVersion, int ScopeVersion, int ScopeIdentity)), versionType);
+    }
+
     [Fact]
     public async Task KernelPromotionRetriesWhenProviderChangesDuringFailedAttempt()
     {

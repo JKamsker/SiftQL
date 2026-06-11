@@ -179,7 +179,7 @@ public static class FilterQuery
         private static Token ReadIdentifier(string input, ref int i)
         {
             int start = i;
-            while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] is '_' or '.'))
+            while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] is '_' or '.' or ':'))
                 i++;
             return new Token(TokenKind.Identifier, input[start..i], start);
         }
@@ -271,8 +271,15 @@ public static class FilterQuery
             bool ignoreCase = false;
             if (Current.Kind == TokenKind.Symbol && Current.Text == "~")
             {
+                Token marker = Current;
                 ignoreCase = true;
                 _index++;
+                if (!SupportsIgnoreCase(op))
+                {
+                    throw new FilterQueryException(
+                        $"Case-insensitive marker '~' is not valid for operator '{op}'.",
+                        marker.Position);
+                }
             }
 
             if (op == "in")
@@ -300,6 +307,9 @@ public static class FilterQuery
                 _ => throw Error($"Unknown operator '{op}'."),
             };
         }
+
+        private static bool SupportsIgnoreCase(string op) =>
+            op is "==" or "!=" or "contains" or "startswith" or "endswith";
 
         private string ReadOperator()
         {
@@ -388,8 +398,8 @@ public static class FilterQuery
             if (text.Length > 0 && text[^1] is 'm' or 'M')
             {
                 string numeric = text[..^1];
-                if (decimal.TryParse(numeric, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal dec))
-                    return FilterValue.From(dec);
+                if (decimal.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal dec))
+                    return new FilterValue { Kind = FilterValueKind.Decimal, Decimal = dec };
                 throw Error($"Invalid number '{token.Text}'.");
             }
 
@@ -542,7 +552,17 @@ public static class FilterQuery
                     builder.Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture));
                     break;
                 case FilterValueKind.Number:
-                    builder.Append(value.Number.ToString("R", CultureInfo.InvariantCulture));
+                    if (double.IsNaN(value.Number) || double.IsInfinity(value.Number))
+                    {
+                        throw new FilterQueryException(
+                            $"Filter value kind '{value.Kind}' has no finite text-query representation.",
+                            0);
+                    }
+
+                    string number = value.Number.ToString("R", CultureInfo.InvariantCulture);
+                    builder.Append(number);
+                    if (!number.Contains('.') && !number.Contains('e') && !number.Contains('E'))
+                        builder.Append(".0");
                     break;
                 case FilterValueKind.Decimal:
                     builder.Append(value.Decimal.ToString(CultureInfo.InvariantCulture)).Append('m');
@@ -550,9 +570,13 @@ public static class FilterQuery
                 case FilterValueKind.Guid:
                     builder.Append("guid \"").Append(value.Guid.ToString("D")).Append('"');
                     break;
-                default:
+                case FilterValueKind.String:
                     AppendString(builder, value.String ?? string.Empty);
                     break;
+                default:
+                    throw new FilterQueryException(
+                        $"Filter value kind '{value.Kind}' has no text-query representation.",
+                        0);
             }
         }
 

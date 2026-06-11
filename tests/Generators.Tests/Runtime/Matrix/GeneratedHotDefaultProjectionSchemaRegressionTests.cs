@@ -98,6 +98,93 @@ public sealed class GeneratedHotDefaultProjectionSchemaRegressionTests
         Assert.Equal(7, projected.Field("Value").Integer);
     }
 
+    [Fact]
+    public async Task GeneratedHotDefaultProjectionExcludesCollectionDerivedFields()
+    {
+        const string eventTypeName = "Plugin.Events.InventoryEvent";
+        const string assemblyName = "Plugin.Hot.DefaultProjectionCollections";
+        EventProjectionExpression projection = EventProjectionExpression.Default;
+        using GeneratedModeContext context = GeneratedModeMatrixSupport.LoadContext(
+            GeneratedExecutionMode.GeneratedHot,
+            assemblyName,
+            CSharpSyntaxTree.ParseText("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public sealed record Item(int Quantity);
+
+                public sealed record InventoryEvent(
+                    Guid EventId,
+                    Item[] Items) : IFilterSubject;
+                """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)),
+            eventTypeName,
+            "generated hot default projection collection fields",
+            GeneratedModeMatrixSupport.ProjectionEntry(
+                GeneratedModeMatrixSupport.Subject(eventTypeName, assemblyName),
+                projection));
+
+        CompiledProjection<object> compiled = ProjectionCompiler.Compile<object>(
+            context.EventType,
+            projection,
+            GeneratedModeMatrixSupport.RejectInclude,
+            GeneratedModeMatrixSupport.ProjectionOptions(GeneratedExecutionMode.GeneratedHot));
+        ProjectedEvent projected = await compiled.ProjectAsync(
+            InventoryEvent(context.EventType),
+            new object(),
+            CancellationToken.None);
+
+        Assert.False(compiled.IsTiered);
+        Assert.True(projected.TryGetField("EventId", out _));
+        Assert.False(projected.TryGetField("Items.Quantity", out _));
+    }
+
+    [Fact]
+    public async Task GeneratedHotDefaultProjectionExcludesNestedSubjectTypesMetadata()
+    {
+        const string eventTypeName = "Plugin.Events.CombatEvent";
+        const string assemblyName = "Plugin.Hot.DefaultProjectionSubjectTypes";
+        EventProjectionExpression projection = EventProjectionExpression.Default;
+        using GeneratedModeContext context = GeneratedModeMatrixSupport.LoadContext(
+            GeneratedExecutionMode.GeneratedHot,
+            assemblyName,
+            CSharpSyntaxTree.ParseText("""
+                using System;
+                using SiftQL;
+
+                namespace Plugin.Events;
+
+                public abstract record Entity(string[] SubjectTypes);
+                public sealed record Player(string[] SubjectTypes) : Entity(SubjectTypes);
+                public sealed record Monster(string[] SubjectTypes) : Entity(SubjectTypes);
+
+                public sealed record CombatEvent(
+                    Guid EventId,
+                    Entity Defender) : IFilterSubject;
+                """, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)),
+            eventTypeName,
+            "generated hot default projection nested subjectTypes",
+            GeneratedModeMatrixSupport.ProjectionEntry(
+                GeneratedModeMatrixSupport.Subject(eventTypeName, assemblyName),
+                projection));
+
+        CompiledProjection<object> compiled = ProjectionCompiler.Compile<object>(
+            context.EventType,
+            projection,
+            GeneratedModeMatrixSupport.RejectInclude,
+            GeneratedModeMatrixSupport.ProjectionOptions(GeneratedExecutionMode.GeneratedHot));
+        ProjectedEvent projected = await compiled.ProjectAsync(
+            CombatEvent(context.EventType),
+            new object(),
+            CancellationToken.None);
+
+        Assert.False(compiled.IsTiered);
+        Assert.True(projected.TryGetField("EventId", out _));
+        Assert.False(projected.TryGetField("Defender.SubjectTypes", out _));
+        Assert.False(projected.TryGetField("Defender.subjectTypes", out _));
+    }
+
     private static object Event(Type eventType, Type pointType)
     {
         Type locationType = eventType.Assembly.GetType("Plugin.Events.Location", throwOnError: true)!;
@@ -105,5 +192,20 @@ public sealed class GeneratedHotDefaultProjectionSchemaRegressionTests
         pointType.GetProperty("X")!.SetValue(point, 42);
         object location = Activator.CreateInstance(locationType, point)!;
         return Activator.CreateInstance(eventType, Guid.NewGuid(), location)!;
+    }
+
+    private static object InventoryEvent(Type eventType)
+    {
+        Type itemType = eventType.Assembly.GetType("Plugin.Events.Item", throwOnError: true)!;
+        Array items = Array.CreateInstance(itemType, 1);
+        items.SetValue(Activator.CreateInstance(itemType, 7), 0);
+        return Activator.CreateInstance(eventType, Guid.NewGuid(), items)!;
+    }
+
+    private static object CombatEvent(Type eventType)
+    {
+        Type monsterType = eventType.Assembly.GetType("Plugin.Events.Monster", throwOnError: true)!;
+        object defender = Activator.CreateInstance(monsterType, [Array.Empty<string>()])!;
+        return Activator.CreateInstance(eventType, Guid.NewGuid(), defender)!;
     }
 }

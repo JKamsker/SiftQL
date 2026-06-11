@@ -97,6 +97,28 @@ public sealed class HotManifestProjectionValidationTests
             "duplicate projection include argument");
 
     [Fact]
+    public void RejectsStringProjectionArgumentKind() =>
+        AssertRejectedInclude("""
+            {
+              "Intrinsic": "server.players.near",
+              "ResultName": "nearby",
+              "Arguments": [
+                { "Name": "limit", "Kind": "Value", "Value": { "Kind": 2, "Integer": 5 } }
+              ]
+            }
+            """,
+            new EventProjectionInclude
+            {
+                Intrinsic = "server.players.near",
+                ResultName = "nearby",
+                Arguments =
+                [
+                    new EventProjectionArgument("limit", FilterValue.From(5L)),
+                ],
+            },
+            "string projection argument kind");
+
+    [Fact]
     public void RejectsDuplicateProjectionIncludeResultNames() =>
         AssertRejectedProjection("""
             [

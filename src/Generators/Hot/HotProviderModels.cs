@@ -28,6 +28,7 @@ internal enum HotFilterValueKind
     Guid = 5,
     UnsignedInteger = 6,
     Decimal = 7,
+    Timestamp = 8,
 }
 
 internal enum HotProjectionArgumentKind
@@ -55,6 +56,7 @@ internal sealed record HotFilterNode(
     HotFilterNodeKind Kind,
     string Field,
     int Operator,
+    bool IgnoreCase,
     HotFilterValue? Value,
     EquatableArray<HotFilterValue> Values,
     EquatableArray<HotFilterNode> Children);
@@ -68,7 +70,9 @@ internal sealed record HotFilterValue(
     double Number,
     decimal Decimal,
     string? String,
-    string Guid);
+    string Guid,
+    long TimestampTicks,
+    string TimestampText);
 
 internal sealed record HotProjection(
     EquatableArray<HotProjectionField> Fields,

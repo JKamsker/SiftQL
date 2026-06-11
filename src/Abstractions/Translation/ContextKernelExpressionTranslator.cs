@@ -53,7 +53,8 @@ internal static class ContextKernelExpressionTranslator
             _pipeline = pipeline;
             _projectSubjectFields = projectSubjectFields;
             _parameterIndex = parameterOffset;
-            Includes = new ContextExpressionIncludes(subject, context, bindings, NextParameterKey);
+            Includes = new ContextExpressionIncludes(
+                subject, context, bindings, NextParameterKey, ContextProjectionGeneratedNames.NextIndex(pipeline), pipeline);
         }
 
         public ContextExpressionIncludes Includes { get; }
@@ -85,20 +86,21 @@ internal static class ContextKernelExpressionTranslator
         // See [[SubjectTypeMetadata]].
         private FilterExpression TranslateTypeIs(TypeBinaryExpression expression)
         {
-            string sourcePath;
-            if (StripConvert(expression.Expression) == _subject)
-                sourcePath = "subjectTypes";
-            else if (TryGetSubjectFieldPath(expression.Expression, out string field))
-                sourcePath = field + ".subjectTypes";
-            else
-                throw Unsupported(expression);
-
             string typeName = expression.TypeOperand.FullName ??
                 throw new KernelExpressionException(
                     $"'is {expression.TypeOperand.Name}' is not supported: the type has no metadata full name.");
             return FilterExpression.Contains(
-                ProjectSubjectPath(sourcePath),
+                ResolveTypeTestField(expression.Expression),
                 ToValue(Expression.Constant(typeName, typeof(string))));
+        }
+
+        private string ResolveTypeTestField(Expression expression)
+        {
+            if (StripConvert(expression) == _subject)
+                return ProjectSubjectPath("subjectTypes");
+            if (TryGetSubjectFieldPath(expression, out string field))
+                return ProjectSubjectPath(field + ".subjectTypes");
+            throw Unsupported(expression);
         }
 
         private string ProjectSubjectPath(string sourcePath)
@@ -117,6 +119,16 @@ internal static class ContextKernelExpressionTranslator
 
         private FilterExpression TranslateComparison(BinaryExpression expression, FilterOperator op)
         {
+            if (ContextTypeAsNullComparisonTranslator.TryTranslate(
+                    expression,
+                    op,
+                    ResolveTypeTestField,
+                    ToValue,
+                    out FilterExpression? typeAsFilter))
+            {
+                return typeAsFilter!;
+            }
+
             if (TryGetProjectedPath(expression.Left, out string? leftField))
                 return FilterExpression.Compare(leftField, op, ToValue(expression.Right, ComparisonType(expression.Left)));
 
@@ -128,6 +140,18 @@ internal static class ContextKernelExpressionTranslator
 
         private FilterExpression TranslateMethodCall(MethodCallExpression expression)
         {
+            if (KernelElementAnyTranslator.TryTranslate(expression, _subject, ref _parameterIndex, out var anyFilter))
+                return ProjectSourceFilter(anyFilter);
+
+            if (KernelExpressionTranslator.TryTranslateMethodCall(
+                    expression,
+                    _subject,
+                    ref _parameterIndex,
+                    out FilterExpression sourceMethod))
+            {
+                return ProjectSourceFilter(sourceMethod);
+            }
+
             if (IsKernelIn(expression.Method))
             {
                 string field = RequireProjectedPath(expression.Arguments[0]);
@@ -144,6 +168,24 @@ internal static class ContextKernelExpressionTranslator
                 return FilterExpression.Compare(contextPath, FilterOperator.Equal, FilterValue.From(true));
 
             throw Unsupported(expression);
+        }
+
+        private FilterExpression ProjectSourceFilter(FilterExpression expression)
+        {
+            if (!_projectSubjectFields)
+                return expression;
+
+            return expression.Kind switch
+            {
+                FilterExpressionKind.And or FilterExpressionKind.Or or FilterExpressionKind.Not => expression with
+                {
+                    Children = expression.Children.Select(ProjectSourceFilter).ToArray(),
+                },
+                FilterExpressionKind.ElemMatch => expression with { Field = ProjectSubjectPath(expression.Field) },
+                _ => string.IsNullOrEmpty(expression.Field)
+                    ? expression
+                    : expression with { Field = ProjectSubjectPath(expression.Field) },
+            };
         }
 
         private FilterExpression TranslateContains(MethodCallExpression expression)
@@ -185,7 +227,6 @@ internal static class ContextKernelExpressionTranslator
 
         private bool TryGetProjectedPath(Expression expression, out string path)
         {
-            expression = StripConvert(expression);
             if (TryGetSubjectFieldPath(expression, out string? sourcePath))
             {
                 if (_projectSubjectFields)
@@ -206,28 +247,8 @@ internal static class ContextKernelExpressionTranslator
             return false;
         }
 
-        private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath)
-        {
-            var names = new Stack<string>();
-            ValidateFieldConversion(expression, _subject, Unsupported);
-            Expression? current = StripConvert(expression);
-            while (current is MemberExpression member)
-            {
-                names.Push(member.Member.Name);
-                if (SubtypeProjection.TryResolveSubtypeMember(member.Expression, member.Member, out Type subtype))
-                    names.Push(SubtypeProjection.Segment(subtype));
-                current = StripConvert(member.Expression!);
-            }
-
-            if (current == _subject && names.Count > 0)
-            {
-                fieldPath = string.Join(".", names);
-                return true;
-            }
-
-            fieldPath = string.Empty;
-            return false;
-        }
+        private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath) =>
+            KernelExpressionTranslator.TryGetFieldPath(expression, _subject, out fieldPath);
 
         private IReadOnlyCollection<FilterValue> ToValues(Expression expression)
         {

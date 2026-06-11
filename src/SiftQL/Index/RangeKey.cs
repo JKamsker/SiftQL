@@ -1,5 +1,6 @@
 using SiftQL.Expressions;
 using SiftQL.Schema;
+using SiftQL.Values;
 
 namespace SiftQL.Index;
 
@@ -34,7 +35,12 @@ internal static class RangeKey
     public static Func<object, decimal?> CreateAccessor(FilterField field)
     {
         Func<object, object?> getter = field.Getter;
-        return subject => FromActual(getter(subject));
+        FilterScalarAccessor? scalarAccessor = field.ScalarAccessor;
+        return subject =>
+        {
+            decimal? key = FromActual(getter(subject));
+            return key ?? FromScalar(scalarAccessor, subject);
+        };
     }
 
     public static bool TryFromValue(FilterValue value, out decimal key)
@@ -53,8 +59,9 @@ internal static class RangeKey
             case FilterValueKind.Timestamp:
                 key = value.Timestamp.UtcTicks;
                 return true;
-            case FilterValueKind.Number when double.IsFinite(value.Number) && Math.Abs(value.Number) < (double)DecimalRangeLimit:
-                key = (decimal)value.Number;
+            case FilterValueKind.Number when
+                Math.Abs(value.Number) < (double)DecimalRangeLimit &&
+                FilterNumeric.TryDoubleToDecimal(value.Number, out key):
                 return true;
             default:
                 key = 0;
@@ -80,6 +87,24 @@ internal static class RangeKey
             DateOnly v => new DateTimeOffset(v.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).UtcTicks,
             _ => null,
         };
+
+    private static decimal? FromScalar(FilterScalarAccessor? accessor, object subject)
+    {
+        if (accessor?.Kind != FilterScalarKind.Number)
+            return null;
+
+        double? value = accessor.RequiredNumber is { } requiredNumber
+            ? requiredNumber(subject)
+            : accessor.Number?.Invoke(subject);
+        if (!value.HasValue ||
+            Math.Abs(value.Value) >= (double)DecimalRangeLimit ||
+            !FilterNumeric.TryDoubleToDecimal(value.Value, out decimal key))
+        {
+            return null;
+        }
+
+        return key;
+    }
 
     private static DateTimeOffset ToTimestamp(DateTime value) =>
         value.Kind switch

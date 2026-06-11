@@ -143,6 +143,7 @@ public sealed class CompiledProjection<TContext>
             }
 
             consumed ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            consumed.Add(name);
             consumed.Add(ContextRoot(name));
         }
 

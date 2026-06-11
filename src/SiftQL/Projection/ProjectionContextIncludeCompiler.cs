@@ -204,6 +204,7 @@ public static class ProjectionContextIncludeCompiler
             FilterValueKind.Decimal => value.Decimal,
             FilterValueKind.String => value.String,
             FilterValueKind.Guid => value.Guid,
+            FilterValueKind.Timestamp => value.Timestamp,
             _ => null,
         };
 
@@ -215,6 +216,8 @@ public static class ProjectionContextIncludeCompiler
         Type nullableTarget = Nullable.GetUnderlyingType(targetType) ?? targetType;
         if (nullableTarget.IsInstanceOfType(value))
             return value;
+        if (value is DateTimeOffset timestamp)
+            return ConvertTimestamp(timestamp, nullableTarget);
         if (nullableTarget.IsEnum)
             return value is string text
                 ? Enum.Parse(nullableTarget, text)
@@ -223,6 +226,16 @@ public static class ProjectionContextIncludeCompiler
             return Guid.Parse(guid);
 
         return Convert.ChangeType(value, nullableTarget, CultureInfo.InvariantCulture);
+    }
+
+    private static object ConvertTimestamp(DateTimeOffset timestamp, Type targetType)
+    {
+        if (targetType == typeof(DateTime))
+            return timestamp.UtcDateTime;
+        if (targetType == typeof(DateOnly))
+            return DateOnly.FromDateTime(timestamp.UtcDateTime);
+
+        return Convert.ChangeType(timestamp, targetType, CultureInfo.InvariantCulture);
     }
 
     private static bool IsRequiredValueType(Type type) =>

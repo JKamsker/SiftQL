@@ -6,27 +6,59 @@ namespace SiftQL.Examples.ShaRpc.Client.Hosting;
 
 public sealed class RemoteClientService : IRemoteClient
 {
+    private const int OffersDeliveredStep = 1;
+    private const int InventorySubscribedStep = 2;
+    private const int PremiumInventorySubscribedStep = 3;
+
     private readonly string _premiumInventoryRegion = "north-gate";
+    private readonly SemaphoreSlim _startupGate = new(1, 1);
     private IRemoteServer? _server;
+    private int _completedStartupStep;
 
     public void Attach(IRemoteServer server) =>
         _server = server ?? throw new ArgumentNullException(nameof(server));
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        IRemoteServer server = Server;
-        ServerHello hello = await server.HelloAsync(
-            new ClientHello(
-                "catalog-client",
-                ServerKernel.SubjectTypes.Select(static type => type.Name).ToArray()),
-            cancellationToken).ConfigureAwait(false);
+        await _startupGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_completedStartupStep >= PremiumInventorySubscribedStep)
+                return;
 
-        Console.WriteLine(
-            $"Connected to {hello.ServerName}; server subjects: {string.Join(", ", hello.Subjects)}");
+            IRemoteServer server = Server;
+            ServerHello hello = await server.HelloAsync(
+                new ClientHello(
+                    "catalog-client",
+                    ServerKernel.SubjectTypes.Select(static type => type.Name).ToArray()),
+                cancellationToken).ConfigureAwait(false);
 
-        await QueryOffersAsync(server, cancellationToken).ConfigureAwait(false);
-        await SubscribeInventoryAsync(server, cancellationToken).ConfigureAwait(false);
-        await SubscribePremiumInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+            Console.WriteLine(
+                $"Connected to {hello.ServerName}; server subjects: {string.Join(", ", hello.Subjects)}");
+
+            if (_completedStartupStep < OffersDeliveredStep)
+            {
+                await QueryOffersAsync(server, cancellationToken).ConfigureAwait(false);
+                _completedStartupStep = OffersDeliveredStep;
+            }
+
+            if (_completedStartupStep < InventorySubscribedStep)
+            {
+                await SubscribeInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+                _completedStartupStep = InventorySubscribedStep;
+            }
+
+            if (_completedStartupStep < PremiumInventorySubscribedStep)
+            {
+                await SubscribePremiumInventoryAsync(server, cancellationToken).ConfigureAwait(false);
+                _completedStartupStep = PremiumInventorySubscribedStep;
+            }
+        }
+        finally
+        {
+            _startupGate.Release();
+        }
     }
 
     public async Task DispatchAsync(
@@ -34,6 +66,7 @@ public sealed class RemoteClientService : IRemoteClient
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dispatch);
+        cancellationToken.ThrowIfCancellationRequested();
         if (!dispatch.Payload.TryGetField("Session", out ProjectedEventValue session) ||
             session.Kind != ProjectedEventValueKind.Integer)
         {
@@ -43,9 +76,18 @@ public sealed class RemoteClientService : IRemoteClient
 
         long clientId = session.Integer;
         await Server.SendToClientAsync(
-            new ClientDelivery(clientId, "inventory.notice", dispatch.Payload),
+            new ClientDelivery(clientId, ChannelFor(dispatch.SubscriptionId), dispatch.Payload),
             cancellationToken).ConfigureAwait(false);
     }
+
+    private static string ChannelFor(string subscriptionId) =>
+        subscriptionId switch
+        {
+            "inventory-feed" => "inventory.notice",
+            "premium-inventory-feed" => "inventory.premium",
+            _ => throw new InvalidOperationException(
+                $"Unknown subscription dispatch '{subscriptionId}'."),
+        };
 
     private static async Task QueryOffersAsync(
         IRemoteServer server,
@@ -71,8 +113,9 @@ public sealed class RemoteClientService : IRemoteClient
 
         foreach (var offer in offers)
         {
+            string deliveryId = $"catalog.offer:1001:{offer.Field("Offer").String}";
             await server.SendToClientAsync(
-                new ClientDelivery(1001, "catalog.offer", offer),
+                new ClientDelivery(1001, "catalog.offer", offer, deliveryId),
                 cancellationToken).ConfigureAwait(false);
         }
     }

@@ -119,6 +119,34 @@ public sealed class HotProviderFourthPassRegressionTests
     }
 
     [Fact]
+    public void HotProjectionFingerprintAcceptsTimestampIncludeArgument()
+    {
+        EventProjectionExpression projection = EventProjectionExpression
+            .Select("Score")
+            .WithIncludes(
+            [
+                new EventProjectionInclude(
+                    "test.window",
+                    "window",
+                    [new EventProjectionArgument(
+                        "instant",
+                        FilterValue.From(new DateTimeOffset(2026, 2, 3, 4, 5, 6, TimeSpan.FromHours(2))))]),
+            ]);
+        GeneratorRun run = RunGenerator(
+            "Plugin.Hot.TimestampProjectionFingerprint",
+            new InMemoryAdditionalText(
+                "projection-timestamp.siftql-hot.json",
+                ManifestJson(
+                    "projection",
+                    "Plugin.Events.PluginOwnedEvent, Plugin.Hot.TimestampProjectionFingerprint",
+                    ProjectionFingerprint(projection),
+                    projection)),
+            PluginEventTree());
+
+        AssertNoDiagnostic(run, "FSFHOT009", "timestamp projection include fingerprint accepted");
+    }
+
+    [Fact]
     public void HotProjectionRejectsUnknownSourceFieldIncludeArgument()
     {
         EventProjectionExpression projection = EventProjectionExpression

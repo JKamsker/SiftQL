@@ -25,7 +25,7 @@ public sealed class KernelNestedLinqTranslationTests
     }
 
     [Fact]
-    public void WhereNestedAnyOverObjectCollectionsFlattensFieldPath()
+    public void WhereNestedAnyOverObjectCollectionsUsesOuterElemMatch()
     {
         RegisterInventoryValueObjects();
 
@@ -33,7 +33,9 @@ public sealed class KernelNestedLinqTranslationTests
             .Where(static subject => subject.Groups.Any(group =>
                 group.Items.Any(item => item.Name == "Destroyer")));
 
-        AssertContains(query.Filter, "Groups.Items.Name", "Destroyer");
+        Assert.Equal(FilterExpressionKind.ElemMatch, query.Filter.Kind);
+        Assert.Equal("Groups", query.Filter.Field);
+        AssertContains(Assert.Single(query.Filter.Children), "Items.Name", "Destroyer");
         var kernel = FilterCompiler.Compile(typeof(GroupedInventoryEvent), query.Filter, FilterCompilerOptions.Immediate);
 
         Assert.True(kernel.Matches(new GroupedInventoryEvent([new([new("Destroyer", [], Equipped: false)])])));

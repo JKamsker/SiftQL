@@ -10,6 +10,7 @@ internal static class ProjectionCompilerKeyBuilder
     public static string Build<TContext>(
         Type subjectType,
         Type eventMetadataType,
+        int schemaVersion,
         IReadOnlyList<CompiledProjection<TContext>.FieldProjector> fields,
         IReadOnlyList<EventProjectionInclude> includes,
         string? includeCompilerKey = null)
@@ -24,6 +25,8 @@ internal static class ProjectionCompilerKeyBuilder
             KeyPart(TypeKey(subjectType)),
             "M",
             KeyPart(TypeKey(eventMetadataType)),
+            "V",
+            CountPart(schemaVersion),
             "F",
             CountPart(fields.Count),
             fieldKey,
@@ -101,6 +104,9 @@ internal static class ProjectionCompilerKeyBuilder
                 break;
             case FilterValueKind.Guid:
                 builder.Append(value.Guid.ToString("D"));
+                break;
+            case FilterValueKind.Timestamp:
+                builder.Append(ProjectionTimestampKey.From(value.Timestamp));
                 break;
         }
     }

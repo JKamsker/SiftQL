@@ -99,23 +99,28 @@ internal static class ExpressionTranslationHelpers
         Type.GetTypeCode(source) switch
         {
             TypeCode.SByte => target == typeof(short) || target == typeof(int) ||
-                target == typeof(long) || target == typeof(double),
+                target == typeof(long) || target == typeof(double) ||
+                target == typeof(decimal),
             TypeCode.Byte => target == typeof(short) || target == typeof(ushort) ||
                 target == typeof(int) || target == typeof(uint) ||
                 target == typeof(long) || target == typeof(ulong) ||
-                target == typeof(double),
+                target == typeof(double) || target == typeof(decimal),
             TypeCode.Int16 => target == typeof(int) || target == typeof(long) ||
-                target == typeof(double),
+                target == typeof(double) || target == typeof(decimal),
             TypeCode.UInt16 => target == typeof(int) || target == typeof(uint) ||
                 target == typeof(long) || target == typeof(ulong) ||
-                target == typeof(double),
-            TypeCode.Int32 => target == typeof(long) || target == typeof(double),
+                target == typeof(double) || target == typeof(decimal),
+            TypeCode.Int32 => target == typeof(long) || target == typeof(double) ||
+                target == typeof(decimal),
             TypeCode.UInt32 => target == typeof(long) || target == typeof(ulong) ||
-                target == typeof(double),
+                target == typeof(double) || target == typeof(decimal),
+            TypeCode.Int64 => target == typeof(decimal),
+            TypeCode.UInt64 => target == typeof(decimal),
             TypeCode.Single => target == typeof(double),
             TypeCode.Char => target == typeof(ushort) || target == typeof(int) ||
                 target == typeof(uint) || target == typeof(long) ||
-                target == typeof(ulong) || target == typeof(double),
+                target == typeof(ulong) || target == typeof(double) ||
+                target == typeof(decimal),
             _ => false,
         };
 

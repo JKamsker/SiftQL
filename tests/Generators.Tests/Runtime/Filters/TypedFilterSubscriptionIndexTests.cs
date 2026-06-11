@@ -1,4 +1,5 @@
 using SiftQL.Expressions;
+using SiftQL.Hot;
 using SiftQL.Index;
 using Xunit;
 
@@ -59,11 +60,79 @@ public sealed class TypedFilterSubscriptionIndexTests
         Assert.Equal(["id"], index.SnapshotCandidates(new IndexedSubject(10, "north")));
     }
 
+    [Fact]
+    public void TypedIndexRebuildsUnindexedMatchersAfterHotProviderChanges()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(IndexedSubject), TestFilterHelpers.Fingerprint(filter)));
+        var index = new TypedFilterSubscriptionIndex<string, IndexedSubject>();
+
+        index.Add("sub", filter);
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        registration.Dispose();
+
+        Assert.Empty(index.SnapshotMatches(new IndexedSubject(1, "north")));
+    }
+
+    [Fact]
+    public void TypedIndexRebuildsWhenEnteringNestedIsolatedHotProviderScope()
+    {
+        using var outer = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(IndexedSubject), TestFilterHelpers.Fingerprint(filter)));
+        var index = new TypedFilterSubscriptionIndex<string, IndexedSubject>();
+        index.Add("sub", filter);
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        using (PrecompiledTieredProviderRegistry.CreateIsolatedScope())
+        {
+            Assert.False(PrecompiledTieredProviderRegistry.HasProviders);
+            Assert.Empty(index.SnapshotMatches(new IndexedSubject(1, "north")));
+        }
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+    }
+
+    [Fact]
+    public async Task TypedIndexRebuildsWhenExecutionContextDropsIsolatedHotProviderScope()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        FilterExpression filter = RegionMissingFilter();
+        using IDisposable registration = PrecompiledTieredProviderRegistry.Register(
+            new AlwaysMatchingHotProvider(typeof(IndexedSubject), TestFilterHelpers.Fingerprint(filter)));
+        var index = new TypedFilterSubscriptionIndex<string, IndexedSubject>();
+        index.Add("sub", filter);
+
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        string[] matches = await RunWithoutExecutionContextAsync(
+            () => index.SnapshotMatches(new IndexedSubject(1, "north")));
+
+        Assert.Empty(matches);
+        Assert.Equal(["sub"], index.SnapshotMatches(new IndexedSubject(1, "north")));
+    }
+
     private static FilterExpression IdEquals(int id) =>
         FilterExpression.Compare(
             nameof(IndexedSubject.Id),
             FilterOperator.Equal,
             FilterValue.From(id));
+
+    private static FilterExpression RegionMissingFilter() =>
+        FilterExpression.Not(FilterExpression.Exists(nameof(IndexedSubject.Region)));
+
+    private static async Task<T> RunWithoutExecutionContextAsync<T>(Func<T> action)
+    {
+        Task<T> task;
+        using (ExecutionContext.SuppressFlow())
+            task = Task.Run(action);
+        return await task;
+    }
 
     private sealed record IndexedSubject(int Id, string Region) : IFilterSubject;
 }

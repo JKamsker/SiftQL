@@ -47,11 +47,21 @@ public sealed record FilterDocument
         string versionName = options?.PropertyNamingPolicy?.ConvertName("Version") ?? "Version";
         string filterName = options?.PropertyNamingPolicy?.ConvertName("Filter") ?? "Filter";
         if (root.ValueKind == JsonValueKind.Object &&
-            TryGetEnvelopeProperty(root, versionName, options, out JsonElement versionElement) &&
-            TryGetEnvelopeProperty(root, filterName, options, out JsonElement filterElement) &&
-            versionElement.ValueKind == JsonValueKind.Number)
+            IsEnvelopeLike(root, versionName, filterName, options, out JsonElement versionElement, out JsonElement filterElement))
         {
-            int version = versionElement.GetInt32();
+            if (versionElement.ValueKind == JsonValueKind.Undefined ||
+                filterElement.ValueKind == JsonValueKind.Undefined)
+            {
+                throw new FilterSerializationException(
+                    $"Filter document envelope requires both '{versionName}' and '{filterName}' properties.");
+            }
+
+            if (versionElement.ValueKind != JsonValueKind.Number ||
+                !versionElement.TryGetInt32(out int version))
+            {
+                throw new FilterSerializationException("Filter document version is missing or invalid.");
+            }
+
             if (version < 1 || version > CurrentVersion)
             {
                 throw new FilterSerializationException(
@@ -62,6 +72,19 @@ public sealed record FilterDocument
         }
 
         return DeserializeFilter(json, options);
+    }
+
+    private static bool IsEnvelopeLike(
+        JsonElement root,
+        string versionName,
+        string filterName,
+        JsonSerializerOptions? options,
+        out JsonElement versionElement,
+        out JsonElement filterElement)
+    {
+        bool hasVersion = TryGetEnvelopeProperty(root, versionName, options, out versionElement);
+        bool hasFilter = TryGetEnvelopeProperty(root, filterName, options, out filterElement);
+        return hasVersion || hasFilter;
     }
 
     private static bool TryGetEnvelopeProperty(

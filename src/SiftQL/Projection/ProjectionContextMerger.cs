@@ -25,7 +25,7 @@ internal static class ProjectionContextMerger
         for (int i = 0; i < inherited.Count; i++)
         {
             ProjectedEventField? field = inherited[i];
-            if (field is not null && !includeNames.Contains(field.Name))
+            if (field is not null && !IsReplacedByInclude(field.Name, includeNames))
                 merged.Add(field);
         }
 
@@ -37,5 +37,21 @@ internal static class ProjectionContextMerger
         }
 
         return merged.ToArray();
+    }
+
+    private static bool IsReplacedByInclude(
+        string fieldName,
+        IEnumerable<string> includeNames)
+    {
+        foreach (string includeName in includeNames)
+        {
+            if (string.Equals(fieldName, includeName, StringComparison.OrdinalIgnoreCase) ||
+                fieldName.StartsWith(includeName + ".", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

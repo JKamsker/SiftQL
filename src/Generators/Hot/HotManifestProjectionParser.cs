@@ -146,7 +146,12 @@ internal static partial class HotManifestParser
                 continue;
             }
 
-            int kind = ReadInt(argument, "Kind");
+            if (!TryReadProjectionArgumentKind(argument, path, diagnostics, out int kind))
+            {
+                valid = false;
+                continue;
+            }
+
             string sourcePath = ReadString(argument, "SourcePath");
             if (kind == (int)HotProjectionArgumentKind.SourceField)
             {
@@ -193,6 +198,28 @@ internal static partial class HotManifestParser
         return new(builder.ToImmutable());
     }
 
+    private static bool TryReadProjectionArgumentKind(
+        JsonElement argument,
+        string path,
+        ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
+        out int kind)
+    {
+        kind = (int)HotProjectionArgumentKind.Value;
+        if (!argument.TryGetProperty("Kind", out JsonElement value))
+            return true;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out kind))
+        {
+            Add(diagnostics, "FSFHOT009", path, "Hot projection argument kind is missing or invalid.");
+            return false;
+        }
+
+        if (kind is (int)HotProjectionArgumentKind.Value or (int)HotProjectionArgumentKind.SourceField)
+            return true;
+
+        Add(diagnostics, "FSFHOT009", path, $"Hot projection argument kind '{kind}' is not supported.");
+        return false;
+    }
+
     private static bool HasProjectionParameters(EquatableArray<HotProjectionInclude> includes)
     {
         for (int i = 0; i < includes.Count; i++)
@@ -221,5 +248,7 @@ internal static partial class HotManifestParser
             Number: 0,
             Decimal: 0,
             String: null,
-            Guid: "00000000-0000-0000-0000-000000000000");
+            Guid: "00000000-0000-0000-0000-000000000000",
+            TimestampTicks: 0,
+            TimestampText: string.Empty);
 }

@@ -140,6 +140,34 @@ public sealed class QueryKernelProjectedRegressionTests
         Assert.Equal(42, projected.Field("PlayerId").Integer);
     }
 
+    [Fact]
+    public async Task ProjectedSelectorResolvesNestedMemberUnderDottedAlias()
+    {
+        FilterSchema.RegisterValueObject(typeof(PlayerDetails));
+        EventPipelineExpression pipeline = QueryKernel.For<PlayerNestedEvent>()
+            .Select(
+                new EventProjectionField(nameof(PlayerNestedEvent.Player), "Player.Alias"),
+                new EventProjectionField(nameof(PlayerNestedEvent.Quantity)))
+            .WhereProjected(static ev =>
+                ev.Field(nameof(PlayerNestedEvent.Quantity)).Integer == 2)
+            .Select(static (ev, _) => new { PlayerId = ev.Player.Id })
+            .Pipeline;
+        CompiledEventPipeline<object> compiled = EventPipelineCompiler.Compile<object>(
+            typeof(PlayerNestedEvent),
+            pipeline,
+            RejectInclude,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? projected = await compiled.ProjectAsync(
+            new PlayerNestedEvent(new PlayerDetails(42), 2),
+            new object(),
+            CancellationToken.None);
+
+        Assert.NotNull(projected);
+        Assert.Equal(ProjectedEventValueKind.Integer, projected!.Field("PlayerId").Kind);
+        Assert.Equal(42, projected.Field("PlayerId").Integer);
+    }
+
     private static CompiledProjection<object>.IncludeProjector RejectInclude(
         FilterSchema schema,
         EventProjectionInclude include)

@@ -123,9 +123,12 @@ internal static class ParameterizedFilterPlanBuilder
 
         FilterValue lower = expression.Values[0];
         FilterValue upper = expression.Values[1];
+        FilterValues.ValidateComparison(field, FilterOperator.GreaterThanOrEqual, lower, errorFactory);
+        FilterValues.ValidateComparison(field, FilterOperator.LessThanOrEqual, upper, errorFactory);
         // Literal bounds must be ordered; reversed bounds describe an empty interval.
         // Parameterized bounds are left unchecked (their values are not known here).
-        if (lower.ParameterKey is null && upper.ParameterKey is null &&
+        if (string.IsNullOrWhiteSpace(lower.ParameterKey) &&
+            string.IsNullOrWhiteSpace(upper.ParameterKey) &&
             FilterValues.TryCompareValues(lower, upper, out int order) && order > 0)
         {
             throw Error(errorFactory, $"Between filters on '{field.Name}' require the lower bound to be <= the upper bound.");
@@ -176,14 +179,24 @@ internal static class ParameterizedFilterPlanBuilder
         Func<string, Exception>? errorFactory)
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
-        if (field.Kind != FilterFieldKind.Array)
+        if (field.Kind != FilterFieldKind.Array && field.ValueType != typeof(ProjectedEventValue))
             throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");
         if (value.Kind is not (FilterValueKind.Integer or FilterValueKind.UnsignedInteger))
             throw Error(errorFactory, $"Count comparisons on '{field.Name}' require an integer value.");
+        if (!IsCountOperator(expression.Operator))
+            throw Error(errorFactory, $"Count comparisons on '{field.Name}' require a comparison operator.");
         return new CountFilterPlanNode(field, expression.Operator, FilterValueRef.Create(value, indexes));
     }
+
+    private static bool IsCountOperator(FilterOperator op) =>
+        op is FilterOperator.Equal or
+            FilterOperator.NotEqual or
+            FilterOperator.GreaterThan or
+            FilterOperator.GreaterThanOrEqual or
+            FilterOperator.LessThan or
+            FilterOperator.LessThanOrEqual;
 
     private static ParameterizedFilterPlanNode BuildIn(
         FilterSchema schema,

@@ -36,6 +36,37 @@ public sealed class QueryKernelContextAliasRegressionTests
     }
 
     [Fact]
+    public async Task ContextWhereAfterAliasCollisionCarriesSourceFieldWithDistinctName()
+    {
+        Guid targetId = Guid.NewGuid();
+        Guid sourceId = Guid.NewGuid();
+        QueryKernel<BuffActivatedEvent, CombatContext> query = QueryKernel
+            .For<BuffActivatedEvent, CombatContext>()
+            .Select(new EventProjectionField(
+                nameof(BuffActivatedEvent.SourceId),
+                nameof(BuffActivatedEvent.TargetId)))
+            .Where((ev, ctx) => ev.TargetId == targetId && ctx.Enabled());
+
+        CompiledEventPipeline<CombatContext> compiled = EventPipelineCompiler.Compile<CombatContext>(
+            typeof(BuffActivatedEvent),
+            query.Pipeline,
+            EventPipelineCompilerOptions.Immediate);
+
+        ProjectedEvent? accepted = await compiled.ProjectAsync(
+            new BuffActivatedEvent(targetId, sourceId, 7),
+            new CombatContext(),
+            CancellationToken.None);
+        ProjectedEvent? rejected = await compiled.ProjectAsync(
+            new BuffActivatedEvent(Guid.NewGuid(), sourceId, 7),
+            new CombatContext(),
+            CancellationToken.None);
+
+        Assert.NotNull(accepted);
+        Assert.Equal(sourceId, accepted!.Field(nameof(BuffActivatedEvent.TargetId)).Guid);
+        Assert.Null(rejected);
+    }
+
+    [Fact]
     public async Task ContextSelectAfterAliasedNestedProjectionUsesAliasPrefix()
     {
         FilterSchema.RegisterValueObject(typeof(PlayerDetails));
@@ -92,5 +123,8 @@ public sealed class QueryKernelContextAliasRegressionTests
 
     private sealed record PlayerDetails(int Id);
 
-    private sealed class CombatContext;
+    private sealed class CombatContext
+    {
+        public bool Enabled() => true;
+    }
 }

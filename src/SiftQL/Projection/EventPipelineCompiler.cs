@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using SiftQL;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -44,9 +45,17 @@ public static class EventPipelineCompiler
         EventPipelineExpression normalized = EventPipelineCachePolicy.Snapshot(
             EventPipelineNormalizer.Normalize(subjectType, pipeline, errorFactory));
         IncludeCompilerKey includeCompilerKey = IncludeCompilerKey.From(compileInclude);
+        int schemaVersion = FilterSchema.Version;
         if (EventPipelineCachePolicy.ShouldBypassCache(normalized, options))
         {
-            return CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
+            return CompileUncached(
+                subjectType,
+                normalized,
+                compileInclude,
+                includeCompilerKey,
+                schemaVersion,
+                options,
+                errorFactory);
         }
 
         var key = new EventPipelineCacheKey(
@@ -55,14 +64,21 @@ public static class EventPipelineCompiler
             EventPipelineExpressionKey.From(normalized),
             includeCompilerKey,
             PrecompiledTieredProviderRegistry.GlobalVersion,
-            FilterSchema.Version,
+            schemaVersion,
             FilterCompilerOptionsCacheKey.From(options.FilterOptions),
             ProjectionCompilerOptionsCacheKey.From(options.ProjectionOptions));
         if (s_cache.TryGetValue(key, out object? cached))
             return (CompiledEventPipeline<TContext>)cached;
 
         EnsureCacheCapacity();
-        var compiled = CompileUncached(subjectType, normalized, compileInclude, includeCompilerKey, options, errorFactory);
+        var compiled = CompileUncached(
+            subjectType,
+            normalized,
+            compileInclude,
+            includeCompilerKey,
+            schemaVersion,
+            options,
+            errorFactory);
         if (s_cache.TryAdd(key, compiled))
         {
             Interlocked.Increment(ref s_cacheCount);
@@ -100,7 +116,7 @@ public static class EventPipelineCompiler
 
     public static EventPipelineExpression ProjectionDispatchPipeline(EventPipelineExpression? pipeline)
     {
-        bool referencesProjectedFields = ReferencesProjectedFields(pipeline);
+        bool referencesProjectedFields = EventPipelineDispatchFilter.ReferencesProjectedFields(pipeline);
         Type subjectType = referencesProjectedFields
             ? typeof(ProjectedEvent)
             : typeof(object);
@@ -114,45 +130,23 @@ public static class EventPipelineCompiler
         if (projectionIndex <= 0)
             return normalized;
 
-        var stages = new EventPipelineStage[normalized.Stages.Length - projectionIndex];
-        Array.Copy(normalized.Stages, projectionIndex, stages, 0, stages.Length);
-        return normalized with { Stages = stages };
-    }
-
-    private static bool ReferencesProjectedFields(EventPipelineExpression? pipeline)
-    {
-        if (pipeline?.Stages is null)
-            return false;
-
-        for (int i = 0; i < pipeline.Stages.Length; i++)
+        var stages = new List<EventPipelineStage>(normalized.Stages.Length - projectionIndex);
+        for (int i = 0; i < normalized.Stages.Length; i++)
         {
-            EventPipelineStage? stage = pipeline.Stages[i];
-            if (stage?.Kind == EventPipelineStageKind.Filter &&
-                ReferencesProjectedFields(stage.Filter))
+            EventPipelineStage stage = normalized.Stages[i];
+            if (i < projectionIndex && stage.Kind == EventPipelineStageKind.Filter)
             {
-                return true;
+                FilterExpression? dispatchFilter = EventPipelineDispatchFilter.Prune(stage.Filter);
+                if (dispatchFilter is null)
+                    continue;
+
+                stage = stage with { Filter = dispatchFilter };
             }
+
+            stages.Add(stage);
         }
 
-        return false;
-    }
-
-    private static bool ReferencesProjectedFields(FilterExpression? expression)
-    {
-        if (expression is null)
-            return false;
-        if (ProjectedEventPaths.TrySplit(expression.Field, out _, out _))
-            return true;
-        if (expression.Children is null)
-            return false;
-
-        for (int i = 0; i < expression.Children.Length; i++)
-        {
-            if (ReferencesProjectedFields(expression.Children[i]))
-                return true;
-        }
-
-        return false;
+        return normalized with { Stages = stages.ToArray() };
     }
 
     private static CompiledEventPipeline<TContext> CompileUncached<TContext>(
@@ -160,23 +154,34 @@ public static class EventPipelineCompiler
         EventPipelineExpression pipeline,
         Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> compileInclude,
         IncludeCompilerKey includeCompilerKey,
+        int schemaVersion,
         EventPipelineCompilerOptions options,
         Func<string, Exception>? errorFactory)
     {
         var stages = new List<PipelineStage<TContext>>();
-        bool projected = subjectType == typeof(ProjectedEvent);
+        bool projectedSource = subjectType == typeof(ProjectedEvent);
+        bool priorProjection = false;
         for (int i = 0; i < pipeline.Stages.Length; i++)
         {
             EventPipelineStage stage = pipeline.Stages[i];
+            bool projected = projectedSource || priorProjection;
             if (stage.Kind == EventPipelineStageKind.Filter)
                 stages.Add(CompileFilterStage<TContext>(subjectType, projected, stage.Filter, options, errorFactory));
             else
-                stages.Add(CompileProjectionStage(subjectType, projected, stage.Projection, compileInclude, options, errorFactory));
-            projected |= stage.Kind == EventPipelineStageKind.Projection;
+                stages.Add(CompileProjectionStage(
+                    subjectType,
+                    projected,
+                    priorProjection,
+                    stage.Projection,
+                    compileInclude,
+                    options,
+                    errorFactory));
+            priorProjection |= stage.Kind == EventPipelineStageKind.Projection;
         }
 
         return new CompiledEventPipeline<TContext>(
             "subject:" + SubjectKey(subjectType) + "|" +
+            "schema:" + schemaVersion.ToString(CultureInfo.InvariantCulture) + "|" +
             EventPipelineExpressionKey.FromWithParameterValues(pipeline) + "|include:" + includeCompilerKey,
             SourceFilter(pipeline),
             stages);
@@ -209,6 +214,7 @@ public static class EventPipelineCompiler
     private static PipelineStage<TContext> CompileProjectionStage<TContext>(
         Type sourceType,
         bool projected,
+        bool priorProjection,
         EventProjectionExpression projection,
         Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> compileInclude,
         EventPipelineCompilerOptions options,
@@ -222,11 +228,13 @@ public static class EventPipelineCompiler
 
         ValidateProjectionShape(projection, errorFactory);
         FilterSchema schema = ProjectedEventFilterSchema.ForProjection(projection);
+        Func<FilterSchema, EventProjectionInclude, CompiledProjection<TContext>.IncludeProjector> includeCompiler =
+            priorProjection ? RejectProjectedInclude<TContext> : compileInclude;
         return new PipelineProjectionStage<TContext>(
             ProjectionCompiler.CompileWithSchema(
                 typeof(ProjectedEvent),
                 projection,
-                RejectProjectedInclude<TContext>,
+                includeCompiler,
                 options.ProjectionOptions,
                 errorFactory,
                 _ => schema,

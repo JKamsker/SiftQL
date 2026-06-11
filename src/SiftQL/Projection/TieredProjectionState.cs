@@ -22,7 +22,9 @@ internal sealed class TieredProjectionState<TContext>
     private long _materializations;
     private long _payloadWrites;
     private int _compilationStatus;
-    private int _failedProviderVersion;
+    private int _failedProviderGlobalVersion;
+    private int _failedProviderScopeVersion;
+    private int _failedProviderScopeIdentity;
     private long _failedTimestamp;
 
     public TieredProjectionState(
@@ -79,7 +81,8 @@ internal sealed class TieredProjectionState<TContext>
 
     private void CompileAndPromote()
     {
-        int providerVersion = PrecompiledTieredProviderRegistry.GlobalVersion;
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion =
+            PrecompiledTieredProviderRegistry.ProviderViewVersion;
         try
         {
             Func<object, ProjectedEventField[]>? compiled = _compileProjectFields();
@@ -98,9 +101,11 @@ internal sealed class TieredProjectionState<TContext>
         }
     }
 
-    private void MarkFailed(int providerVersion)
+    private void MarkFailed((int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion)
     {
-        Volatile.Write(ref _failedProviderVersion, providerVersion);
+        Volatile.Write(ref _failedProviderGlobalVersion, providerVersion.GlobalVersion);
+        Volatile.Write(ref _failedProviderScopeVersion, providerVersion.ScopeVersion);
+        Volatile.Write(ref _failedProviderScopeIdentity, providerVersion.ScopeIdentity);
         Volatile.Write(ref _failedTimestamp, Stopwatch.GetTimestamp());
         Volatile.Write(ref _compilationStatus, Failed);
     }
@@ -113,14 +118,21 @@ internal sealed class TieredProjectionState<TContext>
         if (status != Failed)
             return true;
 
-        int failedProviderVersion = Volatile.Read(ref _failedProviderVersion);
-        bool providerChanged = PrecompiledTieredProviderRegistry.GlobalVersion != failedProviderVersion;
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion =
+            PrecompiledTieredProviderRegistry.ProviderViewVersion;
+        bool providerChanged = !FailedProviderVersionMatches(providerVersion);
         bool retryElapsed = Stopwatch.GetElapsedTime(Volatile.Read(ref _failedTimestamp)) >= s_failedRetryDelay;
         if (!providerChanged && !retryElapsed)
             return false;
 
         return Interlocked.CompareExchange(ref _compilationStatus, NotQueued, Failed) is Failed or NotQueued;
     }
+
+    private bool FailedProviderVersionMatches(
+        (int GlobalVersion, int ScopeVersion, int ScopeIdentity) providerVersion) =>
+        Volatile.Read(ref _failedProviderGlobalVersion) == providerVersion.GlobalVersion &&
+        Volatile.Read(ref _failedProviderScopeVersion) == providerVersion.ScopeVersion &&
+        Volatile.Read(ref _failedProviderScopeIdentity) == providerVersion.ScopeIdentity;
 
     public TieredProjectionSnapshot Snapshot =>
         CreateSnapshot();

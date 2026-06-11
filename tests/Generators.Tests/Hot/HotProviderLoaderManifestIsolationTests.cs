@@ -115,6 +115,61 @@ public sealed class HotProviderLoaderManifestIsolationTests
     }
 
     [Fact]
+    public void ManifestScopedProviderDoesNotServeEntriesOutsideLoadedManifest()
+    {
+        using var scope = PrecompiledTieredProviderRegistry.CreateIsolatedScope();
+        const string assemblyName = "Plugin.Hot.ManifestAllowlist";
+        FilterExpression manifestFilter = Filter(nameof(ItemUsedEvent.ItemId), 100);
+        FilterExpression extraFilter = Filter(nameof(ItemUsedEvent.Quantity), 2);
+        string manifestJson = ManifestJson(manifestFilter);
+        string manifestHash = HotManifestSemanticHash.Compute(manifestJson);
+        CSharpCompilation compilation = GeneratorTestCompilation.Create(
+            assemblyName,
+            Source(OverbroadManifestProviderSource(
+                manifestHash,
+                Fingerprint(manifestFilter),
+                Fingerprint(extraFilter))));
+
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            "SiftQLHotManifestAllowlist",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string assemblyPath = Path.Combine(directory, assemblyName + ".dll");
+        string manifestPath = Path.Combine(directory, "hot.json");
+        EmitResult emit = compilation.Emit(assemblyPath);
+        AssertEx.True(emit.Success, "manifest allowlist provider emitted: " + string.Join(" | ", emit.Diagnostics));
+        File.WriteAllText(manifestPath, manifestJson);
+
+        try
+        {
+            using HotTieredProviderLoadResult result = HotTieredProviderLoader.TryLoad(new()
+            {
+                AssemblyPath = assemblyPath,
+                ManifestPath = manifestPath,
+                RequireExactRuntimeVersion = false,
+            });
+
+            AssertEx.True(result.Loaded, "manifest allowlist provider loaded: " + result.Message);
+            CompiledKernel manifest = FilterCompiler.Compile(
+                typeof(ItemUsedEvent),
+                manifestFilter,
+                FilterCompilerOptions.Tiered);
+            CompiledKernel extra = FilterCompiler.Compile(
+                typeof(ItemUsedEvent),
+                extraFilter,
+                FilterCompilerOptions.Tiered);
+
+            AssertEx.True(!manifest.IsTiered, "manifest-listed filter used hot provider");
+            AssertEx.True(extra.IsTiered, "filter outside manifest stayed on tiered fallback");
+        }
+        finally
+        {
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    [Fact]
     public void GeneratedRegistrationChecksManifestBeforeProviderConstruction()
     {
         const string assemblyName = "Plugin.Hot.ManifestIsolation.Source";
@@ -207,6 +262,63 @@ public sealed class HotProviderLoaderManifestIsolationTests
             {
                 if (string.Equals(subjectType.FullName, "SiftQL.Generators.Tests.ItemUsedEvent", StringComparison.Ordinal) &&
                     string.Equals(key, acceptedFingerprint, StringComparison.Ordinal))
+                {
+                    predicate = static _ => true;
+                    return true;
+                }
+
+                predicate = null;
+                return false;
+            }
+
+            public bool TryGetProjection(
+                Type subjectType,
+                string key,
+                out Func<object, ProjectedEventField[]>? projectFields)
+            {
+                _ = subjectType;
+                _ = key;
+                projectFields = null;
+                return false;
+            }
+        }
+        """;
+
+    private static string OverbroadManifestProviderSource(
+        string manifestHash,
+        string manifestFingerprint,
+        string extraFingerprint) =>
+        $$"""
+        using System;
+        using System.Runtime.CompilerServices;
+        using SiftQL.Hot;
+        using SiftQL.Projected;
+
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotManifestHash", "{{manifestHash}}")]
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotManifestSchema", "siftql.hot.v1")]
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotFilterEngine", "tiered-v1")]
+        [assembly: System.Reflection.AssemblyMetadata("SiftQLHotGenerator", "hot-sourcegen-v1")]
+
+        namespace Plugin.Hot;
+
+        internal static class Registration
+        {
+            [ModuleInitializer]
+            internal static void Register()
+            {
+                HotProviderRegistrationContext.RegisterFactory(
+                    static () => new Provider(),
+                    "{{manifestHash}}");
+            }
+        }
+
+        internal sealed class Provider : IPrecompiledTieredProvider
+        {
+            public bool TryGetFilter(Type subjectType, string key, out Func<object, bool>? predicate)
+            {
+                if (string.Equals(subjectType.FullName, "SiftQL.Generators.Tests.ItemUsedEvent", StringComparison.Ordinal) &&
+                    (string.Equals(key, "{{manifestFingerprint}}", StringComparison.Ordinal) ||
+                        string.Equals(key, "{{extraFingerprint}}", StringComparison.Ordinal)))
                 {
                     predicate = static _ => true;
                     return true;

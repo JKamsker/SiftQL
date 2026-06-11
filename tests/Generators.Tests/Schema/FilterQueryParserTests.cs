@@ -93,6 +93,23 @@ public sealed class FilterQueryParserTests
     }
 
     [Fact]
+    public void RoundTripsIntegralDecimalKindThroughFormat()
+    {
+        var decimalOne = new FilterValue { Kind = FilterValueKind.Decimal, Decimal = 1m };
+        FilterExpression filter = FilterExpression.Compare(
+            "price",
+            FilterOperator.Equal,
+            decimalOne);
+
+        FilterExpression reparsed = FilterQuery.Parse(FilterQuery.Format(filter));
+
+        Assert.Equal(FilterValueKind.Decimal, reparsed.Value!.Kind);
+        Assert.Equal(
+            FilterExpression.ContentSignature(filter),
+            FilterExpression.ContentSignature(reparsed));
+    }
+
+    [Fact]
     public void ThrowsOnIncompleteInput()
     {
         Assert.Throws<FilterQueryException>(() => FilterQuery.Parse("region =="));

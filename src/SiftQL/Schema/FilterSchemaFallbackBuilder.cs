@@ -28,6 +28,7 @@ internal static class FilterSchemaFallbackBuilder
             parameter,
             depth: 0,
             isValueObject);
+        AddSubtypeProjectedFields(fields, string.Empty, subjectType, typedSubject, parameter, isValueObject);
         return new FilterSchema(subjectType, fields);
     }
 
@@ -41,6 +42,18 @@ internal static class FilterSchemaFallbackBuilder
         var typedSubject = Expression.Convert(parameter, subjectType);
         foreach (FilterField field in generatedFields)
         {
+            if (field.Kind == FilterFieldKind.Array && field.IsCollectionDerived)
+            {
+                FilterSchemaGeneratedCollectionFieldBuilder.AddRegisteredFields(
+                    fields,
+                    field.Name,
+                    field.Getter,
+                    field.ValueType,
+                    Depth(field.Name),
+                    isValueObject);
+                continue;
+            }
+
             if (field.Kind != FilterFieldKind.Object ||
                 field.Access?.PropertyPath is not { } path)
             {
@@ -54,6 +67,9 @@ internal static class FilterSchemaFallbackBuilder
                 continue;
             }
 
+            if (!ExpressionMatchesFieldType(ownerExpression, field.ValueType))
+                ownerExpression = GeneratedFieldAccess(field, parameter);
+
             // Guarded access lifts struct owners to Nullable<T>; unwrap so
             // the owner's properties stay addressable during expansion.
             ownerExpression = UnwrapNullableValue(ownerExpression);
@@ -66,6 +82,14 @@ internal static class FilterSchemaFallbackBuilder
                 parameter,
                 Depth(field.Name),
                 isValueObject);
+            AddSubtypeProjectedFields(
+                fields,
+                field.Name,
+                field.ValueType,
+                ownerExpression,
+                parameter,
+                isValueObject,
+                Depth(field.Name));
         }
     }
 
@@ -102,6 +126,22 @@ internal static class FilterSchemaFallbackBuilder
         return null;
     }
 
+    private static bool ExpressionMatchesFieldType(Expression expression, Type fieldType)
+    {
+        Type expressionType = Nullable.GetUnderlyingType(expression.Type) ?? expression.Type;
+        Type targetType = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
+        return targetType.IsAssignableFrom(expressionType);
+    }
+
+    private static Expression GeneratedFieldAccess(FilterField field, ParameterExpression parameter)
+    {
+        Expression access = Expression.Invoke(Expression.Constant(field.Getter), parameter);
+        Type targetType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        return targetType.IsValueType
+            ? Expression.Convert(access, targetType)
+            : Expression.TypeAs(access, targetType);
+    }
+
     private static void AddProperties(
         List<FilterField> fields,
         string prefix,
@@ -127,9 +167,7 @@ internal static class FilterSchemaFallbackBuilder
                 continue;
 
             Type propertyType = property.PropertyType;
-            Expression propertyExpression = Expression.Property(
-                ConvertToDeclaringType(ownerExpression, property.DeclaringType),
-                property);
+            Expression propertyExpression = GuardedPropertyAccess(ownerExpression, property);
             Type scalarType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
 
             if (IsScalar(scalarType))
@@ -160,6 +198,7 @@ internal static class FilterSchemaFallbackBuilder
             if (FilterSchemaCollectionFieldBuilder.TryAddObjectCollectionFields(
                     fields,
                     name,
+                    property,
                     propertyType,
                     depth,
                     isValueObject))
@@ -189,7 +228,7 @@ internal static class FilterSchemaFallbackBuilder
                         parameter,
                         depth + 1,
                         isValueObject);
-                    AddSubtypeProjectedFields(fields, name, scalarType, propertyExpression, parameter);
+                    AddSubtypeProjectedFields(fields, name, scalarType, propertyExpression, parameter, isValueObject);
                 }
             }
         }
@@ -206,16 +245,22 @@ internal static class FilterSchemaFallbackBuilder
         string prefix,
         Type baseType,
         Expression ownerExpression,
-        ParameterExpression parameter)
+        ParameterExpression parameter,
+        Func<Type, bool> isValueObject,
+        int depth = 0)
     {
+        if (depth > 3)
+            return;
+
         foreach (Type subtype in FilterSchema.RegisteredValueObjectSubtypes(baseType))
         {
-            string subtypePrefix = prefix + "." + SubtypeProjection.Segment(subtype);
+            string segment = SubtypeProjection.Segment(subtype);
+            string subtypePrefix = string.IsNullOrEmpty(prefix) ? segment : prefix + "." + segment;
             foreach (PropertyInfo property in EnumeratePublicProperties(subtype))
             {
                 if (property.GetMethod is null ||
                     property.GetMethod.GetParameters().Length != 0 ||
-                    FindProperty(baseType, property.Name) is not null)
+                    IsReachableFromBase(baseType, property))
                 {
                     continue;
                 }
@@ -235,9 +280,51 @@ internal static class FilterSchemaFallbackBuilder
 
                 Type? elementType = GetScalarElementType(propertyType);
                 if (elementType is not null)
+                {
                     fields.Add(BuildSubtypeField(name, elementType, FilterFieldKind.Array, access, parameter));
+                    continue;
+                }
+
+                if (isValueObject(scalarType))
+                {
+                    fields.Add(BuildSubtypeField(name, scalarType, FilterFieldKind.Object, access, parameter));
+                    if (Nullable.GetUnderlyingType(propertyType) is null)
+                    {
+                        AddProperties(
+                            fields,
+                            name,
+                            scalarType,
+                            access,
+                            access,
+                            parameter,
+                            Depth(name),
+                            isValueObject);
+                        AddSubtypeProjectedFields(
+                            fields,
+                            name,
+                            scalarType,
+                            access,
+                            parameter,
+                            isValueObject,
+                            Depth(name));
+                    }
+                }
             }
         }
+    }
+
+    private static bool IsReachableFromBase(Type baseType, PropertyInfo property)
+    {
+        if (property.DeclaringType is null ||
+            property.DeclaringType.IsAssignableFrom(baseType))
+        {
+            return true;
+        }
+
+        MethodInfo? baseDefinition = property.GetMethod?.GetBaseDefinition();
+        return baseDefinition?.DeclaringType is { } declaringType &&
+            declaringType != property.DeclaringType &&
+            declaringType.IsAssignableFrom(baseType);
     }
 
     // Null-safe `(owner as subtype)?.property`: when the runtime value is not the
@@ -258,6 +345,27 @@ internal static class FilterSchemaFallbackBuilder
                 Expression.NotEqual(casted, Expression.Constant(null, subtype)),
                 value,
                 Expression.Default(resultType)));
+    }
+
+    private static Expression GuardedPropertyAccess(Expression owner, PropertyInfo property)
+    {
+        Expression convertedOwner = ConvertToDeclaringType(owner, property.DeclaringType);
+        if (!CanBeNull(convertedOwner.Type))
+            return Expression.Property(convertedOwner, property);
+
+        ParameterExpression local = Expression.Variable(convertedOwner.Type, "owner");
+        Expression propertyAccess = Expression.Property(local, property);
+        Type resultType = LiftValueType(propertyAccess.Type);
+        Expression value = resultType == propertyAccess.Type
+            ? propertyAccess
+            : Expression.Convert(propertyAccess, resultType);
+        return Expression.Block(
+            [local],
+            Expression.Assign(local, convertedOwner),
+            Expression.Condition(
+                IsNull(local),
+                Expression.Default(resultType),
+                value));
     }
 
     private static FilterField BuildSubtypeField(
@@ -289,6 +397,17 @@ internal static class FilterSchemaFallbackBuilder
         type.IsValueType && Nullable.GetUnderlyingType(type) is null
             ? typeof(Nullable<>).MakeGenericType(type)
             : type;
+
+    private static bool CanBeNull(Type type) =>
+        !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
+
+    private static Expression IsNull(Expression expression)
+    {
+        if (Nullable.GetUnderlyingType(expression.Type) is not null)
+            return Expression.Not(Expression.Property(expression, nameof(Nullable<int>.HasValue)));
+
+        return Expression.Equal(expression, Expression.Constant(null, expression.Type));
+    }
 
     internal static IEnumerable<PropertyInfo> EnumeratePublicProperties(Type ownerType)
     {

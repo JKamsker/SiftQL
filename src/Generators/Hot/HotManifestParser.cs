@@ -169,6 +169,20 @@ internal static partial class HotManifestParser
         element.TryGetProperty(name, out JsonElement value) &&
         value.ValueKind == JsonValueKind.True;
 
+    private static bool TryReadOptionalBoolean(JsonElement element, string name, out bool item)
+    {
+        item = false;
+        if (!element.TryGetProperty(name, out JsonElement value))
+            return true;
+        if (value.ValueKind == JsonValueKind.True)
+        {
+            item = true;
+            return true;
+        }
+
+        return value.ValueKind == JsonValueKind.False;
+    }
+
     private static void Add(
         ImmutableArray<HotProviderDiagnostic>.Builder diagnostics,
         string id,

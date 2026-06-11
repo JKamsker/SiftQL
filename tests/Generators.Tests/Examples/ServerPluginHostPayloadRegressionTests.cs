@@ -31,6 +31,32 @@ public sealed class ServerPluginHostPayloadRegressionTests
     }
 
     [Fact]
+    public void ClientPayloadPreservesTimestampProjectedValues()
+    {
+        var clients = new ClientGateway();
+        clients.Register(1001);
+        var timestamp = new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.FromHours(2));
+
+        bool sent = clients.SendToAvatar(
+            1001,
+            "timestamp",
+            new ProjectedEvent
+            {
+                EventType = "Test",
+                EventName = "Test",
+                Fields =
+                [
+                    new ProjectedEventField("When", ProjectedEventValue.FromScalar(timestamp)),
+                ],
+            });
+
+        Assert.True(sent);
+        ClientMessage message = Assert.Single(clients.Sessions.Single().Messages);
+        Assert.True(message.Payload.TryGetValue("When", out object? when));
+        Assert.Equal(timestamp, when);
+    }
+
+    [Fact]
     public void ClientPayloadKeepsEventMetadataAndRejectsFieldOverwrite()
     {
         var clients = new ClientGateway();
@@ -58,6 +84,28 @@ public sealed class ServerPluginHostPayloadRegressionTests
         ClientMessage message = Assert.Single(clients.Sessions.Single().Messages);
         Assert.Equal("Game.Events.ItemUsedEvent", message.Payload[nameof(ProjectedEvent.EventType)]);
         Assert.Equal("ItemUsedEvent", message.Payload[nameof(ProjectedEvent.EventName)]);
+    }
+
+    [Fact]
+    public void ClientPayloadKeepsProjectedFieldWhenContextNameCollides()
+    {
+        var clients = new ClientGateway();
+        clients.Register(1001);
+
+        bool sent = clients.SendToAvatar(
+            1001,
+            "collision",
+            new ProjectedEvent
+            {
+                EventType = "Test",
+                EventName = "Test",
+                Fields = [new ProjectedEventField("Item", ProjectedEventValue.FromScalar("field-item"))],
+                Context = [new ProjectedEventField("Item", ProjectedEventValue.FromScalar("context-item"))],
+            });
+
+        Assert.True(sent);
+        ClientMessage message = Assert.Single(clients.Sessions.Single().Messages);
+        Assert.Equal("field-item", message.Payload["Item"]);
     }
 
     [Fact]

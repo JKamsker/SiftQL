@@ -139,4 +139,26 @@ public sealed class RuntimeHotProviderBatchSinkTests
         Assert.Single(batch.Entries);
         Assert.Equal("filter", batch.Entries[0].Kind);
     }
+
+    [Fact]
+    public void BatchSinkRejectsNullRecordArguments()
+    {
+        var queue = new RuntimeHotProviderBatchTestSupport.RecordingBatchQueue();
+        using var sink = new RuntimeHotProviderBatchSink(
+            queue,
+            new RuntimeHotProviderBatchOptions
+            {
+                MinimumEntries = 1,
+                MinimumInterval = TimeSpan.Zero,
+            });
+
+        Assert.Throws<ArgumentNullException>(() =>
+            sink.RecordHotFilter(null!, RuntimeHotProviderBatchTestSupport.Filter(), 1, 0));
+        Assert.Throws<ArgumentNullException>(() =>
+            sink.RecordHotFilter(typeof(ItemUsedEvent), null!, 1, 0));
+        Assert.Throws<ArgumentNullException>(() =>
+            sink.RecordHotProjection(null!, RuntimeHotProviderBatchTestSupport.Projection(), 1, 0));
+        Assert.Throws<ArgumentNullException>(() =>
+            sink.RecordHotProjection(typeof(ItemUsedEvent), null!, 1, 0));
+    }
 }

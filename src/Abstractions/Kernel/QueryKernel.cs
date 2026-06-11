@@ -22,9 +22,19 @@ public sealed record QueryKernel<TSubject>
     private FilterExpression _filter = FilterExpression.Any;
     private EventProjectionExpression _projection = EventProjectionExpression.Default;
     private EventPipelineExpression _pipeline = EventPipelineExpression.Default;
+    private bool _copied;
 
     public QueryKernel()
     {
+    }
+
+    private QueryKernel(QueryKernel<TSubject> original)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+        _filter = KernelExpressionSnapshot.Clone(original._filter);
+        _projection = KernelExpressionSnapshot.Clone(original._projection);
+        _pipeline = KernelExpressionSnapshot.Clone(original._pipeline);
+        _copied = true;
     }
 
     public QueryKernel(FilterExpression filter)
@@ -54,6 +64,7 @@ public sealed record QueryKernel<TSubject>
         {
             _filter = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
             _pipeline = EventPipelineExpression.Default;
+            _copied = false;
         }
     }
 
@@ -64,6 +75,7 @@ public sealed record QueryKernel<TSubject>
         {
             _projection = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
             _pipeline = EventPipelineExpression.Default;
+            _copied = false;
         }
     }
 
@@ -74,12 +86,25 @@ public sealed record QueryKernel<TSubject>
             : _pipeline);
         init
         {
-            _pipeline = KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
-            if (_pipeline.IsDefault)
-                return;
+            EventPipelineExpression pipeline =
+                KernelExpressionSnapshot.Clone(value ?? throw new ArgumentNullException(nameof(value)));
+            if (pipeline.IsDefault)
+            {
+                if (!_pipeline.IsDefault || _copied)
+                {
+                    _filter = FilterExpression.Any;
+                    _projection = EventProjectionExpression.Default;
+                }
 
+                _pipeline = pipeline;
+                _copied = false;
+                return;
+            }
+
+            _pipeline = pipeline;
             _filter = QueryKernelPipelineState.SourceFilter(_pipeline);
             _projection = QueryKernelPipelineState.LastProjectionOrDefault(_pipeline);
+            _copied = false;
         }
     }
 

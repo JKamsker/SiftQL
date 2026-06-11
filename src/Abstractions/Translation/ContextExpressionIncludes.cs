@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
@@ -16,32 +17,41 @@ internal sealed class ContextExpressionIncludes
     private readonly List<ContextProjectionBinding> _bindings = [];
     private readonly Func<string> _nextParameterKey;
     private int _parameterIndex;
+    private int _resultIndex;
 
     public ContextExpressionIncludes(
         ParameterExpression subject,
         ParameterExpression context,
         IReadOnlyList<ContextProjectionBinding> bindings,
-        int parameterOffset)
+        int parameterOffset,
+        int resultOffset = 0,
+        EventPipelineExpression? pipeline = null)
     {
         _subject = subject;
         _context = context;
         _contextDescriptor = ResolveDescriptor(context.Type);
         _parameterIndex = parameterOffset;
+        _resultIndex = resultOffset;
         _nextParameterKey = NextLocalParameterKey;
         LoadBindings(bindings);
+        LoadPipelineIncludes(pipeline);
     }
 
     public ContextExpressionIncludes(
         ParameterExpression subject,
         ParameterExpression context,
         IReadOnlyList<ContextProjectionBinding> bindings,
-        Func<string> nextParameterKey)
+        Func<string> nextParameterKey,
+        int resultOffset = 0,
+        EventPipelineExpression? pipeline = null)
     {
         _subject = subject;
         _context = context;
         _contextDescriptor = ResolveDescriptor(context.Type);
+        _resultIndex = resultOffset;
         _nextParameterKey = nextParameterKey ?? throw new ArgumentNullException(nameof(nextParameterKey));
         LoadBindings(bindings);
+        LoadPipelineIncludes(pipeline);
     }
 
     private void LoadBindings(IReadOnlyList<ContextProjectionBinding> bindings)
@@ -51,6 +61,27 @@ internal sealed class ContextExpressionIncludes
             static item => item.Include,
             StringComparer.Ordinal);
         _bindings.AddRange(bindings);
+        _resultIndex = ContextProjectionGeneratedNames.NextIndex(bindings, _resultIndex);
+    }
+
+    private void LoadPipelineIncludes(EventPipelineExpression? pipeline)
+    {
+        if (pipeline is null)
+            return;
+
+        for (int i = 0; i < pipeline.Stages.Length; i++)
+        {
+            if (pipeline.Stages[i].Kind != EventPipelineStageKind.Projection)
+                continue;
+
+            EventProjectionInclude[] includes = pipeline.Stages[i].Projection.Includes;
+            for (int j = 0; j < includes.Length; j++)
+            {
+                string key = IncludeKey(includes[j].Intrinsic, includes[j].Arguments);
+                if (_known.TryAdd(key, includes[j]))
+                    _bindings.Add(new ContextProjectionBinding(key, includes[j]));
+            }
+        }
     }
 
     public EventProjectionInclude[] NewIncludes => _newIncludes.ToArray();
@@ -180,70 +211,61 @@ internal sealed class ContextExpressionIncludes
     }
 
     private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath)
-    {
-        expression = StripConvert(expression);
-        var names = new Stack<string>();
-        Expression? current = expression;
-        while (current is MemberExpression member)
-        {
-            if (member.Expression is null)
-            {
-                fieldPath = string.Empty;
-                return false;
-            }
-
-            names.Push(member.Member.Name);
-            current = StripConvert(member.Expression);
-        }
-
-        if (current == _subject && names.Count > 0)
-        {
-            fieldPath = string.Join(".", names);
-            return true;
-        }
-
-        fieldPath = string.Empty;
-        return false;
-    }
+        => KernelExpressionTranslator.TryGetFieldPath(expression, _subject, out fieldPath);
 
     private string ContextResultName(string? preferredName) =>
         string.IsNullOrWhiteSpace(preferredName)
-            ? "__ctx" + _bindings.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ? ContextProjectionGeneratedNames.Format(_resultIndex++)
             : preferredName;
 
     private static string IncludeKey(string intrinsic, IReadOnlyList<EventProjectionArgument> arguments)
     {
-        var builder = new StringBuilder(intrinsic);
+        var builder = new StringBuilder();
+        AppendText(builder, intrinsic);
         for (int i = 0; i < arguments.Count; i++)
         {
-            builder.Append('|').Append(arguments[i].Name).Append(':').Append((int)arguments[i].Kind);
+            builder.Append('|');
+            AppendText(builder, arguments[i].Name);
+            builder.Append(':').Append((int)arguments[i].Kind);
             if (arguments[i].Kind == EventProjectionArgumentKind.SourceField)
-                builder.Append(':').Append(arguments[i].SourcePath);
+            {
+                builder.Append(':');
+                AppendText(builder, arguments[i].SourcePath);
+            }
             else
+            {
                 AppendLiteral(builder, arguments[i].Value);
+            }
         }
 
         return builder.ToString();
     }
 
     private static void AppendLiteral(StringBuilder builder, FilterValue value) =>
-        builder
+        AppendText(
+            builder
             .Append(':')
-            .Append((int)value.Kind)
+            .Append(((int)value.Kind).ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.Boolean)
+            .Append(value.Boolean.ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.Integer)
+            .Append(value.Integer.ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.UnsignedInteger)
+            .Append(value.UnsignedInteger.ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(BitConverter.DoubleToInt64Bits(value.Number))
+            .Append(BitConverter.DoubleToInt64Bits(value.Number).ToString(CultureInfo.InvariantCulture))
             .Append(':')
-            .Append(value.Decimal)
+            .Append(value.Decimal.ToString(CultureInfo.InvariantCulture))
+            .Append(':'),
+            value.String)
             .Append(':')
-            .Append(value.String)
+            .Append(value.Guid.ToString("D"))
             .Append(':')
-            .Append(value.Guid);
+            .Append(FilterValueIdentity.TimestampText(value.Timestamp));
+    private static StringBuilder AppendText(StringBuilder builder, string? value) =>
+        builder.Append(value is null
+            ? "-1:"
+            : value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value);
 
     private string NextLocalParameterKey() =>
         "p" + _parameterIndex++;

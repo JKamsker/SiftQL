@@ -7,11 +7,17 @@ internal static class ContextProjectionSelectorTranslator
 {
     public static ContextSelectorTranslation Translate<TSubject, TContext, TProjection>(
         Expression<Func<TSubject, TContext, TProjection>> selector,
+        EventPipelineExpression pipeline,
         IReadOnlyList<ContextProjectionBinding> bindings,
         int parameterOffset)
     {
         ArgumentNullException.ThrowIfNull(selector);
-        var translator = new Translator(selector.Parameters[0], selector.Parameters[1], bindings, parameterOffset);
+        var translator = new Translator(
+            selector.Parameters[0],
+            selector.Parameters[1],
+            pipeline,
+            bindings,
+            parameterOffset);
         translator.TranslateValue(StripConvert(selector.Body), name: null);
         if (translator.Outputs.Count == 0)
             throw new KernelExpressionException("Projection selector must include at least one field.");
@@ -30,12 +36,19 @@ internal static class ContextProjectionSelectorTranslator
         public Translator(
             ParameterExpression subject,
             ParameterExpression context,
+            EventPipelineExpression pipeline,
             IReadOnlyList<ContextProjectionBinding> bindings,
             int parameterOffset)
         {
             _subject = subject;
             _parameterIndex = parameterOffset;
-            Includes = new ContextExpressionIncludes(subject, context, bindings, NextParameterKey);
+            Includes = new ContextExpressionIncludes(
+                subject,
+                context,
+                bindings,
+                NextParameterKey,
+                ContextProjectionGeneratedNames.NextIndex(pipeline),
+                pipeline);
             Constants = new ProjectionSelectorConstantTranslator(subject, context, NextParameterKey);
         }
 
@@ -88,31 +101,7 @@ internal static class ContextProjectionSelectorTranslator
         }
 
         private bool TryGetSubjectFieldPath(Expression expression, out string fieldPath)
-        {
-            expression = StripConvert(expression);
-            var names = new Stack<string>();
-            Expression? current = expression;
-            while (current is MemberExpression member)
-            {
-                if (member.Expression is null)
-                {
-                    fieldPath = string.Empty;
-                    return false;
-                }
-
-                names.Push(member.Member.Name);
-                current = StripConvert(member.Expression);
-            }
-
-            if (current == _subject && names.Count > 0)
-            {
-                fieldPath = string.Join(".", names);
-                return true;
-            }
-
-            fieldPath = string.Empty;
-            return false;
-        }
+            => KernelExpressionTranslator.TryGetFieldPath(expression, _subject, out fieldPath);
 
         private static string RequiredName(string? name, Expression expression) =>
             string.IsNullOrWhiteSpace(name)

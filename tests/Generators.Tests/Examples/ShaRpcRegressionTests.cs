@@ -55,6 +55,25 @@ public sealed class ShaRpcRegressionTests
     }
 
     [Fact]
+    public async Task PublishAsyncWithoutMatchingDispatchDoesNotRequireAttachedClient()
+    {
+        var server = new RemoteServerService(new ServerDataStore(), new ClientMessageSink());
+        EventPipelineExpression pipeline = EventPipelineExpression.Default
+            .AppendFilter(FilterExpression.Compare(
+                nameof(InventoryChangedEvent.Quantity),
+                FilterOperator.Equal,
+                FilterValue.From(99L)))
+            .AppendProjection(EventProjectionExpression.Select(nameof(InventoryChangedEvent.ItemCode)));
+        await server.SubscribeAsync(
+            new SubscriptionRequest("inventory-feed", nameof(InventoryChangedEvent), pipeline),
+            CancellationToken.None);
+
+        await server.PublishAsync(
+            new InventoryChangedEvent(1001, "north-gate", "potion", 3, 10),
+            CancellationToken.None);
+    }
+
+    [Fact]
     public async Task PublishAsyncRunsContextProjectionFilterPipeline()
     {
         var client = new RecordingClient();

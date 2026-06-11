@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
@@ -46,7 +47,7 @@ public sealed class FilterSchemaSourceGenerator : IIncrementalGenerator
 
             string source = FilterSchemaEmitter.Emit(
                 discovered,
-                "GeneratedCurrentFilterSchemaProvider",
+                CurrentProviderName(discovered),
                 registerProvider: true);
             ctx.AddSource("GeneratedCurrentFilterSchemaProvider.g.cs", SourceText.From(source, Encoding.UTF8));
         });
@@ -57,8 +58,9 @@ public sealed class FilterSchemaSourceGenerator : IIncrementalGenerator
             .WithTrackingName("HotManifestParse");
 
         var hotProviders = hotManifests
+            .Collect()
             .Combine(context.CompilationProvider)
-            .Select(static (pair, ct) => HotProviderResolver.Resolve(pair.Right, pair.Left, ct))
+            .SelectMany(static (pair, ct) => ResolveHotProviders(pair.Right, pair.Left, ct))
             .WithTrackingName("HotProviderResolve");
 
         context.RegisterSourceOutput(hotProviders, static (ctx, provider) =>
@@ -72,5 +74,50 @@ public sealed class FilterSchemaSourceGenerator : IIncrementalGenerator
             string source = HotProviderEmitter.Emit(provider);
             ctx.AddSource(provider.HintName, SourceText.From(source, Encoding.UTF8));
         });
+    }
+
+    private static IEnumerable<HotProviderSource> ResolveHotProviders(
+        Compilation compilation,
+        ImmutableArray<HotManifestParseResult> manifests,
+        CancellationToken cancellationToken)
+    {
+        var hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < manifests.Length; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            HotManifestParseResult manifest = manifests[i];
+            if (IsDuplicateValidManifest(manifest, hashes))
+                continue;
+
+            yield return HotProviderResolver.Resolve(compilation, manifest, cancellationToken);
+        }
+    }
+
+    private static bool IsDuplicateValidManifest(
+        HotManifestParseResult manifest,
+        HashSet<string> hashes) =>
+        manifest.Diagnostics.Count == 0 &&
+        !string.IsNullOrEmpty(manifest.ManifestHash) &&
+        !hashes.Add(manifest.ManifestHash);
+
+    private static string CurrentProviderName(EquatableArray<GeneratedSchema> schemas)
+    {
+        var identity = new StringBuilder();
+        for (int i = 0; i < schemas.Count; i++)
+            identity.Append(schemas[i].TypeName).Append('|');
+
+        return "GeneratedCurrentFilterSchemaProvider_" + StableHash(identity.ToString());
+    }
+
+    private static string StableHash(string text)
+    {
+        uint hash = 2166136261;
+        foreach (char ch in text)
+        {
+            hash ^= ch;
+            hash *= 16777619;
+        }
+
+        return hash.ToString("X8");
     }
 }
