@@ -44,10 +44,10 @@ internal static class FilterSchemaFallbackBuilder
         {
             if (field.Kind == FilterFieldKind.Array && field.IsCollectionDerived)
             {
-                FilterSchemaCollectionFieldBuilder.AddRegisteredFieldsUnderGeneratedCollection(
+                FilterSchemaGeneratedCollectionFieldBuilder.AddRegisteredFields(
                     fields,
                     field.Name,
-                    subjectType,
+                    field.Getter,
                     field.ValueType,
                     Depth(field.Name),
                     isValueObject);
