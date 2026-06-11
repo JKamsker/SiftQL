@@ -176,7 +176,11 @@ public static class HotProviderRegistrationContext
                 if (_disposed || _committed)
                     return false;
 
-                IPrecompiledTieredProvider item = provider ?? providerFactory!();
+                IPrecompiledTieredProvider item = provider ??
+                    providerFactory!() ??
+                    throw new ArgumentNullException(
+                        nameof(providerFactory),
+                        "providerFactory returned a null IPrecompiledTieredProvider.");
                 _committed = true;
                 owner.AddCommitted(item);
                 return true;
