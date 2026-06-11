@@ -45,15 +45,19 @@ public sealed record QueryKernel<TSubject, TContext>
             Pipeline,
             _bindings,
             KernelParameterKeyRewriter.ParameterOffset(Pipeline));
-        RequiredSourceProjection sourceProjection = ContextProjectionPipeline.HasProjection(Pipeline)
-            ? RequiredSourceFields(Pipeline, translated.SourceFields)
+        SourceFilterSplit split = SplitSourceConjuncts(translated.Filter);
+        EventPipelineExpression basePipeline = split.SourceFilter.Kind == FilterExpressionKind.Any
+            ? Pipeline
+            : Pipeline.AppendSourceFilter(ToSourceFilter(split.SourceFilter));
+        RequiredSourceProjection sourceProjection = ContextProjectionPipeline.HasProjection(basePipeline)
+            ? RequiredSourceFields(basePipeline, translated.SourceFields)
             : RequiredInitialSourceFields(translated.SourceFields);
         EventPipelineExpression pipeline = ContextProjectionPipeline
             .AddIncludes(
-                Pipeline,
+                basePipeline,
                 translated.NewIncludes,
                 sourceProjection.Fields)
-            .AppendFilter(RewriteProjectedSourceFields(translated.Filter, sourceProjection.ProjectedPaths));
+            .AppendFilter(RewriteProjectedSourceFields(split.ContextFilter, sourceProjection.ProjectedPaths));
         return new QueryKernel<TSubject, TContext>(
             Kernel with { Pipeline = pipeline },
             translated.Bindings);
@@ -245,6 +249,35 @@ public sealed record QueryKernel<TSubject, TContext>
             Children = expression.Children.Select(ToSourceFilter).ToArray(),
         };
 
+    private static SourceFilterSplit SplitSourceConjuncts(FilterExpression expression)
+    {
+        if (expression.Kind != FilterExpressionKind.And)
+            return new(FilterExpression.Any, expression);
+
+        var source = new List<FilterExpression>();
+        var context = new List<FilterExpression>();
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            FilterExpression child = expression.Children[i];
+            if (ReferencesContextPath(child))
+                context.Add(child);
+            else
+                source.Add(child);
+        }
+
+        return source.Count == 0
+            ? new(FilterExpression.Any, expression)
+            : new(CombineAnd(source), CombineAnd(context));
+    }
+
+    private static FilterExpression CombineAnd(IReadOnlyList<FilterExpression> filters) =>
+        filters.Count switch
+        {
+            0 => FilterExpression.Any,
+            1 => filters[0],
+            _ => FilterExpression.And(filters.ToArray()),
+        };
+
     private static bool ReferencesContextPath(FilterExpression expression)
     {
         if (ProjectedEventPaths.TrySplit(expression.Field, out bool context, out _) && context)
@@ -266,6 +299,10 @@ public sealed record QueryKernel<TSubject, TContext>
         public static RequiredSourceProjection Empty { get; } =
             new([], new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
+
+    private sealed record SourceFilterSplit(
+        FilterExpression SourceFilter,
+        FilterExpression ContextFilter);
 }
 
 public static class QueryKernelContextExtensions
