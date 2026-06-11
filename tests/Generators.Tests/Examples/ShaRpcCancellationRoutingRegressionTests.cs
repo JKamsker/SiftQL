@@ -70,6 +70,26 @@ public sealed class ShaRpcCancellationRoutingRegressionTests
         await client.StartAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task ClientStartAsyncConcurrentCallsShareStartupAttempt()
+    {
+        var server = new BlockingStartupServer();
+        var client = new RemoteClientService();
+        client.Attach(server);
+
+        Task first = client.StartAsync(CancellationToken.None);
+        await server.QueryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task second = client.StartAsync(CancellationToken.None);
+
+        server.ReleaseQueries();
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, server.QueryCalls);
+        Assert.Equal(
+            ["inventory-feed", "premium-inventory-feed"],
+            server.SubscriptionIds);
+    }
+
     private static SubscriptionDispatch Dispatch(string subscriptionId) =>
         new(
             subscriptionId,
@@ -117,5 +137,77 @@ public sealed class ShaRpcCancellationRoutingRegressionTests
             ClientDelivery delivery,
             CancellationToken cancellationToken = default) =>
             inner.SendToClientAsync(delivery, cancellationToken);
+    }
+
+    private sealed class BlockingStartupServer : IRemoteServer
+    {
+        private readonly TaskCompletionSource _releaseQueries = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly object _gate = new();
+        private readonly List<string> _subscriptionIds = [];
+        private readonly HashSet<string> _subscriptionIdsSeen = new(StringComparer.Ordinal);
+        private int _queryCalls;
+
+        public TaskCompletionSource QueryStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int QueryCalls => Volatile.Read(ref _queryCalls);
+
+        public string[] SubscriptionIds
+        {
+            get
+            {
+                lock (_gate)
+                    return _subscriptionIds.ToArray();
+            }
+        }
+
+        public Task<ServerHello> HelloAsync(
+            ClientHello hello,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new ServerHello("test", hello.KnownSubjects, OnlineClientCount: 1));
+        }
+
+        public async Task<IReadOnlyList<ProjectedEvent>> QueryAsync(
+            ServerQueryRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            _ = request;
+            Interlocked.Increment(ref _queryCalls);
+            QueryStarted.TrySetResult();
+            await _releaseQueries.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return [];
+        }
+
+        public Task SubscribeAsync(
+            SubscriptionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (!_subscriptionIdsSeen.Add(request.SubscriptionId))
+                    throw new InvalidOperationException(
+                        $"Subscription id '{request.SubscriptionId}' is already registered.");
+
+                _subscriptionIds.Add(request.SubscriptionId);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task SendToClientAsync(
+            ClientDelivery delivery,
+            CancellationToken cancellationToken = default)
+        {
+            _ = delivery;
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
+        public void ReleaseQueries() =>
+            _releaseQueries.TrySetResult();
     }
 }
