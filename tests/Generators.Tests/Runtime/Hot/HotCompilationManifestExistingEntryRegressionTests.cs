@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using SiftQL.Compiler;
 using SiftQL.Expressions;
@@ -77,6 +78,16 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
         HotCompilationManifest manifest = ReadManifest(path);
         HotCompilationManifestEntry entry = Assert.Single(manifest.Entries);
         Assert.Equal(Fingerprint(valid), entry.Fingerprint);
+    }
+
+    [Fact]
+    public void ExistingEntryInspectionTreatsUnreadableDefinitionsAsInvalid()
+    {
+        HotCompilationManifestEntry entry;
+        using (JsonDocument document = JsonDocument.Parse("""{"Kind":4}"""))
+            entry = Entry("disposed-definition", "fingerprint", document.RootElement);
+
+        Assert.False(IsValidExistingEntry(entry));
     }
 
     private static void SeedManifest(
@@ -171,6 +182,14 @@ public sealed class HotCompilationManifestExistingEntryRegressionTests
 
     private static string Fingerprint(FilterExpression expression) =>
         FilterExpressionFingerprint.CreateKey(expression).ToString();
+
+    private static bool IsValidExistingEntry(HotCompilationManifestEntry entry)
+    {
+        MethodInfo method = typeof(HotCompilationManifestWriter).GetMethod(
+            "IsValidExistingEntry",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        return (bool)method.Invoke(null, [entry])!;
+    }
 
     private static HotCompilationManifest ReadManifest(string path) =>
         JsonSerializer.Deserialize<HotCompilationManifest>(File.ReadAllText(path)) ??
