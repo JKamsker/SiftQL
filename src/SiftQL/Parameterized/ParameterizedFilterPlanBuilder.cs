@@ -179,7 +179,7 @@ internal static class ParameterizedFilterPlanBuilder
         Func<string, Exception>? errorFactory)
     {
         FilterField field = RequireField(schema, expression.Field, errorFactory);
-        if (field.Kind != FilterFieldKind.Array)
+        if (field.Kind != FilterFieldKind.Array && field.ValueType != typeof(ProjectedEventValue))
             throw Error(errorFactory, $"Filter field '{field.Name}' is not a collection.");
         FilterValue value = expression.Value ??
             throw Error(errorFactory, $"Filter field '{expression.Field}' is missing a value.");

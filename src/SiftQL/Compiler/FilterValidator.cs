@@ -1,4 +1,5 @@
 using SiftQL.Expressions;
+using SiftQL.Projected;
 using SiftQL.Schema;
 using SiftQL.Values;
 
@@ -230,7 +231,7 @@ public static class FilterValidator
     {
         if (!RequireField(schema, node.Field, path, errors, out FilterField? field))
             return;
-        if (field!.Kind != FilterFieldKind.Array)
+        if (field!.Kind != FilterFieldKind.Array && field.ValueType != typeof(ProjectedEventValue))
         {
             errors.Add(new FilterValidationError(path, $"Filter field '{node.Field}' is not a collection."));
             return;
