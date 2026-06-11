@@ -114,9 +114,21 @@ public static class EventPipelineCompiler
         if (projectionIndex <= 0)
             return normalized;
 
-        var stages = new EventPipelineStage[normalized.Stages.Length - projectionIndex];
-        Array.Copy(normalized.Stages, projectionIndex, stages, 0, stages.Length);
-        return normalized with { Stages = stages };
+        var stages = new List<EventPipelineStage>(normalized.Stages.Length - projectionIndex);
+        for (int i = 0; i < normalized.Stages.Length; i++)
+        {
+            EventPipelineStage stage = normalized.Stages[i];
+            if (i < projectionIndex &&
+                stage.Kind == EventPipelineStageKind.Filter &&
+                !ReferencesProjectedFields(stage.Filter))
+            {
+                continue;
+            }
+
+            stages.Add(stage);
+        }
+
+        return normalized with { Stages = stages.ToArray() };
     }
 
     private static bool ReferencesProjectedFields(EventPipelineExpression? pipeline)
