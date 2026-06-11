@@ -16,6 +16,7 @@ public sealed class InMemoryServerPluginHost
     private readonly Dictionary<Type, List<ISubscription>> _subscriptions = [];
     private readonly SemaphoreSlim _startupGate = new(1, 1);
     private int _completedStartupHandlers;
+    private volatile bool _startupAttempted;
     private volatile bool _started;
     private volatile bool _starting;
     private volatile bool _startupFailed;
@@ -110,6 +111,7 @@ public sealed class InMemoryServerPluginHost
     public async ValueTask StartAsync(CancellationToken cancellationToken = default)
     {
         await _startupGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _startupAttempted = true;
         _starting = true;
         try
         {
@@ -179,7 +181,7 @@ public sealed class InMemoryServerPluginHost
 
     private void ThrowIfStarted()
     {
-        if (_started || _starting || _startupFailed || _completedStartupHandlers != 0)
+        if (_started || _starting || _startupFailed || _startupAttempted || _completedStartupHandlers != 0)
             throw new InvalidOperationException("Plugins cannot be registered after the host has started.");
     }
 
