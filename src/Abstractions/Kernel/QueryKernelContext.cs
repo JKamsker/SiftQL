@@ -52,9 +52,13 @@ public sealed record QueryKernel<TSubject, TContext>
         EventPipelineExpression basePipeline = split.SourceFilter.Kind == FilterExpressionKind.Any
             ? Pipeline
             : Pipeline.AppendSourceFilter(sourceFilter);
+        string[] contextSourceFields = ReferencedSourceFields(
+            Pipeline,
+            split.ContextFilter,
+            translated.SourceFields);
         RequiredSourceProjection sourceProjection = ContextProjectionPipeline.HasProjection(basePipeline)
-            ? RequiredSourceFields(basePipeline, translated.SourceFields)
-            : RequiredInitialSourceFields(translated.SourceFields);
+            ? RequiredSourceFields(basePipeline, contextSourceFields)
+            : RequiredInitialSourceFields(contextSourceFields);
         EventPipelineExpression pipeline = ContextProjectionPipeline
             .AddIncludes(
                 basePipeline,
@@ -167,6 +171,32 @@ public sealed record QueryKernel<TSubject, TContext>
         return required.Length == 0
             ? RequiredSourceProjection.Empty
             : RequiredSourceFields(EventPipelineExpression.Default, required);
+    }
+
+    private static string[] ReferencedSourceFields(
+        EventPipelineExpression pipeline,
+        FilterExpression filter,
+        IReadOnlyList<string> sourceFields)
+        => sourceFields.Count == 0 || filter.Kind == FilterExpressionKind.Any
+            ? []
+            : sourceFields
+                .Where(sourcePath => ReferencesField(
+                    filter,
+                    ContextProjectionPipeline.ProjectedPath(pipeline, sourcePath)))
+                .ToArray();
+
+    private static bool ReferencesField(FilterExpression expression, string field)
+    {
+        if (string.Equals(expression.Field, field, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        for (int i = 0; i < expression.Children.Length; i++)
+        {
+            if (ReferencesField(expression.Children[i], field))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool RequiresInitialProjection(string path) =>
