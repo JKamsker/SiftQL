@@ -179,7 +179,7 @@ public static class FilterQuery
         private static Token ReadIdentifier(string input, ref int i)
         {
             int start = i;
-            while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] is '_' or '.'))
+            while (i < input.Length && (char.IsLetterOrDigit(input[i]) || input[i] is '_' or '.' or ':'))
                 i++;
             return new Token(TokenKind.Identifier, input[start..i], start);
         }
