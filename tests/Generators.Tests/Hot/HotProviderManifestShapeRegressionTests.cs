@@ -42,6 +42,20 @@ public sealed class HotProviderManifestShapeRegressionTests
         Assert.Equal(HotTieredProviderLoadStatus.InvalidAssembly, status);
     }
 
+    [Fact]
+    public void LoaderRejectsNullManifestEntriesAsInvalidManifest()
+    {
+        string manifestJson = ManifestJsonWithNullEntry();
+        string manifestHash = HotManifestSemanticHash.Compute(manifestJson);
+
+        HotTieredProviderLoadStatus status = LoadStatus(
+            "Plugin.Hot.NullEntryShape",
+            manifestJson,
+            ProviderSource(manifestHash, "unused", parameterizedOnly: false));
+
+        Assert.Equal(HotTieredProviderLoadStatus.InvalidManifest, status);
+    }
+
     private static FilterExpression ItemIdFilter(bool parameterized) =>
         FilterExpression.Compare(
             nameof(ItemUsedEvent.ItemId),
@@ -70,6 +84,17 @@ public sealed class HotProviderManifestShapeRegressionTests
         };
         return JsonSerializer.Serialize(manifest);
     }
+
+    private static string ManifestJsonWithNullEntry() =>
+        $$"""
+        {
+          "Schema": "{{HotCompilationManifestCompatibility.Schema}}",
+          "RuntimeVersion": "10.0.0",
+          "FilterEngineVersion": "{{HotCompilationManifestCompatibility.Engine}}",
+          "GeneratorVersion": "{{HotCompilationManifestCompatibility.Generator}}",
+          "Entries": [null]
+        }
+        """;
 
     private static HotTieredProviderLoadStatus LoadStatus(
         string assemblyName,
