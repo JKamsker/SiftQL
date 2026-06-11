@@ -28,6 +28,41 @@ public sealed class ServerPluginHostCancellationRegressionTests
     }
 
     [Fact]
+    public async Task StartAsyncCancellationDoesNotReplayCompletedStartupHandlers()
+    {
+        var host = new InMemoryServerPluginHost(new ClientGateway());
+        using var canceled = new CancellationTokenSource();
+        int completedCalls = 0;
+        bool cancelFirstAttempt = true;
+        host.RegisterStartup(
+            "completed",
+            (_, _) =>
+            {
+                completedCalls++;
+                return ValueTask.CompletedTask;
+            });
+        host.RegisterStartup(
+            "cancel-once",
+            (_, token) =>
+            {
+                if (cancelFirstAttempt)
+                {
+                    cancelFirstAttempt = false;
+                    canceled.Cancel();
+                    token.ThrowIfCancellationRequested();
+                }
+
+                return ValueTask.CompletedTask;
+            });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => host.StartAsync(canceled.Token).AsTask());
+
+        await host.StartAsync();
+
+        Assert.Equal(1, completedCalls);
+    }
+
+    [Fact]
     public async Task PublishAsyncHonorsPreCanceledTokenWithoutSubscriptions()
     {
         var host = new InMemoryServerPluginHost(new ClientGateway());
