@@ -32,4 +32,32 @@ public sealed class ShaRpcSubscriptionRegistrationRegressionTests
             server.SubscribeAsync(duplicate, CancellationToken.None));
         Assert.Contains("inventory-feed", exception.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task SubscribeAsyncAllowsDuplicateIdForSemanticallyIdenticalInactivePayloads()
+    {
+        var server = new RemoteServerService(new ServerDataStore(), new ClientMessageSink());
+        EventPipelineExpression firstPipeline = InventoryQuantityPipeline(FilterValue.From(3L));
+        EventPipelineExpression secondPipeline = InventoryQuantityPipeline(
+            FilterValue.From(3L) with { String = "ignored-inactive-payload" });
+        var request = new SubscriptionRequest(
+            "inventory-feed",
+            nameof(InventoryChangedEvent),
+            firstPipeline);
+        var duplicate = new SubscriptionRequest(
+            "inventory-feed",
+            nameof(InventoryChangedEvent),
+            secondPipeline);
+
+        await server.SubscribeAsync(request, CancellationToken.None);
+        await server.SubscribeAsync(duplicate, CancellationToken.None);
+    }
+
+    private static EventPipelineExpression InventoryQuantityPipeline(FilterValue quantity) =>
+        EventPipelineExpression.Default
+            .AppendFilter(FilterExpression.Compare(
+                nameof(InventoryChangedEvent.Quantity),
+                FilterOperator.Equal,
+                quantity))
+            .AppendProjection(EventProjectionExpression.Select(nameof(InventoryChangedEvent.ItemCode)));
 }
