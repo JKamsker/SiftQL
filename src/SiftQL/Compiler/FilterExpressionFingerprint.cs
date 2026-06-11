@@ -51,16 +51,50 @@ internal sealed class FilterExpressionKey : IEquatable<FilterExpressionKey>
     public static FilterExpressionKey From(FilterExpression expression) =>
         new(
             expression.Kind,
-            expression.Field,
-            expression.Operator,
-            expression.IgnoreCase,
-            FilterValueKey.From(expression.Value),
-            expression.Values.Length == 0
-                ? StructuralKeyArray<FilterValueKey>.Empty
-                : StructuralKeyArray<FilterValueKey>.From(expression.Values, FilterValueKey.From),
-            expression.Children.Length == 0
-                ? StructuralKeyArray<FilterExpressionKey>.Empty
-                : StructuralKeyArray<FilterExpressionKey>.From(expression.Children, From));
+            FieldForKey(expression),
+            OperatorForKey(expression),
+            IgnoreCaseForKey(expression),
+            ValueForKey(expression),
+            ValuesForKey(expression),
+            ChildrenForKey(expression));
+
+    private static string FieldForKey(FilterExpression expression) =>
+        expression.Kind is FilterExpressionKind.Compare or
+            FilterExpressionKind.In or
+            FilterExpressionKind.Exists or
+            FilterExpressionKind.Contains or
+            FilterExpressionKind.Count or
+            FilterExpressionKind.ElemMatch
+            ? expression.Field
+            : string.Empty;
+
+    private static FilterOperator OperatorForKey(FilterExpression expression) =>
+        expression.Kind is FilterExpressionKind.Compare or FilterExpressionKind.Count
+            ? expression.Operator
+            : default;
+
+    private static bool IgnoreCaseForKey(FilterExpression expression) =>
+        expression.Kind == FilterExpressionKind.Compare && expression.IgnoreCase;
+
+    private static FilterValueKey ValueForKey(FilterExpression expression) =>
+        expression.Kind is FilterExpressionKind.Compare or
+            FilterExpressionKind.Contains or
+            FilterExpressionKind.Count
+            ? FilterValueKey.From(expression.Value)
+            : default;
+
+    private static StructuralKeyArray<FilterValueKey> ValuesForKey(FilterExpression expression) =>
+        expression.Kind is FilterExpressionKind.In or FilterExpressionKind.Between
+            ? StructuralKeyArray<FilterValueKey>.From(expression.Values, FilterValueKey.From)
+            : StructuralKeyArray<FilterValueKey>.Empty;
+
+    private static StructuralKeyArray<FilterExpressionKey> ChildrenForKey(FilterExpression expression) =>
+        expression.Kind is FilterExpressionKind.ElemMatch or
+            FilterExpressionKind.And or
+            FilterExpressionKind.Or or
+            FilterExpressionKind.Not
+            ? StructuralKeyArray<FilterExpressionKey>.From(expression.Children, From)
+            : StructuralKeyArray<FilterExpressionKey>.Empty;
 
     public bool Equals(FilterExpressionKey? other) =>
         ReferenceEquals(this, other) ||

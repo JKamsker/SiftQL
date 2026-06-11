@@ -99,8 +99,12 @@ internal readonly record struct ProjectionArgumentKey(
         new(
             argument.Name,
             argument.Kind,
-            ProjectionArgumentValueKey.From(argument.Value),
-            argument.SourcePath);
+            argument.Kind == EventProjectionArgumentKind.Value
+                ? ProjectionArgumentValueKey.From(argument.Value)
+                : default,
+            argument.Kind == EventProjectionArgumentKind.SourceField
+                ? argument.SourcePath
+                : string.Empty);
 }
 
 internal readonly struct ProjectionArgumentValueKey : IEquatable<ProjectionArgumentValueKey>
