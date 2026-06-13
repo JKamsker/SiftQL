@@ -19,7 +19,7 @@ internal static class QueryContextEmitter
         }
 
         source.Append(context.Accessibility);
-        source.Append(" static class ");
+        source.Append(" static partial class ");
         source.Append(CSharpIdentifier.EscapePath(context.HelperName));
         source.AppendLine();
         source.AppendLine("{");

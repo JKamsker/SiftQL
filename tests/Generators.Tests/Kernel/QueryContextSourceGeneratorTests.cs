@@ -17,6 +17,7 @@ public sealed class QueryContextSourceGeneratorTests
         QueryContextGeneratorRun run = RunGenerator(ParseTree(OrderContextSource(includeFactory: false)));
         string source = GeneratedSource(run, OrderHint);
 
+        AssertEx.Contains("public static partial class OrderQueryContextSiftQlExtensions", source, "generated helper is partial");
         AssertEx.Contains("public const string ContextId = \"orders.server\";", source, "context id emitted");
         AssertEx.Contains("public const string CustomerMethodId = \"customer\";", source, "method id emitted");
         AssertEx.Contains("WithOrderQueryContext<TSubject>", source, "typed WithContext helper emitted");

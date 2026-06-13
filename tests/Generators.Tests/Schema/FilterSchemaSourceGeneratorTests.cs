@@ -31,6 +31,7 @@ public sealed class FilterSchemaSourceGeneratorTests
         AssertEx.Equal(1, run.Result.Results[0].GeneratedSources.Length, "generated source count");
 
         string source = GeneratedSource(run, BuiltInProviderHint);
+        AssertEx.Contains("internal static partial class GeneratedFilterSchemaProvider", source, "generated provider is partial");
         AssertEx.Contains("typeof(global::SiftQL.WorldActionEvent)", source, "world event schema emitted");
         AssertEx.Contains("\"Actor.ObjectId\"", source, "nested value object field emitted");
         AssertEx.Contains("new FilterScalarAccessor(FilterScalarKind.Number", source, "typed number accessor emitted");
@@ -57,6 +58,7 @@ public sealed class FilterSchemaSourceGeneratorTests
             PluginEventTree());
 
         string source = GeneratedSource(run, CurrentProviderHint);
+        AssertEx.Contains("internal static partial class GeneratedCurrentFilterSchemaProvider", source, "generated provider is partial");
         AssertEx.Contains("[global::System.Runtime.CompilerServices.ModuleInitializer]", source, "provider registration emitted");
         AssertEx.Contains("GeneratedFilterSchemaRegistry.Register", source, "runtime registration emitted");
         AssertEx.Contains("typeof(global::Plugin.Events.PluginOwnedEvent)", source, "plugin event schema emitted");

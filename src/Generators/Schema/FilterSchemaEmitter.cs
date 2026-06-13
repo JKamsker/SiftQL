@@ -17,7 +17,7 @@ internal static class FilterSchemaEmitter
         source.AppendLine();
         source.AppendLine("namespace SiftQL;");
         source.AppendLine();
-        source.Append("internal static class ");
+        source.Append("internal static partial class ");
         source.AppendLine(providerName);
         source.AppendLine("{");
         if (registerProvider && schemas.Count > 0)
