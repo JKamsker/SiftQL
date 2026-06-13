@@ -25,7 +25,7 @@ internal static class HotProviderEmitter
         source.AppendLine();
         source.AppendLine("namespace SiftQL.Hot.Generated;");
         source.AppendLine();
-        source.Append("internal sealed class ").Append(provider.ProviderName).AppendLine(" : IPrecompiledTieredProvider");
+        source.Append("internal sealed partial class ").Append(provider.ProviderName).AppendLine(" : IPrecompiledTieredProvider");
         source.AppendLine("{");
         HotProviderLookupEmitter.Emit(source, provider);
         for (int i = 0; i < provider.Entries.Count; i++)

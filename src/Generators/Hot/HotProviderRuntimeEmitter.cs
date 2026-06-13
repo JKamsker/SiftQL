@@ -25,7 +25,7 @@ internal static class HotProviderRuntimeEmitter
 
     public static void EmitRegistration(StringBuilder source, string providerName, string manifestHash)
     {
-        source.AppendLine("internal static class " + providerName + "Registration");
+        source.AppendLine("internal static partial class " + providerName + "Registration");
         source.AppendLine("{");
         source.AppendLine("    [ModuleInitializer]");
         source.Append("    internal static void Register() => HotProviderRegistrationContext.RegisterFactory(static () => new ");

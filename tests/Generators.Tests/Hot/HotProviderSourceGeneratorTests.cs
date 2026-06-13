@@ -43,6 +43,8 @@ public sealed class HotProviderSourceGeneratorTests
             .SourceText
             .ToString();
         AssertEx.Contains("IPrecompiledTieredProvider", source, "hot provider contract emitted");
+        AssertEx.Contains("internal sealed partial class GeneratedHotTieredProvider_", source, "hot provider is partial");
+        AssertEx.Contains("internal static partial class GeneratedHotTieredProvider_", source, "hot provider registration is partial");
         AssertEx.Contains("[ModuleInitializer]", source, "hot provider auto-registration emitted");
         AssertEx.Contains("switch (fingerprint)", source, "hot provider lookup uses hashed string dispatch");
         AssertNoCompilationErrors(run, "hot provider");
