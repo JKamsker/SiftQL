@@ -226,17 +226,17 @@ public sealed class ProjectionPayloadWriterRegressionTests
         Assert.Equal("included", roundTripped.ContextValue("newContext").String);
     }
 
-    private sealed class ThrowingProjectedEventFormatter : IMessagePackFormatter<ProjectedEvent>
+    internal sealed class ThrowingProjectedEventFormatter : IMessagePackFormatter<ProjectedEvent?>
     {
         public static readonly ThrowingProjectedEventFormatter Instance = new();
 
         public void Serialize(
             ref MessagePackWriter writer,
-            ProjectedEvent value,
+            ProjectedEvent? value,
             MessagePackSerializerOptions options) =>
             throw new InvalidOperationException("ProjectedEvent DTO serialization should not be used.");
 
-        public ProjectedEvent Deserialize(
+        public ProjectedEvent? Deserialize(
             ref MessagePackReader reader,
             MessagePackSerializerOptions options) =>
             throw new InvalidOperationException("ProjectedEvent DTO deserialization should not be used.");
